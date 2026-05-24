@@ -5,6 +5,7 @@ from rich.console import Console
 from rich.table import Table
 
 from macbastion.scanners.ports import scan_listening_ports
+from macbastion.scanners import stealth as stealth_mod
 
 console = Console()
 
@@ -14,6 +15,9 @@ def cli() -> None:
     """macbastion — defensive security audit tool for macOS."""
 
 
+# ──────────────────────────────────────────────────────────
+# scan group
+# ──────────────────────────────────────────────────────────
 @cli.group()
 def scan() -> None:
     """Run individual audit scanners."""
@@ -39,7 +43,6 @@ def scan_ports() -> None:
     table.add_column("Address")
     table.add_column("Exposure")
 
-    # Sort: most exposed first
     exposure_order = {"all_interfaces": 0, "specific": 1, "localhost": 2}
     ports.sort(key=lambda p: (exposure_order[p.exposure], p.port))
 
@@ -52,16 +55,39 @@ def scan_ports() -> None:
             exposure_str = "[green]localhost[/green]"
 
         table.add_row(
-            str(p.port),
-            p.command,
-            str(p.pid),
-            p.user,
-            p.address,
-            exposure_str,
+            str(p.port), p.command, str(p.pid), p.user, p.address, exposure_str,
         )
 
     console.print(table)
     console.print(f"\n[dim]Total: {len(ports)} listening sockets.[/dim]")
+
+
+# ──────────────────────────────────────────────────────────
+# stealth group
+# ──────────────────────────────────────────────────────────
+@cli.group()
+def stealth() -> None:
+    """Toggle stealth mode (AirDrop ⇄ random hostname)."""
+
+
+@stealth.command("status")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON (for SwiftBar).")
+def stealth_status(as_json: bool) -> None:
+    """Show current stealth state."""
+    raise SystemExit(stealth_mod.cmd_status(json_output=as_json))
+
+
+@stealth.command("on")
+@click.option("--hard", is_flag=True, help="Hard mode: also kill Bluetooth + prompt for reboot.")
+def stealth_on(hard: bool) -> None:
+    """Enable stealth (needs sudo)."""
+    raise SystemExit(stealth_mod.cmd_on(hard=hard))
+
+
+@stealth.command("off")
+def stealth_off() -> None:
+    """Disable stealth, restore AirDrop mode (needs sudo)."""
+    raise SystemExit(stealth_mod.cmd_off())
 
 
 if __name__ == "__main__":
