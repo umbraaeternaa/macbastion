@@ -24,3 +24,8 @@ env/
 *.log
 *.db
 reports/
+
+# Local-only artefacts
+backups/
+scripts/
+*.dSYM/

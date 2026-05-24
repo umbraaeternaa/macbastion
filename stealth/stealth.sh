@@ -51,7 +51,7 @@ is_bt_powered() {
     defaults read /Library/Preferences/com.apple.Bluetooth ControllerPowerState 2>/dev/null || echo "?"
 }
 is_analytics_enabled() {
-    defaults read /Library/Application\ Support/CrashReporter/DiagnosticMessagesHistory.plist AutoSubmit 2>/dev/null \
+    sudo defaults read /Library/Application\ Support/CrashReporter/DiagnosticMessagesHistory.plist AutoSubmit 2>/dev/null \
         || echo "1"
 }
 
