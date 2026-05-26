@@ -1,0 +1,44 @@
+# CHIMERA — Project State Snapshot
+
+> Updated: 2026-05-27
+> Version: 0.1.0-alpha (genesis)
+
+---
+
+## Completed module specifications
+
+| Module | Lang  | Commit    | Notes                          |
+|--------|-------|-----------|--------------------------------|
+| CHAFF  | C     | `e0c8116` | §5.1 — background traffic gen  |
+| ECHO   | C     | `a64f7d9` | §5.2                           |
+
+Genesis commit (manifesto + architecture Part 1): `f229751`
+
+---
+
+## Pending module specifications (6 of 8)
+
+- **ORACLE** (Python) — local LLM reasoning / anomaly detection
+- **MIRROR** (C)
+- **PULSE** (C)
+- **VAULT** (C) — event-driven
+- **TETHER** (C++) — event-driven
+- **PURGE** (C + ARM64 Asm) — event-driven
+
+---
+
+## ARCHITECTURE.md progress
+
+Last completed section: **§4** (Part 1 of 5).
+
+Still to write:
+- §5 — Detailed module specs (Part 2, in progress — 2/8 done)
+- §6 — IPC protocol: JSON-RPC schemas (Part 3)
+- §7 — Module lifecycle (Part 4)
+- §8 — Security model (Part 5)
+
+---
+
+## Code status
+
+`chimera/core/`, `chimera/modules/`, `chimera/proto/` — empty (`.gitkeep` only). No implementation yet.
