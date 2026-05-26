@@ -154,3 +154,13 @@ When starting a new Claude Code session in this folder:
 2. Read `chimera/STATE.md` (current snapshot)
 3. Acknowledge in first message which module/task is next
 4. Wait for user direction before any write actions
+
+---
+
+## 9. Communication language
+
+Default language for replies to the user: Ukrainian.
+Technical terms, code, commit messages, file content, error messages — keep in English.
+Conversational explanations, status updates, questions to the user — Ukrainian.
+
+Example: "Я створив файл chaff.c з функцією hw_random_u64() — вона використовує AArch64 інструкцію mrs RNDR."
