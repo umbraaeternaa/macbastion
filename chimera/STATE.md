@@ -11,14 +11,14 @@
 |--------|-------|-----------|--------------------------------|
 | CHAFF  | C     | `e0c8116` | §5.1 — background traffic gen  |
 | ECHO   | C     | `a64f7d9` | §5.2                           |
+| ORACLE | Py    | `2f753cb` | §5.3 — local LLM anomaly detect|
 
 Genesis commit (manifesto + architecture Part 1): `f229751`
 
 ---
 
-## Pending module specifications (6 of 8)
+## Pending module specifications (5 of 8)
 
-- **ORACLE** (Python) — local LLM reasoning / anomaly detection
 - **MIRROR** (C)
 - **PULSE** (C)
 - **VAULT** (C) — event-driven
@@ -32,7 +32,7 @@ Genesis commit (manifesto + architecture Part 1): `f229751`
 Last completed section: **§4** (Part 1 of 5).
 
 Still to write:
-- §5 — Detailed module specs (Part 2, in progress — 2/8 done)
+- §5 — Detailed module specs (Part 2, in progress — 3/8 done)
 - §6 — IPC protocol: JSON-RPC schemas (Part 3)
 - §7 — Module lifecycle (Part 4)
 - §8 — Security model (Part 5)
