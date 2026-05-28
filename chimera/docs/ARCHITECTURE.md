@@ -96,7 +96,7 @@ CHIMERA — не набір інструментів. Це **організм**.
 
 ---
 
-**Status:** Parts 1 (§1–§4), 3 (§6), 4 (§7) complete. Next: §8 security model (Part 5), then core skeleton code.
+**Status:** All five parts complete (§1–§8). Specification phase done; next is core skeleton code (v0.2.0) and OPSEC.md.
 
 ---
 
@@ -485,5 +485,237 @@ To be resolved during implementation.
 **Specification.** Part 4 of 5. Depends on §6 IPC (complete).
 
 After §8 (security model) lands, the specification phase is complete and the first code — the core skeleton (socket server, router, broker, registry, token issuer, supervisor shim) — can begin, targeted at chimera v0.2.0.
+
+No imitations. No stubs. (See MANIFESTO §4.)
+
+---
+
+# §8 Security Model
+
+> Part 5 of 5 — the final architecture document.
+> Synthesizes the security posture declared per-module in §5 with the wire/auth/lifecycle layers added in §6–§7.
+
+---
+
+## 8.1 Purpose
+
+Single source of truth for CHIMERA's security posture. Module specs (§5) each declared their own threats; §6 added wire-level security and capability tokens; §7 added lifecycle and privilege separation. §8 unifies them: one threat catalog, one attack surface map, one set of trust boundaries, one privilege model, and one honest list of what is NOT covered.
+
+Where this section disagrees with a module spec, this section is authoritative. Module specs are local views; §8 is the system view.
+
+A companion document, `chimera/docs/OPSEC.md`, addresses operator-side discipline. That file is a living artifact and is intentionally NOT part of ARCHITECTURE — it can evolve without amending the architecture.
+
+---
+
+## 8.2 Threat actors
+
+CHIMERA models against nine actor classes. The last one is explicitly out of scope (§8.3).
+
+| ID | Actor                                  | Capabilities                                                  |
+|----|----------------------------------------|---------------------------------------------------------------|
+| T1 | Passive network observer               | ISP, state-level masscol; sees encrypted patterns, DNS, timing; cannot decrypt TLS |
+| T2 | Active network adversary               | MitM, hostile WiFi; can intercept, inject, downgrade          |
+| T3 | Ad / tracking network                  | Commercial fingerprinting via mouse, keystroke, browser, cross-site |
+| T4 | Local unprivileged process             | Same user, no root; can read what the user can read           |
+| T5 | Local privileged process               | Has root, but not Secure Enclave or Apple Silicon ROM         |
+| T6 | Physical attacker, brief access        | Minutes alone with the machine; cannot disassemble            |
+| T7 | Physical attacker, seizure             | Full possession; can image disk, attempt cold-boot            |
+| T8 | Coerced operator                       | Adversary can compel the operator to type passwords           |
+| T9 | Nation-state / hardware extraction     | Can attack Secure Enclave, baseband, supply chain. **OUT OF SCOPE.** |
+
+---
+
+## 8.3 Honest scope — T9 is out of scope
+
+CHIMERA explicitly does NOT defend against T9. We make no claim to protect against:
+
+- Secure Enclave hardware extraction
+- Baseband processor compromise
+- Supply chain attacks on Apple Silicon or macOS
+- Targeted zero-day exploitation by a nation-state-class adversary
+
+This is not a weakness statement — it is a precision statement. CHIMERA is a power tool for a deliberate operator, and the operator must know the precise boundary of its guarantees. Everything below T9 is defended; T9 itself is not. No security theater (MANIFESTO §4).
+
+---
+
+## 8.4 Trust boundaries
+
+CHIMERA's trust model is concentric — inward is more trusted. A boundary crossing requires an explicit authorization step.
+
+```
+[ OUTSIDE WORLD ]                            ← T1, T2, T3 live here
+       ──────────
+[ NETWORK STACK ]                            ← TLS, Tor, DoH at the edge
+       ──────────
+[ macOS USERSPACE, other apps ]              ← T4 lives here
+       ──────────
+[ CHIMERA modules ]                          ← scoped capability tokens (§6.9)
+       ──────────
+[ CHIMERA CORE ]                             ← router, broker, registry
+       ──────────
+[ PRIVILEGED SHIM ]                          ← thin root, only critical ops (§8.8)
+       ──────────
+[ macOS KERNEL / SIP ]                       ← T5 mostly stops here
+       ──────────
+[ SECURE ENCLAVE / APPLE ROM ]               ← T9 only
+```
+
+Three architectural rules enforce these boundaries:
+
+1. Modules never talk to each other directly (§6.2 star topology).
+2. No module touches root capabilities — only the privileged shim does, and only for the enumerated list in §8.8.
+3. Capability tokens issued at connection time cannot be elevated mid-session (§6.9, §8.5 / I6).
+
+---
+
+## 8.5 Per-actor coverage
+
+For each threat actor, which modules or boundaries defend, and what residual risk remains:
+
+| Actor | Defended by                                                           | Residual risk                                       |
+|-------|------------------------------------------------------------------------|-----------------------------------------------------|
+| T1    | CHAFF, ECHO + TLS / Tor (network shaping)                             | Traffic-analysis with a massive corpus              |
+| T2    | TLS + pinning + DoH (Cloudflared)                                      | State-issued CA in the certificate chain            |
+| T3    | MIRROR + browser hardening (Tor Browser persona)                       | Server-side ML over weeks of sessions               |
+| T4    | UNIX socket mode 0600 + capability tokens (§6.9)                       | Same-user info-stealing of plain (non-CHIMERA) files|
+| T5    | SIP + privilege separation (§7.10) + small shim (§8.8)                 | If root is achieved, defense is very limited        |
+| T6    | TETHER + screen lock + VAULT relock                                    | Physical taps, hardware implants                    |
+| T7    | FileVault + VAULT crypto-shred-ready + PURGE                           | Cold-boot if seized while running                   |
+| T8    | VAULT time-locks + reboot-required policies                            | Long-patience coercion, $5 wrench                   |
+| T9    | (out of scope)                                                         | No defense claimed                                  |
+
+---
+
+## 8.6 Security invariants
+
+System-wide rules that hold across all modules. Any future module must respect them. These are non-negotiable.
+
+| ID  | Invariant                                                                                                                                                                                                                  |
+|-----|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| I1  | **Core is the only hub.** Modules never talk to each other directly. All cross-module signal is relayed by core (§6.2).                                                                                                    |
+| I2  | **No outbound network from any module except CHAFF.** Every other module makes zero outbound calls. Checked at code review and at runtime.                                                                                 |
+| I3  | **Fail-closed, never fail-open.** When state is uncertain (dependency dead, core crashed, policy module offline), CHIMERA locks down, not opens up (§7.6, §7.8).                                                          |
+| I4  | **Cascade can only lock more, never destroy.** A dependency failure may relock vaults, pause traffic, hold state. It can NEVER auto-trigger PURGE or any irreversible action (§7.6).                                       |
+| I5  | **Privilege separation.** The main core is unprivileged (LaunchAgent). Only the minimal shim (LaunchDaemon) has root, and only for §8.8's enumerated operations.                                                           |
+| I6  | **Capability scope is never expanded at runtime.** A module's capability token is issued at connect time and is immutable for the connection's life (§6.9). No method exists to "elevate" a token mid-session.            |
+| I7  | **No recovery paths by design.** Forgotten master phrases are NOT recoverable. There is no escrow, no backdoor, no support flow. Operator owns the consequence (MANIFESTO §1, §5.6 VAULT).                                |
+| I8  | **All destructive actions require explicit arming.** `purge.trigger` and TETHER L3 are both default-DISABLED. Arming requires a confirmation phrase AND a mandatory dry-run (§5.7, §5.8).                                  |
+| I9  | **Audit trails before they matter.** Every security-relevant decision (gates, denials, escalations, purges) is logged BEFORE it executes. The log itself may be destroyed by PURGE, but never AFTER the action without record. |
+| I10 | **No telemetry. No cloud. No phone-home.** CHIMERA never reports anything outside the machine. Updates are operator-driven `git pull`, not auto-update services.                                                           |
+
+---
+
+## 8.7 Attack surface
+
+What an adversary can touch:
+
+### External (network-facing)
+- CHAFF outbound HTTPS (intentional, its job)
+- Cloudflared DoH (system DNS)
+- Anything the user opens (browser, mail) — not CHIMERA's surface
+- **Nothing else from CHIMERA reaches the network**
+
+### Local (same-machine processes)
+- Two UNIX sockets in `~/.config/chimera/run/` (mode 0600)
+- Module binaries on disk (each can be reverse-engineered — source is open)
+- Encrypted module state files (names visible, contents protected)
+- macOS Keychain entries (system-protected, Secure Enclave-backed)
+
+### Physical
+- Bluetooth LE advertising from companion (TETHER pairing window)
+- The screen (anyone present can see)
+- Power port (sleep / cold-boot triggers)
+- The operator's keyboard (MIRROR and PULSE cannot defend against a shoulder-surfer)
+
+---
+
+## 8.8 Privileged shim — minimal enumerated capabilities
+
+The root LaunchDaemon shim (§7.10) does ONLY these operations, and refuses anything else. This list IS the security boundary into root.
+
+| # | Capability                              | Triggered by                                          |
+|---|-----------------------------------------|-------------------------------------------------------|
+| a | Lock the screen / activate screensaver  | TETHER L1, operator command                           |
+| b | Evict CHIMERA Keychain items            | PURGE Tier 0                                          |
+| c | Force-reboot                            | PURGE post-action (per config)                        |
+| d | Force-killall on graceful-shutdown timeout | Core during §7.7 shutdown                          |
+
+The shim never:
+- reads file content
+- opens network sockets
+- executes operator-provided code
+- accepts commands from anything other than the user-level core, authenticated via a per-boot shared secret
+
+**Any addition to this list requires a formal §8 amendment, not a code change.** This is not bureaucracy; it is the architectural gate on root surface. Every root capability must pass through deliberate review.
+
+---
+
+## 8.9 Cryptographic primitives & key hierarchy
+
+### Primitives
+
+- **Symmetric AEAD:** AES-256-GCM via libsodium
+- **KDF:** Argon2id (memory-hard) for any operator-phrase derivation
+- **Hash:** BLAKE2b-256 for integrity and policy-hash binding
+- **Random:** hardware RNG (`mrs RNDR` on AArch64) seeding ChaCha20 PRNG (CHAFF/MIRROR)
+- **Asymmetric:** NOT USED locally — no PKI, no identity infrastructure
+
+### Key hierarchy (top is most protected)
+
+1. **macOS Secure Enclave** — non-extractable per-vault master keys, TETHER IRK
+2. **Operator master phrase** — never stored; derives Argon2id keys
+3. **Per-connection capability tokens** — ephemeral, in-memory only
+4. **Module on-disk state keys** — derived per-module, encrypted at rest
+
+Keys NEVER cross trust boundaries. The Secure Enclave never exposes raw key material; signing and decryption happen inside the Enclave.
+
+---
+
+## 8.10 Audit log policy
+
+Audit logs are configurable, with conservative defaults.
+
+- **Default:** encrypted on-disk under a VAULT-class key, retention 30 days, automatic rotation
+- **What is logged:** every gate decision, denial, escalation, capability-token issuance, PURGE arm/disarm, TETHER L3 arm/disarm
+- **What is NEVER logged:** file contents, raw policy variable values (current SSID, exact PULSE score), keystroke or mouse content, vault contents
+- **PURGE Tier 0** destroys logs along with keys — by design, the operator can always erase their forensic trail when they choose
+- **Operator-tunable:** can be set to in-memory-only (max deniability) or extended retention (max accountability) via core config
+
+The defaults balance operator self-forensics with deniability under coercion (T8).
+
+---
+
+## 8.11 Update model
+
+CHIMERA updates are operator-driven, never automatic. The update mechanism is a `git pull` from the operator's chosen remote — auditable, transparent, and preserves invariant I10 (no telemetry, no phone-home).
+
+This is intentionally slow for security fixes. A signed-update channel would be faster but would require a phone-home component, violating I10. The trade-off is deliberate: CHIMERA is a power tool for an operator who pulls fixes deliberately, not a consumer product with auto-update.
+
+Future work may introduce a signed manifest on GitHub that the operator can verify before pulling, but no networked update agent will ever live inside CHIMERA.
+
+---
+
+## 8.12 Open questions
+
+- **DoH trust:** Cloudflared is the default DoH provider (T2 mitigation). What if Cloudflare itself is compromised or compelled? The architecture allows swapping providers, but the trust assumption remains.
+- **BLE identity leak:** TETHER's BLE advertising is observable to nearby radios — "this machine pairs with phone X" is itself a fingerprint. Is the leak acceptable, or does it warrant an obfuscation layer?
+- **Audit depth presets:** beyond default / in-memory / extended, are there other useful retention profiles (e.g. ephemeral 24h, paranoid 7d)?
+- **Threat-model review cadence:** when is §8 itself re-reviewed? Yearly? On each new module? On any invariant change?
+- **OPSEC.md scope:** a separate file is planned (decision: appendix-as-file). What is its minimum content for v1? At least: persona separation, override-phrase hygiene, panic-gesture practice.
+- **Cold-boot residue measurement:** §8.5 lists cold-boot as a residual risk for T7. Should CHIMERA include an opt-in "panic suspend" path that aggressively zeroes RAM regions before suspend?
+
+To be resolved during implementation and during OPSEC.md authoring.
+
+---
+
+## 8.13 Status
+
+**Specification.** Part 5 of 5 — the final architecture document.
+
+With §8 in place, **the specification phase is complete**. The architectural document is whole: §1–§4 (concept, stack, principles), §5 (eight module specifications), §6 (IPC protocol), §7 (lifecycle), §8 (security model).
+
+Next is code: the core skeleton — socket server, router, broker, registry, capability-token issuer, and the privileged shim — targeted at chimera v0.2.0. Specifications anchor the code; the code does not re-litigate the specifications.
+
+The companion document `chimera/docs/OPSEC.md` — operator-side discipline — is the next non-code artifact, written before or alongside the first code.
 
 No imitations. No stubs. (See MANIFESTO §4.)
