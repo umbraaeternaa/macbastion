@@ -32,14 +32,14 @@ Genesis commit (manifesto + architecture Part 1): `f229751`
 
 ## ARCHITECTURE.md progress
 
-Last completed section: **§6** (Part 3 of 5). Part 1 (§1–§4) also complete.
+Last completed section: **§7** (Part 4 of 5). Part 1 (§1–§4) also complete.
 
 Done:
 - §5 — Detailed module specs (Part 2) — **DONE** (8/8: `4a3c9df` closes it)
 - §6 — IPC protocol: JSON-RPC schemas (Part 3) — **DONE** (`3daa138`)
+- §7 — Module lifecycle (Part 4) — **DONE** (`1863057`)
 
 Still to write:
-- §7 — Module lifecycle (Part 4)
 - §8 — Security model (Part 5)
 
 ---
