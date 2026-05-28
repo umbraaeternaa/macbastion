@@ -96,7 +96,7 @@ CHIMERA — не набір інструментів. Це **організм**.
 
 ---
 
-**Status:** Part 1 (§1–§4) and Part 3 (§6) complete. Next: §5.7–§5.8 module specs, then §7 lifecycle, §8 security model.
+**Status:** Parts 1 (§1–§4), 3 (§6), 4 (§7) complete. Next: §8 security model (Part 5), then core skeleton code.
 
 ---
 
@@ -309,5 +309,181 @@ Detailed lifecycle semantics (what core does when heartbeats stop, restart backo
 **Specification.** No code yet.
 
 This is the foundation every module implementation depends on. The CHIMERA core skeleton (socket server, router, broker, registry, token issuer) is the first code to be written, targeted at chimera v0.2.0 — it must land before any individual module's code.
+
+No imitations. No stubs. (See MANIFESTO §4.)
+
+---
+
+# §7 Module Lifecycle
+
+> Part 4 of 5. Defines how core manages each module across its life.
+> Builds on §6 IPC (core.register / core.heartbeat / core.deregister hooks).
+
+---
+
+## 7.1 Purpose
+
+§6 defined the wire; §7 defines what flows through it over a module's lifetime: startup order, registration, liveness detection, failure handling, restart policy, dependency cascades, and graceful shutdown.
+
+The governing principle for every failure path in this section: **when state is uncertain, CHIMERA locks down, never opens up.** A failure can only make the system more closed, never less. This is fail-safe, not fail-open.
+
+---
+
+## 7.2 Lifecycle states
+
+From core's view, each module is always in exactly one state:
+
+```
+UNREGISTERED → STARTING → REGISTERED → HEALTHY ⇄ DEGRADED
+                                           │
+                                           ↓
+                                      STOPPING → STOPPED
+                                           │
+                                       (crash)
+                                           ↓
+                                       FAILED → (restart) → STARTING
+```
+
+| State        | Meaning                                                      |
+|--------------|--------------------------------------------------------------|
+| UNREGISTERED | core knows the module should exist; no connection yet        |
+| STARTING     | process launched, not yet registered                         |
+| REGISTERED   | sent `core.register`; capabilities known                     |
+| HEALTHY      | heartbeats arriving on time, self-check ok                   |
+| DEGRADED     | heartbeats late, or module self-reports degraded             |
+| STOPPING     | graceful shutdown in progress                                |
+| STOPPED      | clean exit; `core.deregister` received                       |
+| FAILED       | crashed, heartbeat lost, or killed                           |
+
+---
+
+## 7.3 Startup order — dependency-aware
+
+Modules declare `depends_on` in `core.register` (§6.7). Core computes a topological order and starts them in waves. A module starts only after all its declared dependencies are HEALTHY.
+
+```
+Wave 0 (no deps):   core, then CHAFF, ECHO, MIRROR, ORACLE
+Wave 1 (need core): PULSE (needs MIRROR), VAULT
+Wave 2:             TETHER (needs VAULT for L2, PURGE for L3)
+Wave 3:             PURGE (target of TETHER L3)
+```
+
+- If a dependency does not reach HEALTHY within a startup timeout, the dependent stays UNREGISTERED; core logs it and surfaces it. Core does NOT hang waiting (fail-closed, not fail-stuck).
+- Circular dependencies are rejected at config-load time — the dependency graph must be a DAG.
+
+---
+
+## 7.4 Heartbeat & liveness
+
+Liveness ("is the module alive") is distinct from a module's internal work tick ("how often it does its job"). TETHER may scan BLE every 2s internally, but core only asks for liveness every 10s.
+
+- Each module sends `core.heartbeat` every `HEARTBEAT_INTERVAL` (default 10s).
+- Core tracks last-seen per module. Missed-heartbeat thresholds:
+
+| Missed        | Elapsed | Core action                          |
+|---------------|---------|--------------------------------------|
+| 1             | >10s    | none (jitter tolerance)              |
+| 2             | >20s    | mark DEGRADED, emit `module.degraded`|
+| 3             | >30s    | mark FAILED, begin restart policy    |
+
+- Heartbeat carries lightweight self-status: `{module, seq, uptime_s, self_check: ok|warn|fail, queue_depth}`.
+- A module may self-report `fail` even while heartbeats arrive (e.g. ORACLE reports Ollama unreachable). Core then marks it DEGRADED regardless of heartbeat timing.
+
+---
+
+## 7.5 Restart policy — exponential backoff with cap
+
+On FAILED, core restarts the module with backoff:
+
+```
+attempt 1: wait 1s
+attempt 2: wait 2s
+attempt 3: wait 4s
+attempt 4: wait 8s
+attempt 5+: wait 30s (capped)
+```
+
+- After `MAX_RESTARTS` (default 5) within a rolling 1-hour window, core gives up: marks the module PERMANENTLY_FAILED, emits `module.dead`, and requires operator intervention.
+- Restart preserves nothing in-process. Modules are stateless across restarts except for their own encrypted on-disk state, which they reload themselves (§7.8).
+- Dependents of a FAILED module react per §7.6.
+
+---
+
+## 7.6 Dependency failure cascade
+
+When a module becomes FAILED or DEGRADED, its dependents react — and the reaction can only ever make the system more locked:
+
+- **VAULT depends on PULSE / TETHER** for policy predicates. If PULSE dies while a vault is unlocked, the vault's policy is re-evaluated; the missing predicate fails closed and the vault relocks immediately (§7 decision: fail-closed, no grace).
+- **TETHER depends on VAULT (L2) and PURGE (L3).** If PURGE is dead when TETHER L3 would fire, TETHER CANNOT escalate to L3. It logs, falls back to L2 (lock all vaults), and raises a loud alert. A dead PURGE can never cause data loss.
+- **Core never auto-triggers a destructive cascade.** A dependency death can lock vaults, pause traffic, or hold state — it can never trigger PURGE or any irreversible action. The cascade invariant: failures escalate toward MORE locked, never toward destruction.
+
+---
+
+## 7.7 Graceful shutdown
+
+On operator stop or system shutdown:
+
+```
+1. Core broadcasts core.shutdown to all modules
+2. Shutdown proceeds in REVERSE dependency order (dependents first):
+   TETHER → VAULT → PULSE → ORACLE/MIRROR/ECHO/CHAFF
+3. Each module: finish in-flight work, flush state, send core.deregister
+4. Grace period SHUTDOWN_TIMEOUT (default 5s) per module
+5. Modules not deregistered in time → SIGTERM, then SIGKILL
+6. VAULT relocks all open vaults BEFORE it deregisters
+7. PURGE: shutdown is NOT a purge — it simply stops the daemon
+8. Core exits last, after confirming all modules stopped
+```
+
+---
+
+## 7.8 Crash safety & state recovery
+
+- Each module owns its on-disk state and its encryption (defined per module spec). On restart, a module reloads its own state — ORACLE its baseline, PULSE its history, VAULT its metadata. Core never holds module state.
+- Core's registry is rebuilt from re-registration, not persisted. When core restarts, modules detect the dropped connection and re-register.
+- **If CORE crashes**, modules do NOT continue autonomously. They enter a fail-safe holding pattern: CHAFF and ECHO pause traffic shaping, VAULT relocks all open vaults, TETHER holds its last presence state without escalating, ORACLE and PULSE pause scoring. They wait for core to return and then re-register. This is fail-safe, not fail-open: a missing brain locks the organism down rather than letting organs act blind.
+
+---
+
+## 7.9 DEGRADED behavior — per module
+
+A DEGRADED module does not behave uniformly; behavior is defined per module by its criticality:
+
+- **Security-critical modules fail closed.** A DEGRADED VAULT refuses operations and returns `-31005 fail-closed` rather than risk an unsafe unlock. A DEGRADED TETHER holds rather than mis-escalates.
+- **Advisory modules serve best-effort.** A DEGRADED ORACLE (e.g. slow Ollama) still answers as well as it can — partial reasoning beats none for an advisory signal. A DEGRADED PULSE continues scoring on the signals it still has.
+- Each module spec states its own DEGRADED policy. The default for an unspecified module is fail-closed (the safe default).
+
+---
+
+## 7.10 Supervisor — who starts core?
+
+Core is launched and watched by macOS launchd, using **privilege separation**:
+
+- A thin **privileged supervisor shim** (LaunchDaemon, root) exists only to perform the few actions that genuinely require elevation — triggering PURGE's privileged steps, locking the screen at the login window, evicting Keychain items. It is intentionally small to minimize the root attack surface.
+- The **main core** runs user-level (LaunchAgent), holding the router, broker, registry, and token issuer. The bulk of logic is unprivileged.
+- launchd restarts core if core itself dies. This answers §6.2's "core is a single point of failure": launchd watches core, core watches modules, and the privileged shim is kept as small as possible.
+
+The exact split of which operations cross into the privileged shim is refined in §8 (security model) and during implementation.
+
+---
+
+## 7.11 Open questions
+
+- Heartbeat default 10s: confirmed adequate for liveness, but should some modules (TETHER) get a shorter liveness interval, or is the internal-tick/liveness split (§7.4) sufficient?
+- `MAX_RESTARTS` window is a rolling hour — confirm this is right versus per-session.
+- Core crash while a vault is unlocked: §7.8 chooses immediate relock. Confirm no grace window is ever acceptable (decision: no grace).
+- Partial startup: if Wave 1 fails, do Wave 0 modules keep running standalone, or does core refuse to operate in a partial state? (Leaning: Wave 0 continues, dependents stay UNREGISTERED, operator is notified.)
+- Privileged shim scope: exact list of operations that require root, finalized in §8.
+- Login-window operation: which modules (if any) must function before user login, and does that force more into the LaunchDaemon?
+
+To be resolved during implementation.
+
+---
+
+## 7.12 Status
+
+**Specification.** Part 4 of 5. Depends on §6 IPC (complete).
+
+After §8 (security model) lands, the specification phase is complete and the first code — the core skeleton (socket server, router, broker, registry, token issuer, supervisor shim) — can begin, targeted at chimera v0.2.0.
 
 No imitations. No stubs. (See MANIFESTO §4.)
