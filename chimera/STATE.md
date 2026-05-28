@@ -27,6 +27,7 @@ Genesis commit (manifesto + architecture Part 1): `f229751`
 | Record | Commit    | Notes                                            |
 |--------|-----------|--------------------------------------------------|
 | UX     | `cb10247` | UX surface decision — CLI + swiftbar + event stream (`chimera/docs/UX.md`) |
+| OPSEC  | `a3ae3ad` | Operator security discipline — companion to §8 (`chimera/docs/OPSEC.md`) |
 
 ---
 
@@ -50,13 +51,11 @@ the architectural document is whole and authoritative. No spec work remains.
 - **ARCHITECTURE.md** — all five parts: §1–§4 (concept, stack, principles),
   §5 (modules), §6 (IPC), §7 (lifecycle), §8 (security model)
 - **Module specs** — 8 of 8 (CHAFF, ECHO, ORACLE, MIRROR, PULSE, VAULT, TETHER, PURGE)
-- **6 design documents total** — 5 ARCHITECTURE parts + UX.md decision record
+- **7 design documents total** — 5 ARCHITECTURE parts + UX.md + OPSEC.md
 
 **Next — code phase begins:**
 - Core skeleton, targeted at chimera **v0.2.0** — socket server, router, broker,
   registry, capability-token issuer, privileged shim
-- `chimera/docs/OPSEC.md` — operator-side discipline, companion document
-  (written before or alongside the first code)
 
 ---
 
