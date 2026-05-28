@@ -15,6 +15,10 @@
 | MIRROR | C     | `a951c92` | §5.4 — behavioral noise inject |
 | PULSE  | C+Py  | `5f5b64a` | §5.5 — cognitive load monitor  |
 | VAULT  | C     | `1fdc517` | §5.6 — time-locked storage     |
+| TETHER | C++   | `3b5fca9` | §5.7 — proximity dead-man      |
+| PURGE  | C+Asm | `4a3c9df` | §5.8 — secure erasure (panic)  |
+
+All 8 of 8 module specifications complete. Part 2 (§5) closed.
 
 Genesis commit (manifesto + architecture Part 1): `f229751`
 
@@ -26,20 +30,15 @@ Genesis commit (manifesto + architecture Part 1): `f229751`
 
 ---
 
-## Pending module specifications (2 of 8)
-
-- **TETHER** (C++) — event-driven
-- **PURGE** (C + ARM64 Asm) — event-driven
-
----
-
 ## ARCHITECTURE.md progress
 
 Last completed section: **§6** (Part 3 of 5). Part 1 (§1–§4) also complete.
 
-Still to write:
-- §5 — Detailed module specs (Part 2, in progress — 6/8 done)
+Done:
+- §5 — Detailed module specs (Part 2) — **DONE** (8/8: `4a3c9df` closes it)
 - §6 — IPC protocol: JSON-RPC schemas (Part 3) — **DONE** (`3daa138`)
+
+Still to write:
 - §7 — Module lifecycle (Part 4)
 - §8 — Security model (Part 5)
 
