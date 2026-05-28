@@ -32,15 +32,31 @@ Genesis commit (manifesto + architecture Part 1): `f229751`
 
 ## ARCHITECTURE.md progress
 
-Last completed section: **§7** (Part 4 of 5). Part 1 (§1–§4) also complete.
+Last completed section: **§8** (Part 5 of 5). Part 1 (§1–§4) also complete.
 
 Done:
 - §5 — Detailed module specs (Part 2) — **DONE** (8/8: `4a3c9df` closes it)
 - §6 — IPC protocol: JSON-RPC schemas (Part 3) — **DONE** (`3daa138`)
 - §7 — Module lifecycle (Part 4) — **DONE** (`1863057`)
+- §8 — Security model (Part 5) — **DONE** (`52477fe`)
 
-Still to write:
-- §8 — Security model (Part 5)
+---
+
+## Specification phase: COMPLETE
+
+As of 2026-05-28, the CHIMERA specification phase is closed. §8 closes it:
+the architectural document is whole and authoritative. No spec work remains.
+
+- **ARCHITECTURE.md** — all five parts: §1–§4 (concept, stack, principles),
+  §5 (modules), §6 (IPC), §7 (lifecycle), §8 (security model)
+- **Module specs** — 8 of 8 (CHAFF, ECHO, ORACLE, MIRROR, PULSE, VAULT, TETHER, PURGE)
+- **6 design documents total** — 5 ARCHITECTURE parts + UX.md decision record
+
+**Next — code phase begins:**
+- Core skeleton, targeted at chimera **v0.2.0** — socket server, router, broker,
+  registry, capability-token issuer, privileged shim
+- `chimera/docs/OPSEC.md` — operator-side discipline, companion document
+  (written before or alongside the first code)
 
 ---
 
