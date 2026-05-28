@@ -1,6 +1,6 @@
 # CHIMERA — Project State Snapshot
 
-> Updated: 2026-05-27
+> Updated: 2026-05-28
 > Version: 0.1.0-alpha (genesis)
 
 ---
@@ -18,6 +18,12 @@
 
 Genesis commit (manifesto + architecture Part 1): `f229751`
 
+## Completed design records
+
+| Record | Commit    | Notes                                            |
+|--------|-----------|--------------------------------------------------|
+| UX     | `cb10247` | UX surface decision — CLI + swiftbar + event stream (`chimera/docs/UX.md`) |
+
 ---
 
 ## Pending module specifications (2 of 8)
@@ -29,11 +35,11 @@ Genesis commit (manifesto + architecture Part 1): `f229751`
 
 ## ARCHITECTURE.md progress
 
-Last completed section: **§4** (Part 1 of 5).
+Last completed section: **§6** (Part 3 of 5). Part 1 (§1–§4) also complete.
 
 Still to write:
 - §5 — Detailed module specs (Part 2, in progress — 6/8 done)
-- §6 — IPC protocol: JSON-RPC schemas (Part 3)
+- §6 — IPC protocol: JSON-RPC schemas (Part 3) — **DONE** (`3daa138`)
 - §7 — Module lifecycle (Part 4)
 - §8 — Security model (Part 5)
 
