@@ -50,8 +50,6 @@ select = [
     "ASYNC", # async best practices
 ]
 ignore = [
-    "ANN101",  # missing type annotation for self
-    "ANN102",  # missing type annotation for cls
     "S101",    # assert used (we use it in tests)
 ]
 
