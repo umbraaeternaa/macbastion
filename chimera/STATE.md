@@ -1,6 +1,6 @@
 # CHIMERA — Project State Snapshot
 
-> Updated: 2026-05-28
+> Updated: 2026-05-29
 > Version: 0.1.0-alpha (genesis)
 
 ---
@@ -61,4 +61,16 @@ the architectural document is whole and authoritative. No spec work remains.
 
 ## Code status
 
-`chimera/core/`, `chimera/modules/`, `chimera/proto/` — empty (`.gitkeep` only). No implementation yet.
+Code phase underway (ETAP 2). Last completed: **envelope module** (commit `6ed8e77`).
+
+**`chimera/core/` — 2 of 8 modules implemented:**
+- `errors` (§6.5) — JSON-RPC + CHIMERA error codes, RpcError — DONE (`f284891`)
+- `envelope` (§6.4) — JSON-RPC 2.0 wire format, parse/serialize, NDJSON — DONE (`6ed8e77`)
+
+Remaining 6 are pure-pass scaffold: `server`, `broker`, `registry`, `tokens`, `lifecycle`, `config`.
+
+`chimera/modules/`, `chimera/proto/` — still empty (`.gitkeep` only).
+
+**Tooling:** `pyproject.toml` + `uv.lock` + `.venv` (Python 3.13.9); ruff + mypy (strict) + pytest configured.
+
+**Tests:** 72 passing (31 errors + 41 envelope).
