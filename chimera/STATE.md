@@ -1,6 +1,6 @@
 # CHIMERA — Project State Snapshot
 
-> Updated: 2026-05-30
+> Updated: 2026-05-31
 > Version: 0.1.0-alpha (genesis)
 
 ---
@@ -61,18 +61,19 @@ the architectural document is whole and authoritative. No spec work remains.
 
 ## Code status
 
-Code phase underway (ETAP 2). Last completed: **tokens module** (commit `f9fa508`).
+Code phase underway (ETAP 2). Last completed: **broker module** (commit `b63916c`).
 
-**`chimera/core/` — 4 of 8 modules implemented:**
+**`chimera/core/` — 5 of 8 modules implemented:**
 - `errors` (§6.5) — JSON-RPC + CHIMERA error codes, RpcError — DONE (`f284891`)
 - `envelope` (§6.4) — JSON-RPC 2.0 wire format, parse/serialize, NDJSON — DONE (`6ed8e77`)
 - `config` (§6.3, §7, §8) — CoreConfig: paths, defaults, env > toml > defaults hierarchy — DONE (`a6eed2a`)
 - `tokens` (§6.9, §8.6 I6) — TokenIssuer: HMAC-SHA256 capability tokens, in-RAM key — DONE (`f9fa508`)
+- `broker` (§6.6 + §6.8) — EventBroker: async pub/sub, wildcard topics, drop-oldest backpressure — DONE (`b63916c`)
 
-Remaining 4 are pure-pass scaffold: `server`, `broker`, `registry`, `lifecycle`.
+Remaining 3 are pure-pass scaffold: `server`, `registry`, `lifecycle`.
 
 `chimera/modules/`, `chimera/proto/` — still empty (`.gitkeep` only).
 
 **Tooling:** `pyproject.toml` + `uv.lock` + `.venv` (Python 3.13.9); ruff + mypy (strict) + pytest configured.
 
-**Tests:** 140 passing (31 errors + 41 envelope + 33 config + 35 tokens).
+**Tests:** 176 passing (31 errors + 41 envelope + 33 config + 35 tokens + 36 broker).
