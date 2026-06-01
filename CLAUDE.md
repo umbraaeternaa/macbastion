@@ -137,7 +137,8 @@ Commit messages:
 
 - GitHub: https://github.com/umbraaeternaa/macbastion
 - Owner workflow: macOS 26, M2, FileVault on, SIP on, LuLu deny-by-default
-- Python venv: `.venv/` (already exists, use it for any Python work)
+- Python venv: `chimera/.venv/` (project venv, contains pytest/ruff/mypy/...).
+  Root `.venv/` is a legacy parent-project scaffold — empty of packages, not CHIMERA's.
 - Existing tools in parent project (macbastion):
   - `macbastion scan ports` — port audit CLI
   - `macbastion stealth on/off/status` — hostname rotation
