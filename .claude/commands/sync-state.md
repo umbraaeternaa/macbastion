@@ -6,7 +6,7 @@ Sync chimera/STATE.md after completing a module or significant milestone.
 
 1. **Gather current state** — run these read-only commands:
    - `git log --oneline -5` → recent commits
-   - `chimera/.venv/bin/pytest -q --co 2>&1 | tail -3` → total test count
+   - `chimera/.venv/bin/pytest chimera/tests -q --co 2>&1 | tail -3` → total test count
    - `ls chimera/core/*.py | grep -v __ | wc -l` → module file count
    - `cat chimera/STATE.md` → current content
 
