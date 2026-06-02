@@ -124,6 +124,22 @@ These are not bugs — they're trade-offs we accept to keep SIP and Full Securit
 
 ---
 
+## Support development
+
+CHIMERA is free, open source, and will stay that way. If the project is useful to
+you and you want to support continued development, you can contribute via
+**Monobank Jar** (Ukraine):
+
+**https://send.monobank.ua/jar/AHaziFXjYX**
+
+![Monobank QR Code](docs/donate.png)
+
+See [docs/donate.md](docs/donate.md) for what donations fund — and, just as
+importantly, what they explicitly do **not** change (the MANIFESTO and the
+no-paywall philosophy).
+
+---
+
 ## License
 
 MIT
