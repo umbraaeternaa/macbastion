@@ -132,7 +132,7 @@ you and you want to support continued development, you can contribute via
 
 **https://send.monobank.ua/jar/AHaziFXjYX**
 
-![Monobank QR Code](docs/donate.png)
+<img src="docs/donate.png" alt="Monobank QR Code" width="400"/>
 
 See [docs/donate.md](docs/donate.md) for what donations fund — and, just as
 importantly, what they explicitly do **not** change (the MANIFESTO and the
