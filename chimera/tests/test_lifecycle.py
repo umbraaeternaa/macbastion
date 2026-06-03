@@ -160,6 +160,12 @@ class TestTransitions:
         lc, _ = _make_lifecycle()
         assert lc.can_transition(ModuleState.HEALTHY, ModuleState.DEGRADED)
 
+    def test_registered_to_stopping_allowed(self) -> None:
+        # Extends the §7.2 diagram: a just-registered module can be
+        # gracefully deregistered before reaching HEALTHY (§7.7).
+        lc, _ = _make_lifecycle()
+        assert lc.can_transition(ModuleState.REGISTERED, ModuleState.STOPPING)
+
     def test_degraded_to_healthy_allowed_bidirectional(self) -> None:
         lc, _ = _make_lifecycle()
         assert lc.can_transition(ModuleState.DEGRADED, ModuleState.HEALTHY)

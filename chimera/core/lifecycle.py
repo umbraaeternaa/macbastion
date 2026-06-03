@@ -51,6 +51,8 @@ class ModuleState(StrEnum):
 # Allowed (from, to) edges: the §7.2 diagram plus the §7.5 restart paths.
 # STOPPED and PERMANENTLY_FAILED are terminal (no outgoing edges); a clean
 # restart always re-enters via FAILED -> STARTING. No self-loops.
+# REGISTERED -> STOPPING extends the §7.2 diagram so a module can be
+# gracefully deregistered before it ever reaches HEALTHY (§7.7).
 ALLOWED_TRANSITIONS: frozenset[tuple[ModuleState, ModuleState]] = frozenset(
     {
         (ModuleState.UNREGISTERED, ModuleState.STARTING),
@@ -58,6 +60,7 @@ ALLOWED_TRANSITIONS: frozenset[tuple[ModuleState, ModuleState]] = frozenset(
         (ModuleState.STARTING, ModuleState.FAILED),
         (ModuleState.REGISTERED, ModuleState.HEALTHY),
         (ModuleState.REGISTERED, ModuleState.FAILED),
+        (ModuleState.REGISTERED, ModuleState.STOPPING),
         (ModuleState.HEALTHY, ModuleState.DEGRADED),
         (ModuleState.DEGRADED, ModuleState.HEALTHY),
         (ModuleState.HEALTHY, ModuleState.STOPPING),
