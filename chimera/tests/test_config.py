@@ -48,6 +48,9 @@ class TestCoreConfigDefaults:
     def test_default_shutdown_timeout_is_5s(self) -> None:
         assert CoreConfig().shutdown_timeout_s == 5
 
+    def test_default_request_timeout_is_5s(self) -> None:
+        assert CoreConfig().request_timeout_s == 5.0
+
     def test_default_socket_mode_is_0600(self) -> None:
         config = CoreConfig()
         assert config.socket_mode == 0o600
@@ -119,6 +122,15 @@ class TestCoreConfigFromEnv:
     def test_env_overrides_heartbeat_interval(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("CHIMERA_HEARTBEAT_INTERVAL_S", "20")
         assert CoreConfig().heartbeat_interval_s == 20
+
+    def test_env_overrides_request_timeout(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("CHIMERA_REQUEST_TIMEOUT_S", "2.5")
+        assert CoreConfig().request_timeout_s == 2.5
+
+    def test_request_timeout_must_be_positive(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("CHIMERA_REQUEST_TIMEOUT_S", "0")
+        with pytest.raises(ValidationError):
+            CoreConfig()
 
     def test_env_invalid_log_level_rejected(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("CHIMERA_LOG_LEVEL", "INVALID")

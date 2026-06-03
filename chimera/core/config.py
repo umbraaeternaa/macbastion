@@ -5,7 +5,7 @@ import tomllib
 from pathlib import Path
 from typing import Any, Literal, Self
 
-from pydantic import field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -36,6 +36,9 @@ class CoreConfig(BaseSettings):
     # Restart policy (§7.5)
     restart_max_per_hour: int = 5
     shutdown_timeout_s: int = 5
+
+    # Request routing / timeouts (§6.8)
+    request_timeout_s: float = Field(default=5.0, gt=0)
 
     # Security (§8)
     socket_mode: int = 0o600
