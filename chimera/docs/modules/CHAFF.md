@@ -135,7 +135,7 @@ System (already present on macOS):
 Project-internal:
 - Decoy endpoint whitelist (`chimera/modules/chaff/endpoints.json`) — ~50 public HTTPS sites, categorized
 - Profile DB (`~/.config/chimera/chaff/profile.db`) — created on first run
-- IPC socket (`~/.config/chimera/sockets/chaff.sock`) — created by core
+- IPC: connects OUT to core (`~/.config/chimera/run/core.sock` commands + `events.sock` events); CHAFF binds no socket of its own (§6.3, star topology §6.2)
 
 Network: this is the ONLY CHIMERA module that legitimately makes outbound network calls. All other modules are local-only.
 
