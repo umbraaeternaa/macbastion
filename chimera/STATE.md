@@ -61,20 +61,21 @@ the architectural document is whole and authoritative. No spec work remains.
 
 ## Code status
 
-Code phase underway (ETAP 2). Last completed: **lifecycle module** (commit `57a99fd`).
+Code phase underway (ETAP 2). Last completed: **registry module** (commit `e4a10ba`).
 
-**`chimera/core/` — 6 of 8 modules implemented:**
+**`chimera/core/` — 7 of 8 modules implemented:**
 - `errors` (§6.5) — JSON-RPC + CHIMERA error codes, RpcError — DONE (`f284891`)
 - `envelope` (§6.4) — JSON-RPC 2.0 wire format, parse/serialize, NDJSON — DONE (`6ed8e77`)
 - `config` (§6.3, §7, §8) — CoreConfig: paths, defaults, env > toml > defaults hierarchy — DONE (`a6eed2a`)
 - `tokens` (§6.9, §8.6 I6) — TokenIssuer: HMAC-SHA256 capability tokens, in-RAM key — DONE (`f9fa508`)
 - `broker` (§6.6 + §6.8) — EventBroker: async pub/sub, wildcard topics, drop-oldest backpressure — DONE (`b63916c`)
 - `lifecycle` (§7.2 + §7.4 + §7.5) — Lifecycle: 9-state FSM, 16-edge allow-list, heartbeat sweep, restart policy — DONE (`57a99fd`)
+- `registry` (§6.7 + §7.2) — Registry: capability store, composes+drives Lifecycle, prefix-split matching, register/deregister events — DONE (`e4a10ba`)
 
-Remaining 2 are pure-pass scaffold: `server`, `registry`.
+Remaining 1 is pure-pass scaffold: `server`.
 
 `chimera/modules/`, `chimera/proto/` — still empty (`.gitkeep` only).
 
 **Tooling:** `pyproject.toml` + `uv.lock` + `.venv` (Python 3.13.9); ruff + mypy (strict) + pytest configured.
 
-**Tests:** 239 passing (31 errors + 41 envelope + 33 config + 35 tokens + 36 broker + 63 lifecycle).
+**Tests:** 299 passing (31 errors + 41 envelope + 33 config + 35 tokens + 36 broker + 63 lifecycle + 60 registry).
