@@ -617,9 +617,12 @@ class TestRealSocketIntegration:
                 str(tmp_path / "events.sock")
             )
             try:
+                # Subscribe to the exact topic — module.* would also match the
+                # module.state_changed events that lifecycle emits during the
+                # register orchestration, and would deliver one of those first.
                 ev_writer.write(
                     b'{"jsonrpc":"2.0","id":1,"method":"core.subscribe",'
-                    b'"params":{"topics":["module.*"]}}\n'
+                    b'"params":{"topics":["module.registered"]}}\n'
                 )
                 await ev_writer.drain()
                 await asyncio.wait_for(ev_reader.readline(), timeout=2.0)  # sub ack

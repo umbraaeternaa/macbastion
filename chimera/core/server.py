@@ -1,3 +1,401 @@
-"""UNIX socket server — commands + events (§6.3)."""
+"""UNIX socket server — the core hub (§6.3 transport, §6.2 star, §6.9 auth).
 
-pass
+The integrator. Server owns the two UNIX sockets, accepts connections, issues
+per-connection capability tokens, and dispatches JSON-RPC commands by
+composing the already-built core modules:
+
+- envelope  — parse/serialize the NDJSON wire (§6.4)
+- tokens    — issue on connect, validate per request (§6.9)
+- registry  — core.register / core.deregister / core.capabilities (§6.7)
+- lifecycle — core.heartbeat + the background liveness sweep (§7.4)
+- broker    — core.subscribe fan-out + event push (§6.6)
+- errors    — map every failure to a JSON-RPC error (§6.5)
+
+Scope decisions (operator-approved, v0.2.0):
+- D1 two sockets: core.sock (commands) + events.sock (events).
+- D3 register-implies-module: a connection starts surface-scoped (full
+  token); the first core.register reissues it module-scoped (sub=name).
+- D4 core.* ONLY — any module.method returns -31000 module offline. There
+  are no native modules yet, so there is nothing to route; this is an
+  honest MVP, not a faked router (MANIFESTO §4). Routing lands with the
+  first native module.
+- D7 one asyncio task per connection; no connection cap.
+- D8 graceful shutdown: stop accepting, close, unlink the socket files.
+
+In 4B the token scope has no teeth yet (no module methods to forbid): the
+token is validated only for core.* methods; a module method short-circuits
+to -31000 before any auth check. A forged token on a core.* method -> -31007.
+"""
+
+import asyncio
+import json
+import time
+from dataclasses import dataclass
+from typing import Any, ClassVar
+
+from pydantic import ValidationError
+
+from core.broker import Event, EventBroker, Subscription, SubscriptionClosedError
+from core.config import CoreConfig
+from core.envelope import (
+    Notification,
+    Request,
+    Response,
+    parse_frame,
+    serialize_frame,
+)
+from core.errors import (
+    JSONRPC_INTERNAL_ERROR,
+    JSONRPC_INVALID_PARAMS,
+    JSONRPC_INVALID_REQUEST,
+    JSONRPC_METHOD_NOT_FOUND,
+    JSONRPC_PARSE_ERROR,
+    ChimeraError,
+    RpcError,
+)
+from core.lifecycle import InvalidTransitionError, Lifecycle
+from core.registry import Registry
+from core.tokens import TokenIssuer
+
+
+@dataclass
+class Connection:
+    """Per-connection session state.
+
+    Mutable: the first core.register reissues the token module-scoped (3B),
+    flipping subject/is_module. subscription holds the events.sock stream.
+    """
+
+    token: str
+    subject: str
+    is_module: bool = False
+    subscription: Subscription | None = None
+
+
+class Server:
+    """The core hub: two UNIX sockets composing every other core module."""
+
+    SURFACE_SUBJECT: ClassVar[str] = "surface"
+    CORE_VERSION: ClassVar[str] = "0.2.0-alpha"
+    CORE_METHODS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "core.register",
+            "core.heartbeat",
+            "core.deregister",
+            "core.capabilities",
+            "core.status",
+            "core.subscribe",
+        }
+    )
+
+    def __init__(
+        self,
+        config: CoreConfig,
+        registry: Registry,
+        lifecycle: Lifecycle,
+        broker: EventBroker,
+        token_issuer: TokenIssuer,
+    ) -> None:
+        self._config = config
+        self._registry = registry
+        self._lifecycle = lifecycle
+        self._broker = broker
+        self._token_issuer = token_issuer
+        self._core_path = config.socket_dir / "core.sock"
+        self._events_path = config.socket_dir / "events.sock"
+        self._core_server: asyncio.Server | None = None
+        self._events_server: asyncio.Server | None = None
+        self._sweep_task: asyncio.Task[None] | None = None
+        self._start_time: float | None = None
+        self._next_sub_id: int = 0
+
+    # -- connections ------------------------------------------------------
+
+    def new_connection(self) -> Connection:
+        """Open a session with a surface-scoped (full) capability token."""
+        token = self._token_issuer.issue(
+            self.SURFACE_SUBJECT, list(self.CORE_METHODS)
+        )
+        return Connection(token=token, subject=self.SURFACE_SUBJECT)
+
+    # -- dispatch ---------------------------------------------------------
+
+    async def handle_command(self, request: Request, conn: Connection) -> Response:
+        """Authenticate (core.* only) and dispatch one request to a Response."""
+        method = request.method
+        try:
+            if method in self.CORE_METHODS:
+                self._token_issuer.validate(conn.token, method)
+                result = self._dispatch_core(method, request.params, conn)
+                return Response(jsonrpc="2.0", id=request.id, result=result)
+            if method.startswith("core."):
+                raise RpcError(code=JSONRPC_METHOD_NOT_FOUND)
+            # D4: module methods are not routable yet — module offline.
+            raise RpcError(code=ChimeraError.MODULE_OFFLINE)
+        except Exception as exc:  # noqa: BLE001 — centralized wire mapping (D5)
+            return self._to_error_response(exc, request.id)
+
+    def _dispatch_core(
+        self, method: str, params: dict[str, Any] | list[Any] | None, conn: Connection
+    ) -> dict[str, Any]:
+        if method == "core.register":
+            return self._handle_register(params, conn)
+        if method == "core.heartbeat":
+            return self._handle_heartbeat(params)
+        if method == "core.deregister":
+            return self._handle_deregister(params)
+        if method == "core.capabilities":
+            return self._registry.capabilities()
+        if method == "core.status":
+            return self._handle_status()
+        if method == "core.subscribe":
+            return self._handle_subscribe(params, conn)
+        raise RpcError(code=JSONRPC_METHOD_NOT_FOUND)  # defensive
+
+    # -- core.* handlers --------------------------------------------------
+
+    def _handle_register(
+        self, params: dict[str, Any] | list[Any] | None, conn: Connection
+    ) -> dict[str, Any]:
+        module = self._require_str(params, "module")
+        version = self._require_str(params, "version")
+        methods = self._opt_list(params, "methods")
+        events = self._opt_list(params, "events")
+        depends_on = self._opt_list(params, "depends_on")
+        self._registry.register(module, version, methods, events, depends_on)
+        # 3B: this connection is now a module — reissue a module-scoped token.
+        conn.subject = module
+        conn.is_module = True
+        conn.token = self._token_issuer.issue(module, list(self.CORE_METHODS))
+        return {"ok": True}
+
+    def _handle_heartbeat(
+        self, params: dict[str, Any] | list[Any] | None
+    ) -> dict[str, Any]:
+        module = self._require_str(params, "module")
+        try:
+            self._lifecycle.heartbeat(module)
+        except KeyError as e:
+            raise RpcError(code=ChimeraError.MODULE_OFFLINE) from e
+        return {"ok": True}
+
+    def _handle_deregister(
+        self, params: dict[str, Any] | list[Any] | None
+    ) -> dict[str, Any]:
+        module = self._require_str(params, "module")
+        self._registry.deregister(module)  # idempotent — no-op if absent
+        return {"ok": True}
+
+    def _handle_status(self) -> dict[str, Any]:
+        caps = self._registry.capabilities()
+        modules: dict[str, Any] = {}
+        for name, info in caps.items():
+            rec = self._lifecycle.record(name)
+            modules[name] = {
+                **info,
+                "last_seen": rec.last_seen,
+                "restart_count": rec.restart_count,
+            }
+        uptime = (
+            0.0
+            if self._start_time is None
+            else max(0.0, time.time() - self._start_time)
+        )
+        return {
+            "core": {"version": self.CORE_VERSION, "uptime_seconds": uptime},
+            "modules": modules,
+        }
+
+    def _handle_subscribe(
+        self, params: dict[str, Any] | list[Any] | None, conn: Connection
+    ) -> dict[str, Any]:
+        topics = self._opt_list(params, "topics")
+        sub = self._broker.subscribe(topics)  # ValueError on empty -> -32602
+        self._next_sub_id += 1
+        conn.subscription = sub
+        return {"subscription_id": self._next_sub_id}
+
+    # -- param helpers ----------------------------------------------------
+
+    def _require_str(
+        self, params: dict[str, Any] | list[Any] | None, key: str
+    ) -> str:
+        if not isinstance(params, dict) or key not in params:
+            raise RpcError(code=JSONRPC_INVALID_PARAMS, message=f"missing param: {key}")
+        value = params[key]
+        if not isinstance(value, str):
+            raise RpcError(code=JSONRPC_INVALID_PARAMS, message=f"param not a string: {key}")
+        return value
+
+    def _opt_list(
+        self, params: dict[str, Any] | list[Any] | None, key: str
+    ) -> list[Any]:
+        if not isinstance(params, dict):
+            return []
+        value = params.get(key, [])
+        if not isinstance(value, list):
+            raise RpcError(code=JSONRPC_INVALID_PARAMS, message=f"param not a list: {key}")
+        return value
+
+    # -- error mapping (D5, §6.5) ----------------------------------------
+
+    def _to_error_response(self, exc: Exception, req_id: int | str | None) -> Response:
+        """Map any handler failure to a JSON-RPC error Response."""
+        if isinstance(exc, RpcError):
+            error = exc.to_dict()
+        elif isinstance(exc, InvalidTransitionError):
+            error = RpcError(code=ChimeraError.PRECONDITION_FAILED).to_dict()
+        elif isinstance(exc, ValueError):
+            error = RpcError(
+                code=JSONRPC_INVALID_PARAMS, message=str(exc) or None
+            ).to_dict()
+        else:
+            error = RpcError(code=JSONRPC_INTERNAL_ERROR).to_dict()
+        return Response(jsonrpc="2.0", id=req_id, error=error)
+
+    # -- transport lifecycle (D1, D8, D10) --------------------------------
+
+    async def start(self) -> None:
+        """Bind both sockets (0600 in a 0700 dir) and launch the sweep task."""
+        socket_dir = self._config.socket_dir
+        socket_dir.mkdir(parents=True, exist_ok=True)
+        socket_dir.chmod(self._config.socket_dir_mode)
+        for path in (self._core_path, self._events_path):
+            path.unlink(missing_ok=True)  # clear a stale socket
+        self._core_server = await asyncio.start_unix_server(
+            self._serve_commands, path=str(self._core_path)
+        )
+        self._events_server = await asyncio.start_unix_server(
+            self._serve_events, path=str(self._events_path)
+        )
+        self._core_path.chmod(self._config.socket_mode)
+        self._events_path.chmod(self._config.socket_mode)
+        self._start_time = time.time()
+        self._sweep_task = asyncio.create_task(self._lifecycle.run())
+
+    async def stop(self) -> None:
+        """Stop accepting, close both sockets, unlink them, cancel the sweep."""
+        if self._sweep_task is not None:
+            self._sweep_task.cancel()
+            try:
+                await self._sweep_task
+            except asyncio.CancelledError:
+                pass
+            self._sweep_task = None
+        for server in (self._core_server, self._events_server):
+            if server is not None:
+                server.close()
+                await server.wait_closed()
+        self._core_server = None
+        self._events_server = None
+        for path in (self._core_path, self._events_path):
+            path.unlink(missing_ok=True)
+
+    async def __aenter__(self) -> "Server":
+        await self.start()
+        return self
+
+    async def __aexit__(self, *exc_info: object) -> None:
+        await self.stop()
+
+    # -- connection handlers ---------------------------------------------
+
+    async def _serve_commands(
+        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
+        conn = self.new_connection()
+        try:
+            while True:
+                line = await reader.readline()
+                if not line:
+                    break
+                response = await self._handle_line(line.decode(), conn)
+                if response is not None:
+                    writer.write(self._serialize_response(response).encode())
+                    await writer.drain()
+        except (ConnectionError, asyncio.IncompleteReadError):
+            pass
+        finally:
+            await self._close_writer(writer)
+
+    async def _serve_events(
+        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
+        conn = self.new_connection()
+        lock = asyncio.Lock()
+        push_task: asyncio.Task[None] | None = None
+        try:
+            while True:
+                line = await reader.readline()
+                if not line:
+                    break
+                response = await self._handle_line(line.decode(), conn)
+                if response is not None:
+                    async with lock:
+                        writer.write(self._serialize_response(response).encode())
+                        await writer.drain()
+                if conn.subscription is not None and push_task is None:
+                    push_task = asyncio.create_task(
+                        self._push_loop(conn.subscription, writer, lock)
+                    )
+        except (ConnectionError, asyncio.IncompleteReadError):
+            pass
+        finally:
+            if push_task is not None:
+                push_task.cancel()
+            if conn.subscription is not None:
+                conn.subscription.close()
+            await self._close_writer(writer)
+
+    async def _push_loop(
+        self, sub: Subscription, writer: asyncio.StreamWriter, lock: asyncio.Lock
+    ) -> None:
+        """Stream a subscription's events to a client as Notification frames."""
+        try:
+            while True:
+                event = await sub.get()
+                note = Notification(
+                    jsonrpc="2.0", method=event.topic, params=event.payload
+                )
+                async with lock:
+                    writer.write(serialize_frame(note).encode())
+                    await writer.drain()
+        except (SubscriptionClosedError, ConnectionError):
+            return
+
+    async def _handle_line(self, line: str, conn: Connection) -> Response | None:
+        """Parse one frame and dispatch. Returns None for inbound events."""
+        try:
+            message = parse_frame(line)
+        except json.JSONDecodeError:
+            return self._to_error_response(RpcError(code=JSONRPC_PARSE_ERROR), None)
+        except (ValueError, ValidationError):
+            return self._to_error_response(
+                RpcError(code=JSONRPC_INVALID_REQUEST), None
+            )
+        if isinstance(message, Request):
+            return await self.handle_command(message, conn)
+        if isinstance(message, Notification):
+            payload = message.params if isinstance(message.params, dict) else {}
+            self._broker.publish(Event(topic=message.method, payload=payload))
+        return None
+
+    # -- serialization ----------------------------------------------------
+
+    def _serialize_response(self, response: Response) -> str:
+        """Serialize a Response frame, keeping the id present even when null.
+
+        envelope.serialize drops None via exclude_none, but JSON-RPC requires
+        the id field (null for parse errors), so re-add it explicitly.
+        """
+        data = response.model_dump(exclude_none=True)
+        data.setdefault("id", response.id)
+        return json.dumps(data, separators=(",", ":")) + "\n"
+
+    @staticmethod
+    async def _close_writer(writer: asyncio.StreamWriter) -> None:
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except (ConnectionError, BrokenPipeError):
+            pass
