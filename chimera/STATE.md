@@ -1,6 +1,6 @@
 # CHIMERA — Project State Snapshot
 
-> Updated: 2026-06-02
+> Updated: 2026-06-03
 > Version: 0.1.0-alpha (genesis)
 
 ---
@@ -69,7 +69,7 @@ Code phase underway (ETAP 2). Last completed: **lifecycle module** (commit `57a9
 - `config` (§6.3, §7, §8) — CoreConfig: paths, defaults, env > toml > defaults hierarchy — DONE (`a6eed2a`)
 - `tokens` (§6.9, §8.6 I6) — TokenIssuer: HMAC-SHA256 capability tokens, in-RAM key — DONE (`f9fa508`)
 - `broker` (§6.6 + §6.8) — EventBroker: async pub/sub, wildcard topics, drop-oldest backpressure — DONE (`b63916c`)
-- `lifecycle` (§7.2 + §7.4 + §7.5) — Lifecycle: 9-state FSM, 15-edge allow-list, heartbeat sweep, restart policy — DONE (`57a99fd`)
+- `lifecycle` (§7.2 + §7.4 + §7.5) — Lifecycle: 9-state FSM, 16-edge allow-list, heartbeat sweep, restart policy — DONE (`57a99fd`)
 
 Remaining 2 are pure-pass scaffold: `server`, `registry`.
 
@@ -77,4 +77,4 @@ Remaining 2 are pure-pass scaffold: `server`, `registry`.
 
 **Tooling:** `pyproject.toml` + `uv.lock` + `.venv` (Python 3.13.9); ruff + mypy (strict) + pytest configured.
 
-**Tests:** 238 passing (31 errors + 41 envelope + 33 config + 35 tokens + 36 broker + 62 lifecycle).
+**Tests:** 239 passing (31 errors + 41 envelope + 33 config + 35 tokens + 36 broker + 63 lifecycle).
