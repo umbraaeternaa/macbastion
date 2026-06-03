@@ -61,9 +61,22 @@ the architectural document is whole and authoritative. No spec work remains.
 
 ## Code status
 
-Code phase underway (ETAP 2). Last completed: **registry module** (commit `e4a10ba`).
+Code phase (ETAP 2): **all 8 core modules implemented**. Last completed: **server module** (commit `33f2d38`).
 
-**`chimera/core/` — 7 of 8 modules implemented:**
+**Skeleton scope check (MANIFESTO §4 — honest accounting):**
+
+Core skeleton v0.2.0 (§7.12) lists: socket server, router, broker, registry,
+capability-token issuer, AND a privileged shim (§7.10 / §8.8 — a separate
+C/LaunchDaemon for elevated operations, not among the 8 Python `core/` modules).
+
+- Python `core/`: 8/8 modules done ✓
+- Privileged shim: NOT YET started ⚠️
+
+**ETAP 2 verdict:** Python core skeleton complete. The privileged shim is a
+prerequisite for native modules requiring elevated capabilities (VAULT, PURGE,
+etc.) and will be addressed before or alongside ETAP 3 (native modules).
+
+**`chimera/core/` — 8 of 8 modules implemented:**
 - `errors` (§6.5) — JSON-RPC + CHIMERA error codes, RpcError — DONE (`f284891`)
 - `envelope` (§6.4) — JSON-RPC 2.0 wire format, parse/serialize, NDJSON — DONE (`6ed8e77`)
 - `config` (§6.3, §7, §8) — CoreConfig: paths, defaults, env > toml > defaults hierarchy — DONE (`a6eed2a`)
@@ -71,11 +84,12 @@ Code phase underway (ETAP 2). Last completed: **registry module** (commit `e4a10
 - `broker` (§6.6 + §6.8) — EventBroker: async pub/sub, wildcard topics, drop-oldest backpressure — DONE (`b63916c`)
 - `lifecycle` (§7.2 + §7.4 + §7.5) — Lifecycle: 9-state FSM, 16-edge allow-list, heartbeat sweep, restart policy — DONE (`57a99fd`)
 - `registry` (§6.7 + §7.2) — Registry: capability store, composes+drives Lifecycle, prefix-split matching, register/deregister events — DONE (`e4a10ba`)
+- `server` (§6.3 + §6.2 + §6.9) — Server: two UNIX sockets, core.* dispatch, 3B token reissue, event push, graceful shutdown — DONE (`33f2d38`)
 
-Remaining 1 is pure-pass scaffold: `server`.
+No scaffold remains — all 8 core modules implemented.
 
 `chimera/modules/`, `chimera/proto/` — still empty (`.gitkeep` only).
 
 **Tooling:** `pyproject.toml` + `uv.lock` + `.venv` (Python 3.13.9); ruff + mypy (strict) + pytest configured.
 
-**Tests:** 299 passing (31 errors + 41 envelope + 33 config + 35 tokens + 36 broker + 63 lifecycle + 60 registry).
+**Tests:** 352 passing (31 errors + 41 envelope + 33 config + 35 tokens + 36 broker + 63 lifecycle + 60 registry + 53 server).
