@@ -65,11 +65,11 @@ Code phase: all 8 core modules implemented (ETAP 2 closed). ETAP 3 underway —
 Step 0 (CHAFF spec align), Step 1A (config request_timeout_s), Step 1B
 (Router 4A), Step 2 (CHAFF: 2A bootstrap, 2B RED, 2C GREEN, 2D daemon + integration),
 MIRROR (bootstrap, RED, engine GREEN, daemon wiring), ORACLE (RED, observe-first
-GREEN) done.
-Last completed: **ORACLE observe-first** (commit `07f9d00`) — the FIRST Python
-module (CHAFF/MIRROR are C). Dual-role daemon: registers + serves oracle.* via
-4A, subscribes chaff.* and learns events into an encrypted baseline. Mode B
-(oracle.classify / Ollama / detector) gated — next slice.
+GREEN, Mode B GREEN) done.
+Last completed: **ORACLE Mode B** (commit `d754fb1`) — oracle.classify runs a real
+local LLM (llama3.2:1b Q8_0 via Ollama, structured output) to score event anomaly
+with the baseline as context. Manual, advisory-only (returns score, no act/emit).
+ORACLE is now fully implemented (Mode A learning + Mode B classify).
 
 **Skeleton scope check (MANIFESTO §4 — honest accounting):**
 
@@ -124,23 +124,28 @@ No scaffold remains — all 8 core modules implemented.
   D11 self-loop guard (oracle.* ignored). BaselineStore = SQLite (events +
   baseline_meta) + Fernet (payload/ctx encrypted at rest), thread-safe
   (check_same_thread=False + RLock), blocking writes off-loaded via
-  asyncio.to_thread. advisory-only (D4): no acting methods; status reports
-  model="unavailable". Reuses core.envelope + core.errors only (D1=c). 12 unit +
-  4 integration. ruff + mypy --strict clean. Mode B (oracle.classify / Ollama /
-  detector) GATED — next slice (D6 hard-gate / D8=c). — observe-first GREEN
-  (`07f9d00`)
+  asyncio.to_thread. advisory-only (D4): no acting methods. Mode B: oracle.classify
+  + oracle.threshold.set via 4A run a real local LLM (llama3.2:1b Q8_0 via Ollama)
+  with structured output (format=schema); detector.py + llm.py + prompt.py; context
+  = recent_events + summary (baseline-aware); D6 gate (-31004 if Ollama down, Mode A
+  survives); malformed → INTERNAL_ERROR (no fake 0.5); threshold meta-backed (0.7);
+  status.model from startup probe; classifications_today in-memory. Reuses
+  core.envelope + core.errors only (D1=c). 29 unit + 8 integration (1 real-Ollama,
+  -m ollama). ruff + mypy --strict clean. ORACLE fully done (Mode A + Mode B). —
+  Mode B GREEN (`d754fb1`)
 - ECHO, PULSE, VAULT, TETHER, PURGE — pending (specs in docs/modules/)
 
 `chimera/proto/` — still empty (`.gitkeep`).
 
-**Tooling:** `pyproject.toml` + `uv.lock` + `.venv` (Python 3.13.9); ruff + mypy (strict) + pytest configured.
+**Tooling:** `pyproject.toml` + `uv.lock` + `.venv` (Python 3.13.9); ruff + mypy (strict) + pytest configured. Direct deps: cryptography, pydantic(-settings), **ollama==0.6.2** (§6-allowed; httpx + anyio/certifi transitive). pytest markers: `integration`, `ollama`.
 
 **Tests:**
-- Python (pytest, default): 395 passing (31 errors + 41 envelope + 36 config + 35 tokens + 36 broker + 63 lifecycle + 60 registry + 81 server + 12 oracle: 8 baseline + 4 observer)
-- Python (integration, marked — `pytest -m integration`): 12 passing (4 CHAFF + 4 MIRROR + 4 ORACLE daemon E2E vs live core)
+- Python (pytest, default): 412 passing (31 errors + 41 envelope + 36 config + 35 tokens + 36 broker + 63 lifecycle + 60 registry + 81 server + 12 oracle observe-first + 17 oracle Mode B [3 prompt + 4 llm + 6 detector + 4 baseline])
+- Python (integration, marked — `pytest -m integration`): 16 passing (4 CHAFF + 4 MIRROR + 8 ORACLE: 4 observe-first + 3 Mode B hermetic + 1 real-Ollama)
+- Python (ollama, marked — `pytest -m ollama`): 1 passing (subset of integration; real llama3.2:1b)
 - Native (CHAFF Unity): 46 passing (7 endpoints + 6 schedule + 6 crypto + 6 db + 10 jsonrpc + 6 commands + 5 generation)
 - Native (MIRROR Unity): 42 passing (6 perturb + 6 profile + 5 exclude + 5 stats + 4 rng + 10 jsonrpc + 6 commands)
-- Total: 495 passing
+- Total: 516 passing (ollama subset not double-counted)
 
 **Open tails (honest tracking, MANIFESTO §4):**
 - Fernet at-rest: CHAFF (C/OpenSSL) and ORACLE (Python `cryptography.Fernet`) share the format but interop is NOT cross-tested (B1 deferred; format-faithful).
@@ -151,7 +156,10 @@ No scaffold remains — all 8 core modules implemented.
 - MIRROR no event producer yet — daemon wiring done, but drain_events is only a forward-compat seam (queue empty); events ship when the tap lands.
 - MIRROR → PULSE aggregate-event gap (D8) — PULSE expects a periodic aggregate event MIRROR doesn't yet define; address at PULSE time.
 - ipc/jsonrpc duplicated chaff ↔ mirror (D1=C — extract to modules/common/ at the next *C* native module; ORACLE is Python, so it did not trigger it).
-- ORACLE Mode B GATED — oracle.classify / Ollama / detector.py are the next slice (D6 hard-gate / D8=c); Ollama is installed but not running, observe-first ships no classification.
+- ORACLE classify is baseline-aware (context = recent_events + summary), advisory-only — returns score, never acts/emits.
+- ORACLE classifications_today is in-memory and approximate (no day-rollover).
+- ORACLE mid-call Ollama death surfaces as a generic error, not -31004 (startup probe + per-ConnectionError catch cover the typical down cases).
+- ORACLE next slices (NOT in Mode B): auto-classify per event + oracle.anomaly.detected emission + similar_past_events (top-3) + oracle.model.swap.
 - ORACLE real event input is CHAFF only — MIRROR emits nothing yet, so chaff.* is the sole live source feeding the baseline.
 - ORACLE standalone `python -m oracle` needs modules/oracle on PYTHONPATH (proper editable-package install is a follow-up; __main__ cannot self-fix the import path).
 - ORACLE client.py (D1=c, Python) carries a TODO to extract a shared Python module-client at the 2nd Python module (mirror of the C D1=C duplication).
