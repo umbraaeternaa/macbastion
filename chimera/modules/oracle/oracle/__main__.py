@@ -1,17 +1,61 @@
 """Daemon entry — `python -m oracle` (§5.3).
 
-Wires CoreConfig (socket_dir from CHIMERA_SOCKET_DIR), the BaselineStore, and
-the dual-role OracleClient, then runs the asyncio loop until a signal arrives.
+Wires CoreConfig (socket_dir from CHIMERA_SOCKET_DIR via env_prefix), the
+encrypted BaselineStore, and the dual-role OracleClient, then runs the asyncio
+loop until SIGTERM/SIGINT, after which the run task is cancelled and the store
+is closed.
 
-STUB — RED slice. Not exercised by tests this slice (integration runs the
-client in-process). Standalone-run path resolution (`python -m oracle` needs
-modules/oracle on sys.path) is a GREEN concern.
+Standalone-run path (flagged tail from RED): `python -m oracle` requires the
+`oracle` package to be importable, i.e. modules/oracle on sys.path. Run it as:
+
+    PYTHONPATH=chimera/modules/oracle python -m oracle
+
+(or from within chimera/modules/oracle). A proper editable install of the
+package is a follow-up; __main__ cannot self-fix this — to import oracle.__main__
+the package must already be on the path.
+
+observe-first: no Ollama, no classify, no Mode B (later slice).
 """
+
+import asyncio
+import signal
+from pathlib import Path
+
+from core.config import CoreConfig
+
+from oracle.baseline import BaselineStore
+from oracle.client import OracleClient
+
+DEFAULT_BASELINE_EVERY = 100
+
+
+async def _run(client: OracleClient) -> None:
+    """Drive the client until SIGTERM/SIGINT cancels it."""
+    loop = asyncio.get_running_loop()
+    task = asyncio.ensure_future(client.run())
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, task.cancel)
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
 
 
 def main() -> None:
-    """Run the ORACLE daemon."""
-    raise NotImplementedError("oracle daemon entry — RED slice")
+    """Wire config + store + client (sync I/O), then run the asyncio loop."""
+    config = CoreConfig()
+    oracle_dir = Path("~/.config/chimera/oracle").expanduser()
+    store = BaselineStore(oracle_dir / "baseline.db", oracle_dir / "baseline.key")
+    client = OracleClient(
+        config.socket_dir,
+        store,
+        baseline_every=DEFAULT_BASELINE_EVERY,
+        heartbeat_interval=float(config.heartbeat_interval_s),
+    )
+    try:
+        asyncio.run(_run(client))
+    finally:
+        store.close()
 
 
 if __name__ == "__main__":

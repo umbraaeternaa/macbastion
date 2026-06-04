@@ -1,8 +1,9 @@
 """Unit: Observer — Mode A learning (§5.3).
 
-RED slice: Observer constructs (wiring) but record() raises NotImplementedError,
-so every behavioral assertion fails. Uses a duck-typed FakeStore to stay
-isolated from BaselineStore. No core, no Ollama.
+Verifies record() writes through to the store, the D11 self-loop guard
+(oracle.* ignored), and the baseline_every callback (fires at the threshold,
+not before). Uses a duck-typed FakeStore to stay isolated from BaselineStore.
+No core, no Ollama.
 """
 
 from oracle.observer import Observer

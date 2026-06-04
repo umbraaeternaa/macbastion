@@ -1,7 +1,7 @@
 """Unit: BaselineStore — SQLite + Fernet (§5.3, D3).
 
-RED slice: these fail against the stub (record/load/count/get_meta raise
-NotImplementedError; no schema, no key file). No core, no Ollama.
+Verifies schema, the 0600 key file, encrypt/decrypt roundtrip (incl. tampered
+token -> InvalidToken), event_count, and meta. No core, no Ollama.
 """
 
 import sqlite3
@@ -9,7 +9,6 @@ import stat
 
 import pytest
 from cryptography.fernet import InvalidToken
-
 from oracle.baseline import BaselineStore
 
 

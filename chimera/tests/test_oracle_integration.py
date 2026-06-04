@@ -6,8 +6,9 @@ opens real UNIX connections to a live core.Server: core.sock (module role) and
 events.sock (consumer role). No Ollama (observe-first; classify is a later
 slice). Marked `integration`, deselected by default.
 
-RED: fails against the stub OracleClient — run() raises NotImplementedError, so
-ORACLE never registers and every assertion below is unreachable.
+Verifies the dual-role client end to end: registers on core.sock, serves
+oracle.status via the 4A router, consumes chaff.request.sent over events.sock
+into the baseline, and emits oracle.baseline.updated after baseline_every events.
 """
 
 import asyncio
@@ -20,7 +21,6 @@ from core.lifecycle import Lifecycle
 from core.registry import Registry
 from core.server import Server
 from core.tokens import TokenIssuer
-
 from oracle.baseline import BaselineStore
 from oracle.client import OracleClient
 

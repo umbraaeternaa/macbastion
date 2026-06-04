@@ -56,6 +56,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["ANN", "S101", "S105", "S603", "S607"]  # tests: skip strict typing; subprocess + fake secrets are trusted
+"modules/oracle/tests/*" = ["ANN", "S101", "S105", "S603", "S607"]  # oracle unit tests, same policy as tests/*
 
 [tool.ruff.format]
 quote-style = "double"
