@@ -63,7 +63,8 @@ the architectural document is whole and authoritative. No spec work remains.
 
 Code phase: all 8 core modules implemented (ETAP 2 closed). ETAP 3 underway —
 Step 0 (CHAFF spec align), Step 1A (config request_timeout_s), Step 1B
-(Router 4A) done. Last completed: **Router 4A — module-method routing** (commit `06bf7cb`).
+(Router 4A), Step 2 (CHAFF: 2A bootstrap, 2B RED, 2C GREEN) done. Last
+completed: **CHAFF Phase B GREEN** (commit `250e478`).
 
 **Skeleton scope check (MANIFESTO §4 — honest accounting):**
 
@@ -90,8 +91,25 @@ etc.) and will be addressed before or alongside ETAP 3 (native modules).
 
 No scaffold remains — all 8 core modules implemented.
 
-`chimera/modules/`, `chimera/proto/` — still empty (`.gitkeep` only).
+**Native modules (`chimera/modules/`) — 1 of 8 started:**
+- `chaff` (§5.1) — first native module. C17 + ARM64 (Make + vendored Unity/cJSON);
+  Phase B logic: cJSON parse, weighted pick, Box-Muller jitter, openssl Fernet,
+  SQLite, JSON-RPC dispatch. 43/43 Unity, binary -Werror clean. Phase A (profiling)
+  deferred to privileged shim (pf/dtrace = root). Daemon wiring + pytest E2E pending.
+  — Phase B IMPLEMENTED (`250e478`)
+- ECHO, ORACLE, MIRROR, PULSE, VAULT, TETHER, PURGE — pending (specs in docs/modules/)
+
+`chimera/proto/` — still empty (`.gitkeep`).
 
 **Tooling:** `pyproject.toml` + `uv.lock` + `.venv` (Python 3.13.9); ruff + mypy (strict) + pytest configured.
 
-**Tests:** 383 passing (31 errors + 41 envelope + 36 config + 35 tokens + 36 broker + 63 lifecycle + 60 registry + 81 server).
+**Tests:**
+- Python (pytest): 383 passing (31 errors + 41 envelope + 36 config + 35 tokens + 36 broker + 63 lifecycle + 60 registry + 81 server)
+- Native (CHAFF Unity): 43 passing (7 endpoints + 6 schedule + 6 crypto + 6 db + 7 jsonrpc + 6 commands + 5 generation)
+- Total: 426 passing
+
+**Open tails (honest tracking, MANIFESTO §4):**
+- CHAFF daemon wiring — `http_get` (libcurl) + `ipc_*` (core socket) not yet connected in main.c; the generation loop does not run as a daemon.
+- CHAFF Step 2D — pytest E2E (chaff ↔ core 4A) + Python `cryptography.Fernet` interop verification.
+- Privileged shim (§7.10/§8.8) — not started; blocks CHAFF Phase A + ECHO/VAULT/TETHER/PURGE.
+- 7 of 8 native modules pending (ECHO, ORACLE, MIRROR, PULSE, VAULT, TETHER, PURGE).
