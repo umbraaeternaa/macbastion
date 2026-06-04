@@ -1,6 +1,6 @@
 # build artifacts
 *.o
-/chaff
+/mirror
 /run_tests
 
 # runtime state
