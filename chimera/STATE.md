@@ -28,6 +28,7 @@ Genesis commit (manifesto + architecture Part 1): `f229751`
 |--------|-----------|--------------------------------------------------|
 | UX     | `cb10247` | UX surface decision — CLI + swiftbar + event stream (`chimera/docs/UX.md`) |
 | OPSEC  | `a3ae3ad` | Operator security discipline — companion to §8 (`chimera/docs/OPSEC.md`) |
+| SHIM   | `—`       | Privileged shim impl decisions SH-1…SH-12 (`chimera/docs/SHIM.md`) |
 
 ---
 
