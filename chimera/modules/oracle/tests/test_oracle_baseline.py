@@ -142,3 +142,15 @@ def test_summary_empty_baseline(tmp_path):
     store = _store(tmp_path)
     summary = store.summary()
     assert summary["total"] == 0
+
+
+def test_days_observed_distinct_days(tmp_path):
+    store = _store(tmp_path)
+    for ts in ("2026-06-03T10:00:00+00:00", "2026-06-03T22:00:00+00:00",
+               "2026-06-04T01:00:00+00:00"):
+        store.record_event(ts=ts, source="chaff", event_type="request.sent", payload={})
+    assert store.days_observed() == 2  # 06-03 and 06-04
+
+
+def test_days_observed_empty(tmp_path):
+    assert _store(tmp_path).days_observed() == 0

@@ -222,3 +222,28 @@ async def test_classify_real_ollama(tmp_path):
     )
     assert 0.0 <= result["score"] <= 1.0
     assert isinstance(result["reasoning"], str) and result["reasoning"]
+
+
+@pytest.mark.ollama
+async def test_classify_real_ollama_explainable(tmp_path):
+    """Opt-in (-m ollama): explainability fields from a real llama3.2:1b.
+
+    Structural asserts only (LLM text is non-deterministic).
+    """
+    llm = LlmClient()
+    if not llm.available():
+        pytest.skip("Ollama not reachable on localhost:11434")
+    store = BaselineStore(tmp_path / "baseline.db", tmp_path / "baseline.key")
+    store.record_event(
+        ts="2026-06-04T14:00:00+00:00", source="chaff",
+        event_type="request.sent", payload={"url": "https://x"},
+    )
+    det = Detector(llm, store)
+    result = await det.classify(
+        {"source": "chaff", "type": "request.sent", "ts": "2026-06-04T03:14:00+00:00"}
+    )
+    assert 0.0 <= result["score"] <= 1.0
+    assert isinstance(result["reasoning"], str) and result["reasoning"]
+    assert isinstance(result["context_factors"], list)
+    assert all(isinstance(x, str) for x in result["context_factors"])
+    assert isinstance(result["similar_events"], list)

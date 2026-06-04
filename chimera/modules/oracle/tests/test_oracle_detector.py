@@ -81,3 +81,47 @@ def test_threshold_default_and_set(tmp_path):
     assert det.get_threshold() == 0.7
     det.set_threshold(0.5)
     assert det.get_threshold() == 0.5
+
+
+# -- Explainability (#1) ----------------------------------------------------
+
+
+async def test_classify_returns_context_factors(tmp_path):
+    llm = FakeLlm('{"score":0.5,"reasoning":"x","context_factors":["off-hours","new source"]}')
+    det = Detector(llm, _store(tmp_path))
+    result = await det.classify(EVENT)
+    assert result["context_factors"] == ["off-hours", "new source"]
+
+
+async def test_classify_context_factors_defaults_empty(tmp_path):
+    # LLM omits context_factors -> lenient parse returns [] (EP-1, asymmetry).
+    det = Detector(FakeLlm('{"score":0.5,"reasoning":"x"}'), _store(tmp_path))
+    result = await det.classify(EVENT)
+    assert result["context_factors"] == []
+
+
+async def test_classify_returns_similar_events(tmp_path):
+    store = _store(tmp_path)
+    store.record_event(
+        ts="2026-06-04T03:00:00+00:00", source="chaff", event_type="request.sent", payload={"n": 1}
+    )
+    store.record_event(
+        ts="2026-06-04T04:00:00+00:00", source="chaff", event_type="request.sent", payload={"n": 2}
+    )
+    store.record_event(
+        ts="2026-06-04T05:00:00+00:00", source="mirror", event_type="move", payload={}
+    )
+    det = Detector(FakeLlm(), store)
+    result = await det.classify(EVENT)  # EVENT = chaff / request.sent
+    sims = result["similar_events"]
+    assert len(sims) == 2  # both chaff/request.sent; mirror excluded
+    assert all(s["source"] == "chaff" and s["type"] == "request.sent" for s in sims)
+
+
+async def test_classify_prompt_includes_derived_factors(tmp_path):
+    llm = FakeLlm()
+    det = Detector(llm, _store(tmp_path))
+    await det.classify(EVENT)
+    prompt = llm.calls[0]["prompt"]
+    assert "days_observed" in prompt
+    assert "source_seen_before" in prompt

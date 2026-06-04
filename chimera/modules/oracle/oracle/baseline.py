@@ -179,6 +179,13 @@ class BaselineStore:
             "by_hour": {r["hh"]: r["n"] for r in by_hour},
         }
 
+    def days_observed(self) -> int:
+        """Distinct calendar days the baseline spans (Mode B explainability).
+
+        STUB — RED slice.
+        """
+        raise NotImplementedError("BaselineStore.days_observed — RED slice")
+
     def event_count(self) -> int:
         """Total number of recorded events (from baseline_meta)."""
         value = self.get_meta("event_count")
