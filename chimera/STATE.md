@@ -63,9 +63,10 @@ the architectural document is whole and authoritative. No spec work remains.
 
 Code phase: all 8 core modules implemented (ETAP 2 closed). ETAP 3 underway —
 Step 0 (CHAFF spec align), Step 1A (config request_timeout_s), Step 1B
-(Router 4A), Step 2 (CHAFF: 2A bootstrap, 2B RED, 2C GREEN, 2D daemon +
-integration) done. Last completed: **CHAFF Phase B daemon + integration**
-(commit `4f443f5`).
+(Router 4A), Step 2 (CHAFF: 2A bootstrap, 2B RED, 2C GREEN, 2D daemon + integration) done;
+MIRROR (second native module: bootstrap, RED, engine GREEN) underway. Last
+completed: **MIRROR engine GREEN** (commit `b9d4fdf`) — perturbation engine +
+mirror.* dispatch done; daemon wiring + CGEventTap install pending.
 
 **Skeleton scope check (MANIFESTO §4 — honest accounting):**
 
@@ -92,14 +93,24 @@ etc.) and will be addressed before or alongside ETAP 3 (native modules).
 
 No scaffold remains — all 8 core modules implemented.
 
-**Native modules (`chimera/modules/`) — 1 of 8 started:**
+**Native modules (`chimera/modules/`) — 2 of 8 started:**
 - `chaff` (§5.1) — first native module, working daemon. C17 + ARM64 (Make +
   vendored Unity/cJSON); connects to core, registers + heartbeats, serves chaff.*
   via the 4A router, emits events, generates decoy HTTPS traffic (two pthread
   threads, poll-based IPC, openssl Fernet, SQLite). 46 Unity + 4 integration
   (hermetic). binary -Werror clean. Phase A (profiling) deferred to the
   privileged shim (pf/dtrace = root). — Phase B daemon DONE (`4f443f5`)
-- ECHO, ORACLE, MIRROR, PULSE, VAULT, TETHER, PURGE — pending (specs in docs/modules/)
+- `mirror` (§5.4) — second native module, perturbation engine + dispatch done.
+  C17 (Make + vendored Unity/cJSON, frameworks only — no curl/sqlite/openssl).
+  Engine: Box-Muller gaussian mouse noise, uniform timing jitter (clamp ≥0), §3
+  presets (light/medium/heavy), secure-field downgrade to light, fixed-capacity
+  exclusion list, cumulative per-event-type stats (§7 — counts only). mirror.*
+  dispatch: status/profile.set/exclude.add|remove|list/stats/disable;
+  mirror.enable GATED → -31004 (code-signing + Accessibility TCC, §6/§9).
+  ipc/jsonrpc copied from chaff (D1=C). 42 Unity, binary -Werror clean. Daemon
+  wiring (IPC thread + registration + events) + CGEventTap install PENDING. —
+  engine GREEN (`b9d4fdf`)
+- ECHO, ORACLE, PULSE, VAULT, TETHER, PURGE — pending (specs in docs/modules/)
 
 `chimera/proto/` — still empty (`.gitkeep`).
 
@@ -109,10 +120,15 @@ No scaffold remains — all 8 core modules implemented.
 - Python (pytest, default): 383 passing (31 errors + 41 envelope + 36 config + 35 tokens + 36 broker + 63 lifecycle + 60 registry + 81 server)
 - Python (integration, marked — `pytest -m integration`): 4 passing (CHAFF daemon E2E vs live core, hermetic)
 - Native (CHAFF Unity): 46 passing (7 endpoints + 6 schedule + 6 crypto + 6 db + 10 jsonrpc + 6 commands + 5 generation)
-- Total: 433 passing
+- Native (MIRROR Unity): 42 passing (6 perturb + 6 profile + 5 exclude + 5 stats + 4 rng + 10 jsonrpc + 6 commands)
+- Total: 475 passing
 
 **Open tails (honest tracking, MANIFESTO §4):**
 - CHAFF Fernet ↔ Python `cryptography.Fernet` interop NOT cross-tested (B1 deferred; format-faithful).
 - No supervisor — CHAFF exits on core-disconnect (graceful, but no auto-restart until the launchd shim lands).
 - Privileged shim (§7.10/§8.8) — not started; blocks CHAFF Phase A + ECHO/VAULT/TETHER/PURGE.
-- 7 of 8 native modules pending (ECHO, ORACLE, MIRROR, PULSE, VAULT, TETHER, PURGE).
+- 6 of 8 native modules pending (ECHO, ORACLE, PULSE, VAULT, TETHER, PURGE) — CHAFF + MIRROR engine done.
+- MIRROR daemon wiring — IPC thread + core registration + event emission, not started (engine done, not yet a running daemon).
+- MIRROR CGEventTap install — GATED on code-signing + Accessibility TCC (§6/§9); mirror.enable returns -31004 until then.
+- MIRROR → PULSE aggregate-event gap (D8) — PULSE expects a periodic aggregate event MIRROR doesn't yet define; address at PULSE time.
+- ipc/jsonrpc duplicated chaff ↔ mirror (D1=C — extract to modules/common/ at the third native module).
