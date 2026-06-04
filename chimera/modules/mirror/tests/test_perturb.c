@@ -24,12 +24,17 @@ static void test_gaussian_has_spread(void) {
     TEST_ASSERT_TRUE(max_abs > 0.1);
 }
 
-/* Same seed -> identical sequence (deterministic). The stub is trivially
- * deterministic, so this passes either way — it locks the contract for GREEN. */
+/* Same seed -> identical sequence (deterministic). Each call is captured into a
+ * local first: TEST_ASSERT_EQUAL_DOUBLE evaluates its `expected` arg twice, and
+ * perturb_gaussian advances the PRNG state as a side effect — calling it inside
+ * the macro would desync the two streams. The local capture keeps the contract
+ * intact (same seed -> same value), it just avoids the macro's double-eval. */
 static void test_gaussian_deterministic(void) {
     uint64_t a = 42, b = 42;
     for (int i = 0; i < 8; i++) {
-        TEST_ASSERT_EQUAL_DOUBLE(perturb_gaussian(1.5, &a), perturb_gaussian(1.5, &b));
+        double za = perturb_gaussian(1.5, &a);
+        double zb = perturb_gaussian(1.5, &b);
+        TEST_ASSERT_EQUAL_DOUBLE(za, zb);
     }
 }
 
