@@ -29,6 +29,7 @@ Genesis commit (manifesto + architecture Part 1): `f229751`
 | UX     | `cb10247` | UX surface decision — CLI + swiftbar + event stream (`chimera/docs/UX.md`) |
 | OPSEC  | `a3ae3ad` | Operator security discipline — companion to §8 (`chimera/docs/OPSEC.md`) |
 | SHIM   | `—`       | Privileged shim impl decisions SH-1…SH-12 (`chimera/docs/SHIM.md`) |
+| ORACLE_EXPLAIN | `ea10e5e` | Explainability design EP-1…9 (`chimera/docs/ORACLE_EXPLAIN.md`) |
 
 ---
 
@@ -66,11 +67,12 @@ Code phase: all 8 core modules implemented (ETAP 2 closed). ETAP 3 underway —
 Step 0 (CHAFF spec align), Step 1A (config request_timeout_s), Step 1B
 (Router 4A), Step 2 (CHAFF: 2A bootstrap, 2B RED, 2C GREEN, 2D daemon + integration),
 MIRROR (bootstrap, RED, engine GREEN, daemon wiring), ORACLE (RED, observe-first
-GREEN, Mode B GREEN) done.
-Last completed: **ORACLE Mode B** (commit `d754fb1`) — oracle.classify runs a real
-local LLM (llama3.2:1b Q8_0 via Ollama, structured output) to score event anomaly
-with the baseline as context. Manual, advisory-only (returns score, no act/emit).
-ORACLE is now fully implemented (Mode A learning + Mode B classify).
+GREEN, Mode B GREEN, explainability GREEN) done.
+Last completed: **ORACLE explainability** (#1, commit `819c1bb`) — oracle.classify
+now returns rich, baseline-aware explanations: {score, reasoning, context_factors[],
+similar_events[]}. Three layers (reasoning within §5.3; similar_events spec-debt
+repaid naive; context_factors + derived facts + days_observed extension). Advisory-
+only; design recorded in docs/ORACLE_EXPLAIN.md.
 
 **Skeleton scope check (MANIFESTO §4 — honest accounting):**
 
@@ -130,10 +132,13 @@ No scaffold remains — all 8 core modules implemented.
   with structured output (format=schema); detector.py + llm.py + prompt.py; context
   = recent_events + summary (baseline-aware); D6 gate (-31004 if Ollama down, Mode A
   survives); malformed → INTERNAL_ERROR (no fake 0.5); threshold meta-backed (0.7);
-  status.model from startup probe; classifications_today in-memory. Reuses
-  core.envelope + core.errors only (D1=c). 29 unit + 8 integration (1 real-Ollama,
-  -m ollama). ruff + mypy --strict clean. ORACLE fully done (Mode A + Mode B). —
-  Mode B GREEN (`d754fb1`)
+  status.model from startup probe; classifications_today in-memory. Explainability
+  (#1): classify returns {score, reasoning, context_factors[] (LLM-emitted),
+  similar_events[] (naive top-3, §5.3 debt repaid)}; derived prompt facts
+  (source/type-seen, hour_freq, days_observed) + directive; advisory invariant test.
+  Reuses core.envelope + core.errors only (D1=c). 39 unit + 9 integration
+  (2 real-Ollama, -m ollama). ruff + mypy --strict clean. ORACLE fully done
+  (Mode A + Mode B + explainability). — explainability GREEN (`819c1bb`)
 - ECHO, PULSE, VAULT, TETHER, PURGE — pending (specs in docs/modules/)
 
 `chimera/proto/` — still empty (`.gitkeep`).
@@ -141,12 +146,12 @@ No scaffold remains — all 8 core modules implemented.
 **Tooling:** `pyproject.toml` + `uv.lock` + `.venv` (Python 3.13.9); ruff + mypy (strict) + pytest configured. Direct deps: cryptography, pydantic(-settings), **ollama==0.6.2** (§6-allowed; httpx + anyio/certifi transitive). pytest markers: `integration`, `ollama`.
 
 **Tests:**
-- Python (pytest, default): 412 passing (31 errors + 41 envelope + 36 config + 35 tokens + 36 broker + 63 lifecycle + 60 registry + 81 server + 12 oracle observe-first + 17 oracle Mode B [3 prompt + 4 llm + 6 detector + 4 baseline])
-- Python (integration, marked — `pytest -m integration`): 16 passing (4 CHAFF + 4 MIRROR + 8 ORACLE: 4 observe-first + 3 Mode B hermetic + 1 real-Ollama)
-- Python (ollama, marked — `pytest -m ollama`): 1 passing (subset of integration; real llama3.2:1b)
+- Python (pytest, default): 422 passing (31 errors + 41 envelope + 36 config + 35 tokens + 36 broker + 63 lifecycle + 60 registry + 81 server + 12 oracle observe-first + 17 oracle Mode B + 10 oracle explainability [3 prompt + 4 detector + 2 baseline + 1 advisory])
+- Python (integration, marked — `pytest -m integration`): 17 passing (4 CHAFF + 4 MIRROR + 9 ORACLE: 4 observe-first + 3 Mode B hermetic + 2 real-Ollama)
+- Python (ollama, marked — `pytest -m ollama`): 2 passing (subset of integration; real llama3.2:1b)
 - Native (CHAFF Unity): 46 passing (7 endpoints + 6 schedule + 6 crypto + 6 db + 10 jsonrpc + 6 commands + 5 generation)
 - Native (MIRROR Unity): 42 passing (6 perturb + 6 profile + 5 exclude + 5 stats + 4 rng + 10 jsonrpc + 6 commands)
-- Total: 516 passing (ollama subset not double-counted)
+- Total: 527 passing (ollama subset not double-counted)
 
 **Open tails (honest tracking, MANIFESTO §4):**
 - Fernet at-rest: CHAFF (C/OpenSSL) and ORACLE (Python `cryptography.Fernet`) share the format but interop is NOT cross-tested (B1 deferred; format-faithful).
@@ -159,10 +164,12 @@ No scaffold remains — all 8 core modules implemented.
 - MIRROR no event producer yet — daemon wiring done, but drain_events is only a forward-compat seam (queue empty); events ship when the tap lands.
 - MIRROR → PULSE aggregate-event gap (D8) — PULSE expects a periodic aggregate event MIRROR doesn't yet define; address at PULSE time.
 - ipc/jsonrpc duplicated chaff ↔ mirror (D1=C — extract to modules/common/ at the next *C* native module; ORACLE is Python, so it did not trigger it).
-- ORACLE classify is baseline-aware (context = recent_events + summary), advisory-only — returns score, never acts/emits.
+- ORACLE classify is baseline-aware and explainable: returns {score, reasoning, context_factors[], similar_events[]}; advisory-only — returns data, never acts/emits.
 - ORACLE classifications_today is in-memory and approximate (no day-rollover).
 - ORACLE mid-call Ollama death surfaces as a generic error, not -31004 (startup probe + per-ConnectionError catch cover the typical down cases).
-- ORACLE next slices (NOT in Mode B): auto-classify per event + oracle.anomaly.detected emission + similar_past_events (top-3) + oracle.model.swap.
+- ORACLE similar_events is naive recency (top-3 same source+type) — embeddings-based similarity is v2 (TODO).
+- ORACLE explainability deferred: oracle.explain (separate method) + confidence field (EP-2 enriched classify instead).
+- ORACLE next slices: auto-classify per event + oracle.anomaly.detected emission + oracle.model.swap (similar_events debt already repaid naive).
 - ORACLE real event input is CHAFF only — MIRROR emits nothing yet, so chaff.* is the sole live source feeding the baseline.
 - ORACLE standalone `python -m oracle` needs modules/oracle on PYTHONPATH (proper editable-package install is a follow-up; __main__ cannot self-fix the import path).
 - ORACLE client.py (D1=c, Python) carries a TODO to extract a shared Python module-client at the 2nd Python module (mirror of the C D1=C duplication).
