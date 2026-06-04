@@ -13,12 +13,23 @@ STUB — RED slice. __init__ wires deps; classify/get_threshold/set_threshold
 raise NotImplementedError.
 """
 
+import asyncio
+import json
 from typing import Any
 
+from core.errors import (
+    JSONRPC_INTERNAL_ERROR,
+    JSONRPC_INVALID_PARAMS,
+    ChimeraError,
+    RpcError,
+)
+
 from oracle.baseline import BaselineStore
-from oracle.llm import LlmClient
+from oracle.llm import LlmClient, LlmUnavailableError
+from oracle.prompt import RESPONSE_SCHEMA, build_prompt
 
 DEFAULT_THRESHOLD = 0.7
+RECENT_LIMIT = 50
 
 
 class Detector:
@@ -35,14 +46,52 @@ class Detector:
         self._store = store
         self._threshold = threshold
 
+    @property
+    def llm(self) -> LlmClient:
+        """The underlying LLM client (used by the client's startup probe)."""
+        return self._llm
+
     async def classify(self, event: dict[str, Any]) -> dict[str, Any]:
-        """Classify one event -> {score, reasoning}. -31004 if Ollama down."""
-        raise NotImplementedError("Detector.classify — RED slice")
+        """Classify one event -> {score, reasoning} (advisory; never acts).
+
+        Builds baseline context, runs the LLM (off-loop via to_thread), parses
+        the structured JSON. Ollama down -> -31004 (D6). Malformed JSON ->
+        INTERNAL_ERROR (MD-B-4a: no fake 0.5).
+        """
+        summary = await asyncio.to_thread(self._store.summary)
+        recent = await asyncio.to_thread(self._store.recent_events, RECENT_LIMIT)
+        prompt = build_prompt(event, {**summary, "recent_events": recent})
+        try:
+            raw = await asyncio.to_thread(
+                self._llm.generate, prompt, RESPONSE_SCHEMA
+            )
+        except LlmUnavailableError as e:
+            raise RpcError(code=ChimeraError.PRECONDITION_FAILED) from e
+        return self._parse(raw)
+
+    @staticmethod
+    def _parse(raw: str) -> dict[str, Any]:
+        """Parse the LLM's structured JSON into {score (clamped), reasoning}."""
+        try:
+            data = json.loads(raw)
+            score = float(data["score"])
+            reasoning = str(data["reasoning"])
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
+            raise RpcError(
+                code=JSONRPC_INTERNAL_ERROR, message="LLM returned malformed output"
+            ) from e
+        return {"score": max(0.0, min(1.0, score)), "reasoning": reasoning}
 
     def get_threshold(self) -> float:
-        """Current anomaly threshold (baseline_meta, default 0.7)."""
-        raise NotImplementedError("Detector.get_threshold — RED slice")
+        """Current anomaly threshold (baseline_meta, falls back to the seed)."""
+        value = self._store.get_meta("threshold")
+        return float(value) if value is not None else self._threshold
 
     def set_threshold(self, value: float) -> dict[str, Any]:
-        """Persist a new threshold; return the updated config."""
-        raise NotImplementedError("Detector.set_threshold — RED slice")
+        """Persist a new threshold (0..1); return the updated config."""
+        if not 0.0 <= value <= 1.0:
+            raise RpcError(
+                code=JSONRPC_INVALID_PARAMS, message="threshold must be in 0..1"
+            )
+        self._store.set_meta("threshold", str(value))
+        return {"threshold": value}

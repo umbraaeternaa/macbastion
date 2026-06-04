@@ -134,18 +134,50 @@ class BaselineStore:
         }
 
     def recent_events(self, limit: int = 50) -> list[dict[str, Any]]:
-        """Most-recent events, newest first, decrypted (Mode B context).
-
-        STUB — RED slice.
-        """
-        raise NotImplementedError("BaselineStore.recent_events — RED slice")
+        """Most-recent events, newest first, decrypted (Mode B context)."""
+        with self._lock:
+            rows = self._con.execute(
+                "SELECT ts, source, type, payload_json, ctx_json FROM events "
+                "ORDER BY id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [
+            {
+                "ts": row["ts"],
+                "source": row["source"],
+                "type": row["type"],
+                "payload": json.loads(self._fernet.decrypt(row["payload_json"])),
+                "context": (
+                    json.loads(self._fernet.decrypt(row["ctx_json"]))
+                    if row["ctx_json"] is not None
+                    else None
+                ),
+            }
+            for row in rows
+        ]
 
     def summary(self) -> dict[str, Any]:
         """Baseline summary: counts by source/type/hour (Mode B prompt context).
 
-        Reads plaintext columns only (no decrypt). STUB — RED slice.
+        Reads plaintext columns only (no decrypt). hour = HH from an ISO-8601 ts.
         """
-        raise NotImplementedError("BaselineStore.summary — RED slice")
+        with self._lock:
+            total = self._con.execute("SELECT COUNT(*) AS n FROM events").fetchone()["n"]
+            by_source = self._con.execute(
+                "SELECT source, COUNT(*) AS n FROM events GROUP BY source"
+            ).fetchall()
+            by_type = self._con.execute(
+                "SELECT type, COUNT(*) AS n FROM events GROUP BY type"
+            ).fetchall()
+            by_hour = self._con.execute(
+                "SELECT substr(ts, 12, 2) AS hh, COUNT(*) AS n FROM events GROUP BY hh"
+            ).fetchall()
+        return {
+            "total": int(total),
+            "by_source": {r["source"]: r["n"] for r in by_source},
+            "by_type": {r["type"]: r["n"] for r in by_type},
+            "by_hour": {r["hh"]: r["n"] for r in by_hour},
+        }
 
     def event_count(self) -> int:
         """Total number of recorded events (from baseline_meta)."""

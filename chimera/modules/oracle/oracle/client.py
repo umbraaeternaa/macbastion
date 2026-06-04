@@ -39,6 +39,7 @@ from core.errors import (
     JSONRPC_INTERNAL_ERROR,
     JSONRPC_INVALID_PARAMS,
     JSONRPC_METHOD_NOT_FOUND,
+    ChimeraError,
     RpcError,
 )
 
@@ -90,6 +91,8 @@ class OracleClient:
         self._cmd_lock = asyncio.Lock()
         self._registered = asyncio.Event()
         self._req_id = 0
+        self._model = "unavailable"  # set by the startup probe (D6 / MD-B-6c)
+        self._classifications_today = 0  # in-memory, approximate (no day-rollover)
 
     @property
     def _core_sock(self) -> Path:
@@ -103,6 +106,7 @@ class OracleClient:
 
     async def run(self) -> None:
         """Open both connections and serve + consume until cancelled/dropped."""
+        await self._probe_model()
         try:
             async with asyncio.TaskGroup() as tg:
                 tg.create_task(self._serve_command_conn())
@@ -116,6 +120,19 @@ class OracleClient:
     def _next_id(self) -> int:
         self._req_id += 1
         return self._req_id
+
+    async def _probe_model(self) -> None:
+        """D6 startup probe: cache the model name (or 'unavailable').
+
+        Best-effort — a detector without an `llm` (e.g. a test fake) stays
+        'unavailable'. Mode A never depends on this.
+        """
+        llm = getattr(self._detector, "llm", None)
+        if llm is None:
+            self._model = "unavailable"
+            return
+        available = await asyncio.to_thread(llm.available)
+        self._model = str(llm.model) if available else "unavailable"
 
     # -- connection #1: core.sock (module role) ---------------------------
 
@@ -189,8 +206,8 @@ class OracleClient:
             "observing": True,
             "event_count": count,
             "baseline_events": count,
-            # observe-first: Mode B (Ollama) is a later slice (D6/D8).
-            "model": "unavailable",
+            "model": self._model,  # from the startup probe (D6 / MD-B-6c)
+            "classifications_today": self._classifications_today,  # approximate
         }
 
     async def _handle_observe(
@@ -212,14 +229,30 @@ class OracleClient:
     async def _handle_classify(
         self, params: dict[str, Any] | list[Any] | None
     ) -> dict[str, Any]:
-        """Mode B (§5 oracle.classify): one-shot LLM classify. STUB — RED slice."""
-        raise NotImplementedError("oracle.classify — RED slice")
+        """Mode B (§5 oracle.classify): one-shot LLM classify (advisory).
+
+        Gated (D6): no detector / Ollama down -> -31004. Returns {score,
+        reasoning} only — no anomaly emission this slice (MD-B-7b).
+        """
+        if self._detector is None:
+            raise RpcError(code=ChimeraError.PRECONDITION_FAILED)
+        if not isinstance(params, dict) or not isinstance(params.get("event"), dict):
+            raise RpcError(code=JSONRPC_INVALID_PARAMS, message="event object required")
+        result = await self._detector.classify(params["event"])
+        self._classifications_today += 1
+        return result
 
     async def _handle_threshold_set(
         self, params: dict[str, Any] | list[Any] | None
     ) -> dict[str, Any]:
-        """Mode B (§5 oracle.threshold.set): update threshold. STUB — RED slice."""
-        raise NotImplementedError("oracle.threshold.set — RED slice")
+        """Mode B (§5 oracle.threshold.set): persist the anomaly threshold."""
+        if self._detector is None:
+            raise RpcError(code=ChimeraError.PRECONDITION_FAILED)
+        if not isinstance(params, dict) or not isinstance(
+            params.get("threshold"), int | float
+        ):
+            raise RpcError(code=JSONRPC_INVALID_PARAMS, message="threshold number required")
+        return self._detector.set_threshold(float(params["threshold"]))
 
     async def _heartbeat_loop(self) -> None:
         await self._registered.wait()

@@ -33,8 +33,15 @@ class LlmClient:
         return self._model
 
     def available(self) -> bool:
-        """Probe the Ollama server; True iff reachable (D6 startup probe)."""
-        raise NotImplementedError("LlmClient.available — RED slice")
+        """Probe the Ollama server; True iff reachable (D6 startup probe).
+
+        Any failure reaching the server counts as unavailable.
+        """
+        try:
+            ollama.list()
+        except Exception:  # noqa: BLE001 — any failure means not reachable
+            return False
+        return True
 
     def generate(
         self,
@@ -46,6 +53,16 @@ class LlmClient:
     ) -> str:
         """One structured-output generation; return the raw JSON response string.
 
+        Uses Ollama structured output (`format=schema`, MD-B-4a) at temperature 0.
         Raises LlmUnavailableError if the server is unreachable (D6 per-call).
         """
-        raise NotImplementedError("LlmClient.generate — RED slice")
+        try:
+            result = ollama.generate(
+                model=self._model,
+                prompt=prompt,
+                format=schema,
+                options={"temperature": temperature, "num_predict": num_predict},
+            )
+        except (ConnectionError, ollama.ResponseError) as e:
+            raise LlmUnavailableError(str(e)) from e
+        return str(result["response"])
