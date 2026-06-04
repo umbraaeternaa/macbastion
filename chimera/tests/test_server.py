@@ -37,7 +37,6 @@ import os
 import stat
 from typing import Any
 
-import pytest
 from core.broker import EventBroker
 from core.config import CoreConfig
 from core.envelope import Request, Response, parse, serialize_frame
@@ -106,13 +105,13 @@ async def _register(
     )
 
 
-async def _roundtrip(sock_path: Any, line: str, timeout: float = 2.0) -> Response:
+async def _roundtrip(sock_path: Any, line: str, timeout_s: float = 2.0) -> Response:
     """Open a UNIX connection, send one NDJSON frame, read one response frame."""
     reader, writer = await asyncio.open_unix_connection(str(sock_path))
     try:
         writer.write(line.encode())
         await writer.drain()
-        raw = await asyncio.wait_for(reader.readline(), timeout=timeout)
+        raw = await asyncio.wait_for(reader.readline(), timeout=timeout_s)
         return parse(raw.decode())
     finally:
         writer.close()

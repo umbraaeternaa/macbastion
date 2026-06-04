@@ -114,6 +114,5 @@ No scaffold remains — all 8 core modules implemented.
 **Open tails (honest tracking, MANIFESTO §4):**
 - CHAFF Fernet ↔ Python `cryptography.Fernet` interop NOT cross-tested (B1 deferred; format-faithful).
 - No supervisor — CHAFF exits on core-disconnect (graceful, but no auto-restart until the launchd shim lands).
-- ruff-clean test files — test_server.py has 3 latent ruff findings (test files were never ruff-checked).
 - Privileged shim (§7.10/§8.8) — not started; blocks CHAFF Phase A + ECHO/VAULT/TETHER/PURGE.
 - 7 of 8 native modules pending (ECHO, ORACLE, MIRROR, PULSE, VAULT, TETHER, PURGE).

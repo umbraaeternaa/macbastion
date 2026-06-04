@@ -55,7 +55,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["ANN", "S101", "S603", "S607"]  # tests skip strict typing; subprocess in tests is trusted
+"tests/*" = ["ANN", "S101", "S105", "S603", "S607"]  # tests: skip strict typing; subprocess + fake secrets are trusted
 
 [tool.ruff.format]
 quote-style = "double"
