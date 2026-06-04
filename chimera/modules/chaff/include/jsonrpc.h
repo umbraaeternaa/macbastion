@@ -13,6 +13,18 @@ typedef struct {
     int is_notification; /* 1 when the message carries no id */
 } jsonrpc_request_t;
 
+/* Frame classification for the daemon's inbound demux: a routed command
+ * (REQUEST), an ack to one of our own core.* calls (RESPONSE), an event/
+ * fire-and-forget (NOTIFICATION), or unparseable (INVALID). */
+typedef enum {
+    JSONRPC_INVALID = 0,
+    JSONRPC_REQUEST,
+    JSONRPC_RESPONSE,
+    JSONRPC_NOTIFICATION,
+} jsonrpc_kind_t;
+
+jsonrpc_kind_t jsonrpc_classify(const char *line);
+
 /* Parse one NDJSON line into a request. On CHAFF_OK, *out is owned (free with
  * jsonrpc_request_free). CHAFF_ERR_PARSE on malformed input or a missing method. */
 chaff_result_t jsonrpc_parse_request(const char *line, jsonrpc_request_t **out);

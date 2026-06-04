@@ -16,6 +16,11 @@ static char *dupstr(const char *s) {
     return p;
 }
 
+jsonrpc_kind_t jsonrpc_classify(const char *line) {
+    (void)line;
+    return JSONRPC_INVALID; /* TODO(green): method+id=req, method-no-id=notif, payload-no-method=resp */
+}
+
 chaff_result_t jsonrpc_parse_request(const char *line, jsonrpc_request_t **out) {
     if (!line || !out) {
         return CHAFF_ERR;

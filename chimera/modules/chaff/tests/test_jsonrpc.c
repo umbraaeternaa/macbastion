@@ -75,6 +75,21 @@ static void test_serialize_notification_shape(void) {
     free(out);
 }
 
+static void test_classify_request(void) {
+    TEST_ASSERT_EQUAL_INT(JSONRPC_REQUEST,
+                          jsonrpc_classify("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"x\"}"));
+}
+
+static void test_classify_response(void) {
+    TEST_ASSERT_EQUAL_INT(JSONRPC_RESPONSE,
+                          jsonrpc_classify("{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}"));
+}
+
+static void test_classify_notification(void) {
+    TEST_ASSERT_EQUAL_INT(JSONRPC_NOTIFICATION,
+                          jsonrpc_classify("{\"jsonrpc\":\"2.0\",\"method\":\"evt\"}"));
+}
+
 void run_jsonrpc_tests(void) {
     RUN_TEST(test_parse_request_ok);
     RUN_TEST(test_parse_request_has_id);
@@ -83,4 +98,7 @@ void run_jsonrpc_tests(void) {
     RUN_TEST(test_parse_missing_method_errors);
     RUN_TEST(test_serialize_response_round_trips);
     RUN_TEST(test_serialize_notification_shape);
+    RUN_TEST(test_classify_request);
+    RUN_TEST(test_classify_response);
+    RUN_TEST(test_classify_notification);
 }

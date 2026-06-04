@@ -55,7 +55,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["ANN", "S101"]  # tests can skip strict typing
+"tests/*" = ["ANN", "S101", "S603", "S607"]  # tests skip strict typing; subprocess in tests is trusted
 
 [tool.ruff.format]
 quote-style = "double"
@@ -87,8 +87,13 @@ python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
 asyncio_mode = "auto"
+markers = [
+    "integration: spawns the chaff binary against a live core (slow; deselected by default — run with `pytest -m integration`)",
+]
 addopts = [
     "--strict-markers",
     "--strict-config",
     "-v",
+    "-m",
+    "not integration",
 ]
