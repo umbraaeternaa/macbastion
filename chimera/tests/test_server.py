@@ -1143,16 +1143,19 @@ class TestRealSocketRouting:
             await server.stop()
 
     async def test_e2e_timeout(self, tmp_path: Any) -> None:
+        # Use a method WITHOUT a METHOD_TIMEOUTS override so the config default
+        # (0.1s here) applies — 'vault.unlock' has a 10s override that would
+        # outlast the client's read window.
         server = _make_server(tmp_path, request_timeout_s=0.1)
         await server.start()
         mod = asyncio.create_task(
-            _run_fake_module(tmp_path / "core.sock", "vault", ["vault.unlock"], respond=False)
+            _run_fake_module(tmp_path / "core.sock", "vault", ["vault.do"], respond=False)
         )
         try:
             await asyncio.sleep(0.05)
             resp = await _roundtrip(
                 tmp_path / "core.sock",
-                '{"jsonrpc":"2.0","id":7,"method":"vault.unlock"}\n',
+                '{"jsonrpc":"2.0","id":7,"method":"vault.do"}\n',
             )
             assert resp.error is not None and resp.error["code"] == -31001
         finally:

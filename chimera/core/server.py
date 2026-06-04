@@ -87,6 +87,11 @@ class Server:
             "core.subscribe",
         }
     )
+    # Per-method routing deadlines (§6.8); anything else uses the config default.
+    METHOD_TIMEOUTS: ClassVar[dict[str, float]] = {
+        "vault.unlock": 10.0,
+        "oracle.classify": 30.0,
+    }
 
     def __init__(
         self,
@@ -108,6 +113,10 @@ class Server:
         self._sweep_task: asyncio.Task[None] | None = None
         self._start_time: float | None = None
         self._next_sub_id: int = 0
+        # Router 4A state.
+        self._module_writers: dict[str, asyncio.StreamWriter] = {}
+        self._pending: dict[int, tuple[asyncio.Future[Response], str]] = {}
+        self._next_internal_id: int = 0
 
     # -- connections ------------------------------------------------------
 
@@ -130,8 +139,8 @@ class Server:
                 return Response(jsonrpc="2.0", id=request.id, result=result)
             if method.startswith("core."):
                 raise RpcError(code=JSONRPC_METHOD_NOT_FOUND)
-            # D4: module methods are not routable yet — module offline.
-            raise RpcError(code=ChimeraError.MODULE_OFFLINE)
+            # 4A: forward the module method to the owning module's connection.
+            return await self._route(request, conn)
         except Exception as exc:  # noqa: BLE001 — centralized wire mapping (D5)
             return self._to_error_response(exc, request.id)
 
@@ -214,6 +223,77 @@ class Server:
         self._next_sub_id += 1
         conn.subscription = sub
         return {"subscription_id": self._next_sub_id}
+
+    # -- router (4A): forward module.method to the owning module ----------
+
+    def _timeout_for(self, method: str) -> float:
+        """Routing deadline for a method: per-method override or config default."""
+        return self.METHOD_TIMEOUTS.get(method, self._config.request_timeout_s)
+
+    def _attach_module_writer(
+        self, name: str, writer: asyncio.StreamWriter
+    ) -> None:
+        """Bind a module's live connection. Re-attach replaces the previous one."""
+        if name in self._module_writers:
+            self._detach_module_writer(name)
+        self._module_writers[name] = writer
+
+    def _detach_module_writer(self, name: str) -> None:
+        """Drop a module's connection and fail its in-flight requests (-31000)."""
+        self._module_writers.pop(name, None)
+        offline = RpcError(code=ChimeraError.MODULE_OFFLINE).to_dict()
+        for internal_id, (future, owner) in list(self._pending.items()):
+            if owner == name and not future.done():
+                future.set_result(
+                    Response(jsonrpc="2.0", id=internal_id, error=offline)
+                )
+
+    def _resolve_pending(self, response: Response) -> None:
+        """Deliver a module's reply to the waiting caller (ignore unknown ids)."""
+        entry = self._pending.get(response.id) if isinstance(response.id, int) else None
+        if entry is None:
+            return
+        future, _owner = entry
+        if not future.done():
+            future.set_result(response)
+
+    async def _route(self, request: Request, conn: Connection) -> Response:
+        """Forward a module method to its module, await the reply, relay it back."""
+        # D7: only surfaces may invoke module methods; a module may not.
+        if conn.is_module:
+            raise RpcError(code=ChimeraError.NOT_AUTHORIZED)
+        owner = request.method.split(".", 1)[0]
+        if not self._registry.is_registered(owner):
+            raise RpcError(code=ChimeraError.MODULE_OFFLINE)
+        if not self._registry.has_method(request.method):
+            raise RpcError(code=ChimeraError.CAPABILITY_MISSING)
+        writer = self._module_writers.get(owner)
+        if writer is None:  # registered but no live connection
+            raise RpcError(code=ChimeraError.MODULE_OFFLINE)
+
+        self._next_internal_id += 1
+        internal_id = self._next_internal_id
+        future: asyncio.Future[Response] = asyncio.get_running_loop().create_future()
+        self._pending[internal_id] = (future, owner)
+        forwarded = Request(
+            jsonrpc="2.0",
+            id=internal_id,
+            method=request.method,
+            params=request.params,
+        )
+        try:
+            writer.write(serialize_frame(forwarded).encode())
+            await writer.drain()
+            reply = await asyncio.wait_for(future, self._timeout_for(request.method))
+        except TimeoutError as e:
+            raise RpcError(code=ChimeraError.MODULE_TIMEOUT) from e
+        finally:
+            self._pending.pop(internal_id, None)
+
+        # Rewrite the module's reply id back to the original caller's id.
+        if reply.error is not None:
+            return Response(jsonrpc="2.0", id=request.id, error=reply.error)
+        return Response(jsonrpc="2.0", id=request.id, result=reply.result)
 
     # -- param helpers ----------------------------------------------------
 
@@ -304,6 +384,7 @@ class Server:
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> None:
         conn = self.new_connection()
+        attached: str | None = None
         try:
             while True:
                 line = await reader.readline()
@@ -313,9 +394,16 @@ class Server:
                 if response is not None:
                     writer.write(self._serialize_response(response).encode())
                     await writer.drain()
+                # Once a module registers (is_module flips), bind its connection
+                # so core can forward routed requests to it (4A).
+                if conn.is_module and attached is None:
+                    attached = conn.subject
+                    self._attach_module_writer(attached, writer)
         except (ConnectionError, asyncio.IncompleteReadError):
             pass
         finally:
+            if attached is not None:
+                self._detach_module_writer(attached)
             await self._close_writer(writer)
 
     async def _serve_events(
@@ -375,6 +463,10 @@ class Server:
             )
         if isinstance(message, Request):
             return await self.handle_command(message, conn)
+        if isinstance(message, Response):
+            # A module replying to a routed request (4A correlation).
+            self._resolve_pending(message)
+            return None
         if isinstance(message, Notification):
             payload = message.params if isinstance(message.params, dict) else {}
             self._broker.publish(Event(topic=message.method, payload=payload))
