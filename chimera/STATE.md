@@ -1,6 +1,6 @@
 # CHIMERA — Project State Snapshot
 
-> Updated: 2026-06-03
+> Updated: 2026-06-04
 > Version: 0.1.0-alpha (genesis)
 
 ---
@@ -61,7 +61,9 @@ the architectural document is whole and authoritative. No spec work remains.
 
 ## Code status
 
-Code phase (ETAP 2): **all 8 core modules implemented**. Last completed: **server module** (commit `33f2d38`).
+Code phase: all 8 core modules implemented (ETAP 2 closed). ETAP 3 underway —
+Step 0 (CHAFF spec align), Step 1A (config request_timeout_s), Step 1B
+(Router 4A) done. Last completed: **Router 4A — module-method routing** (commit `06bf7cb`).
 
 **Skeleton scope check (MANIFESTO §4 — honest accounting):**
 
@@ -84,7 +86,7 @@ etc.) and will be addressed before or alongside ETAP 3 (native modules).
 - `broker` (§6.6 + §6.8) — EventBroker: async pub/sub, wildcard topics, drop-oldest backpressure — DONE (`b63916c`)
 - `lifecycle` (§7.2 + §7.4 + §7.5) — Lifecycle: 9-state FSM, 16-edge allow-list, heartbeat sweep, restart policy — DONE (`57a99fd`)
 - `registry` (§6.7 + §7.2) — Registry: capability store, composes+drives Lifecycle, prefix-split matching, register/deregister events — DONE (`e4a10ba`)
-- `server` (§6.3 + §6.2 + §6.9) — Server: two UNIX sockets, core.* dispatch, 3B token reissue, event push, graceful shutdown — DONE (`33f2d38`)
+- `server` (§6.3 + §6.2 + §6.9) — Server: two UNIX sockets, core.* dispatch + 4A module routing (internal-id correlation, per-method timeouts, fail-closed), 3B token reissue, event push, graceful shutdown — DONE (`33f2d38`; 4A routing `06bf7cb`)
 
 No scaffold remains — all 8 core modules implemented.
 
@@ -92,4 +94,4 @@ No scaffold remains — all 8 core modules implemented.
 
 **Tooling:** `pyproject.toml` + `uv.lock` + `.venv` (Python 3.13.9); ruff + mypy (strict) + pytest configured.
 
-**Tests:** 352 passing (31 errors + 41 envelope + 33 config + 35 tokens + 36 broker + 63 lifecycle + 60 registry + 53 server).
+**Tests:** 383 passing (31 errors + 41 envelope + 36 config + 35 tokens + 36 broker + 63 lifecycle + 60 registry + 81 server).
