@@ -63,11 +63,13 @@ the architectural document is whole and authoritative. No spec work remains.
 
 Code phase: all 8 core modules implemented (ETAP 2 closed). ETAP 3 underway —
 Step 0 (CHAFF spec align), Step 1A (config request_timeout_s), Step 1B
-(Router 4A), Step 2 (CHAFF: 2A bootstrap, 2B RED, 2C GREEN, 2D daemon + integration) done;
-MIRROR (second native module: bootstrap, RED, engine GREEN, daemon wiring) underway.
-Last completed: **MIRROR daemon wiring** (commit `41ef5b1`) — engine + working
-daemon (register + serve mirror.* via 4A + heartbeat) done; CGEventTap install +
-event emission still gated.
+(Router 4A), Step 2 (CHAFF: 2A bootstrap, 2B RED, 2C GREEN, 2D daemon + integration),
+MIRROR (bootstrap, RED, engine GREEN, daemon wiring), ORACLE (RED, observe-first
+GREEN) done.
+Last completed: **ORACLE observe-first** (commit `07f9d00`) — the FIRST Python
+module (CHAFF/MIRROR are C). Dual-role daemon: registers + serves oracle.* via
+4A, subscribes chaff.* and learns events into an encrypted baseline. Mode B
+(oracle.classify / Ollama / detector) gated — next slice.
 
 **Skeleton scope check (MANIFESTO §4 — honest accounting):**
 
@@ -94,7 +96,7 @@ etc.) and will be addressed before or alongside ETAP 3 (native modules).
 
 No scaffold remains — all 8 core modules implemented.
 
-**Native modules (`chimera/modules/`) — 2 of 8 started:**
+**Native modules (`chimera/modules/`) — 3 of 8 started:**
 - `chaff` (§5.1) — first native module, working daemon. C17 + ARM64 (Make +
   vendored Unity/cJSON); connects to core, registers + heartbeats, serves chaff.*
   via the 4A router, emits events, generates decoy HTTPS traffic (two pthread
@@ -113,25 +115,43 @@ No scaffold remains — all 8 core modules implemented.
   copied from chaff (D1=C). CGEventTap install + event emission STILL gated
   (code-signing + Accessibility TCC, §6/§9); mirror.enable → -31004; no event
   producer yet (drain_events seam wired, queue empty). — daemon GREEN (`41ef5b1`)
-- ECHO, ORACLE, PULSE, VAULT, TETHER, PURGE — pending (specs in docs/modules/)
+- `oracle` (§5.3) — third native module, FIRST Python module (CHAFF/MIRROR are
+  C). observe-first slice: dual-role daemon — conn #1 core.sock (registers,
+  serves oracle.{status,observe} via the 4A router, heartbeats, emits
+  oracle.baseline.updated) + conn #2 events.sock (core.subscribe chaff.*, D5=b
+  allow-list; push-loop into the Observer). One asyncio loop under a TaskGroup;
+  shared command writer guarded by an asyncio.Lock. Observer = Mode A learning +
+  D11 self-loop guard (oracle.* ignored). BaselineStore = SQLite (events +
+  baseline_meta) + Fernet (payload/ctx encrypted at rest), thread-safe
+  (check_same_thread=False + RLock), blocking writes off-loaded via
+  asyncio.to_thread. advisory-only (D4): no acting methods; status reports
+  model="unavailable". Reuses core.envelope + core.errors only (D1=c). 12 unit +
+  4 integration. ruff + mypy --strict clean. Mode B (oracle.classify / Ollama /
+  detector) GATED — next slice (D6 hard-gate / D8=c). — observe-first GREEN
+  (`07f9d00`)
+- ECHO, PULSE, VAULT, TETHER, PURGE — pending (specs in docs/modules/)
 
 `chimera/proto/` — still empty (`.gitkeep`).
 
 **Tooling:** `pyproject.toml` + `uv.lock` + `.venv` (Python 3.13.9); ruff + mypy (strict) + pytest configured.
 
 **Tests:**
-- Python (pytest, default): 383 passing (31 errors + 41 envelope + 36 config + 35 tokens + 36 broker + 63 lifecycle + 60 registry + 81 server)
-- Python (integration, marked — `pytest -m integration`): 8 passing (4 CHAFF daemon E2E hermetic + 4 MIRROR daemon E2E vs live core)
+- Python (pytest, default): 395 passing (31 errors + 41 envelope + 36 config + 35 tokens + 36 broker + 63 lifecycle + 60 registry + 81 server + 12 oracle: 8 baseline + 4 observer)
+- Python (integration, marked — `pytest -m integration`): 12 passing (4 CHAFF + 4 MIRROR + 4 ORACLE daemon E2E vs live core)
 - Native (CHAFF Unity): 46 passing (7 endpoints + 6 schedule + 6 crypto + 6 db + 10 jsonrpc + 6 commands + 5 generation)
 - Native (MIRROR Unity): 42 passing (6 perturb + 6 profile + 5 exclude + 5 stats + 4 rng + 10 jsonrpc + 6 commands)
-- Total: 479 passing
+- Total: 495 passing
 
 **Open tails (honest tracking, MANIFESTO §4):**
-- CHAFF Fernet ↔ Python `cryptography.Fernet` interop NOT cross-tested (B1 deferred; format-faithful).
-- No supervisor — CHAFF and MIRROR both exit on core-disconnect (graceful, but no auto-restart until the launchd shim lands).
+- Fernet at-rest: CHAFF (C/OpenSSL) and ORACLE (Python `cryptography.Fernet`) share the format but interop is NOT cross-tested (B1 deferred; format-faithful).
+- No supervisor — CHAFF, MIRROR, and ORACLE all exit on core-disconnect (graceful, but no auto-restart until the launchd shim lands).
 - Privileged shim (§7.10/§8.8) — not started; blocks CHAFF Phase A + ECHO/VAULT/TETHER/PURGE.
-- 6 of 8 native modules pending (ECHO, ORACLE, PULSE, VAULT, TETHER, PURGE) — CHAFF + MIRROR engine done.
+- 5 of 8 native modules pending (ECHO, PULSE, VAULT, TETHER, PURGE) — CHAFF + MIRROR + ORACLE done.
 - MIRROR CGEventTap install — GATED on code-signing + Accessibility TCC (§6/§9); mirror.enable returns -31004 until then.
 - MIRROR no event producer yet — daemon wiring done, but drain_events is only a forward-compat seam (queue empty); events ship when the tap lands.
 - MIRROR → PULSE aggregate-event gap (D8) — PULSE expects a periodic aggregate event MIRROR doesn't yet define; address at PULSE time.
-- ipc/jsonrpc duplicated chaff ↔ mirror (D1=C — extract to modules/common/ at the third native module).
+- ipc/jsonrpc duplicated chaff ↔ mirror (D1=C — extract to modules/common/ at the next *C* native module; ORACLE is Python, so it did not trigger it).
+- ORACLE Mode B GATED — oracle.classify / Ollama / detector.py are the next slice (D6 hard-gate / D8=c); Ollama is installed but not running, observe-first ships no classification.
+- ORACLE real event input is CHAFF only — MIRROR emits nothing yet, so chaff.* is the sole live source feeding the baseline.
+- ORACLE standalone `python -m oracle` needs modules/oracle on PYTHONPATH (proper editable-package install is a follow-up; __main__ cannot self-fix the import path).
+- ORACLE client.py (D1=c, Python) carries a TODO to extract a shared Python module-client at the 2nd Python module (mirror of the C D1=C duplication).
