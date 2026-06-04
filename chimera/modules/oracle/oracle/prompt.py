@@ -27,9 +27,13 @@ Given the user's normal pattern (baseline summary) below, decide whether the \
 following event is unusual. Reply with a score from 0 (perfectly normal) to 1 \
 (highly anomalous) and a short reasoning.
 
+When you explain, cite concrete personal context: the time of day versus the \
+user's usual hours, how many days the baseline spans, and whether this source \
+or type is new. Return context_factors as a short list of such factors.
+
 Baseline summary (JSON):
 {summary}
-
+{factors_block}
 Event (JSON):
 {event}
 
@@ -45,9 +49,15 @@ def build_prompt(
 
     MD-B-3c — the spec question, with the event and the baseline summary as
     JSON context blocks (compact, sorted keys for determinism). `factors` carries
-    derived explainability signals (EP-3) — wired in GREEN; ignored in this slice.
+    derived explainability signals (EP-3) — surfaced as a "Derived facts" block.
     """
+    factors_block = (
+        f"\nDerived facts (JSON):\n{json.dumps(factors, sort_keys=True)}\n"
+        if factors is not None
+        else ""
+    )
     return _TEMPLATE.format(
         summary=json.dumps(summary, sort_keys=True),
         event=json.dumps(event, sort_keys=True),
+        factors_block=factors_block,
     )

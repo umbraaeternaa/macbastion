@@ -182,9 +182,13 @@ class BaselineStore:
     def days_observed(self) -> int:
         """Distinct calendar days the baseline spans (Mode B explainability).
 
-        STUB — RED slice.
+        Counts distinct YYYY-MM-DD prefixes of ts; empty baseline -> 0.
         """
-        raise NotImplementedError("BaselineStore.days_observed — RED slice")
+        with self._lock:
+            row = self._con.execute(
+                "SELECT COUNT(DISTINCT substr(ts, 1, 10)) AS n FROM events"
+            ).fetchone()
+        return int(row["n"])
 
     def event_count(self) -> int:
         """Total number of recorded events (from baseline_meta)."""

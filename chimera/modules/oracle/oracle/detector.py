@@ -60,18 +60,58 @@ class Detector:
         """
         summary = await asyncio.to_thread(self._store.summary)
         recent = await asyncio.to_thread(self._store.recent_events, RECENT_LIMIT)
-        prompt = build_prompt(event, {**summary, "recent_events": recent})
+        days = await asyncio.to_thread(self._store.days_observed)
+        factors = self._derive_factors(event, summary, days)
+        prompt = build_prompt(event, {**summary, "recent_events": recent}, factors)
         try:
             raw = await asyncio.to_thread(
                 self._llm.generate, prompt, RESPONSE_SCHEMA
             )
         except LlmUnavailableError as e:
             raise RpcError(code=ChimeraError.PRECONDITION_FAILED) from e
-        return self._parse(raw)
+        result = self._parse(raw)
+        result["similar_events"] = self._similar(event, recent)
+        return result
+
+    @staticmethod
+    def _derive_factors(
+        event: dict[str, Any], summary: dict[str, Any], days_observed: int
+    ) -> dict[str, Any]:
+        """Deterministic explainability signals fed into the prompt (EP-3)."""
+        source = event.get("source")
+        event_type = event.get("type")
+        ts = event.get("ts")
+        hour = ts[11:13] if isinstance(ts, str) and len(ts) >= 13 else None
+        by_hour = summary.get("by_hour", {})
+        return {
+            "source_seen_before": source in summary.get("by_source", {}),
+            "type_seen_before": event_type in summary.get("by_type", {}),
+            "event_hour": hour,
+            "hour_frequency": by_hour.get(hour, 0) if hour is not None else None,
+            "days_observed": days_observed,
+        }
+
+    @staticmethod
+    def _similar(
+        event: dict[str, Any], recent: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Naive top-3 baseline matches: same source+type (EP-4a; embeddings = v2)."""
+        source = event.get("source")
+        event_type = event.get("type")
+        matches = [
+            {"ts": e["ts"], "source": e["source"], "type": e["type"]}
+            for e in recent
+            if e["source"] == source and e["type"] == event_type
+        ]
+        return matches[:3]
 
     @staticmethod
     def _parse(raw: str) -> dict[str, Any]:
-        """Parse the LLM's structured JSON into {score (clamped), reasoning}."""
+        """Parse structured JSON into {score (clamped), reasoning, context_factors}.
+
+        context_factors is lenient (EP-1): a missing/invalid array defaults to []
+        — a 1B model may omit it. score/reasoning stay strict (MD-B-4a).
+        """
         try:
             data = json.loads(raw)
             score = float(data["score"])
@@ -80,7 +120,14 @@ class Detector:
             raise RpcError(
                 code=JSONRPC_INTERNAL_ERROR, message="LLM returned malformed output"
             ) from e
-        return {"score": max(0.0, min(1.0, score)), "reasoning": reasoning}
+        factors = data.get("context_factors", [])
+        if not isinstance(factors, list) or not all(isinstance(x, str) for x in factors):
+            factors = []
+        return {
+            "score": max(0.0, min(1.0, score)),
+            "reasoning": reasoning,
+            "context_factors": factors,
+        }
 
     def get_threshold(self) -> float:
         """Current anomaly threshold (baseline_meta, falls back to the seed)."""
