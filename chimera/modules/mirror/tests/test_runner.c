@@ -1,0 +1,20 @@
+/* Single Unity entry point. Each module's tests live in test_<x>.c and expose
+ * a run_<x>_tests() group function (declared in tests.h). */
+#include "unity.h"
+
+#include "tests.h"
+
+void setUp(void) {}
+void tearDown(void) {}
+
+int main(void) {
+    UNITY_BEGIN();
+    run_perturb_tests();
+    run_profile_tests();
+    run_exclude_tests();
+    run_stats_tests();
+    run_rng_tests();
+    run_jsonrpc_tests();
+    run_commands_tests();
+    return UNITY_END();
+}
