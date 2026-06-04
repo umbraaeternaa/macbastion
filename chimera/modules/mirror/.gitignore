@@ -1,0 +1,7 @@
+# build artifacts
+*.o
+/chaff
+/run_tests
+
+# runtime state
+*.db
