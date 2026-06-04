@@ -43,6 +43,7 @@ from core.errors import (
 )
 
 from oracle.baseline import BaselineStore
+from oracle.detector import Detector
 from oracle.observer import Observer
 
 
@@ -55,9 +56,14 @@ class OracleClient:
 
     MODULE = "oracle"
     VERSION = "0.4.0-alpha"
-    # observe-first: no oracle.classify yet (Ollama is a later slice, D8=c).
-    METHODS: tuple[str, ...] = ("oracle.status", "oracle.observe")
-    EVENTS: tuple[str, ...] = ("oracle.baseline.updated",)
+    # Mode B slice adds classify + threshold.set (manual-only, MD-B-2a/MD-B-8a).
+    METHODS: tuple[str, ...] = (
+        "oracle.status",
+        "oracle.observe",
+        "oracle.classify",
+        "oracle.threshold.set",
+    )
+    EVENTS: tuple[str, ...] = ("oracle.baseline.updated", "oracle.error")
     # D5=b: allow-list of real producers. MIRROR emits nothing yet, so only
     # CHAFF's two topics are subscribed for now.
     SUBSCRIBE_TOPICS: tuple[str, ...] = ("chaff.request.sent", "chaff.error")
@@ -67,11 +73,13 @@ class OracleClient:
         socket_dir: Path,
         store: BaselineStore,
         *,
+        detector: Detector | None = None,
         baseline_every: int = 100,
         heartbeat_interval: float = 2.0,
     ) -> None:
         self._socket_dir = Path(socket_dir)
         self._store = store
+        self._detector = detector  # DI (MD-B-1); None -> classify gated -31004
         self._heartbeat_interval = heartbeat_interval
         self._observer = Observer(
             store,
@@ -159,6 +167,10 @@ class OracleClient:
                 result = await self._handle_status()
             elif request.method == "oracle.observe":
                 result = await self._handle_observe(request.params)
+            elif request.method == "oracle.classify":
+                result = await self._handle_classify(request.params)
+            elif request.method == "oracle.threshold.set":
+                result = await self._handle_threshold_set(request.params)
             else:
                 raise RpcError(code=JSONRPC_METHOD_NOT_FOUND)
             return Response(jsonrpc="2.0", id=request.id, result=result)
@@ -196,6 +208,18 @@ class OracleClient:
             raise RpcError(code=JSONRPC_INVALID_PARAMS, message="payload must be object")
         await self._observer.record(f"{source}.{event_type}", payload)
         return {"ok": True}
+
+    async def _handle_classify(
+        self, params: dict[str, Any] | list[Any] | None
+    ) -> dict[str, Any]:
+        """Mode B (§5 oracle.classify): one-shot LLM classify. STUB — RED slice."""
+        raise NotImplementedError("oracle.classify — RED slice")
+
+    async def _handle_threshold_set(
+        self, params: dict[str, Any] | list[Any] | None
+    ) -> dict[str, Any]:
+        """Mode B (§5 oracle.threshold.set): update threshold. STUB — RED slice."""
+        raise NotImplementedError("oracle.threshold.set — RED slice")
 
     async def _heartbeat_loop(self) -> None:
         await self._registered.wait()

@@ -133,6 +133,20 @@ class BaselineStore:
             "context": context,
         }
 
+    def recent_events(self, limit: int = 50) -> list[dict[str, Any]]:
+        """Most-recent events, newest first, decrypted (Mode B context).
+
+        STUB — RED slice.
+        """
+        raise NotImplementedError("BaselineStore.recent_events — RED slice")
+
+    def summary(self) -> dict[str, Any]:
+        """Baseline summary: counts by source/type/hour (Mode B prompt context).
+
+        Reads plaintext columns only (no decrypt). STUB — RED slice.
+        """
+        raise NotImplementedError("BaselineStore.summary — RED slice")
+
     def event_count(self) -> int:
         """Total number of recorded events (from baseline_meta)."""
         value = self.get_meta("event_count")

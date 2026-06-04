@@ -106,3 +106,39 @@ def test_key_file_mode_0600(tmp_path):
 def test_get_meta_schema_version(tmp_path):
     store = _store(tmp_path)
     assert store.get_meta("schema_version") == str(BaselineStore.SCHEMA_VERSION)
+
+
+# -- Mode B queries (MD-B-1) ------------------------------------------------
+
+
+def test_recent_events_newest_first_and_decrypted(tmp_path):
+    store = _store(tmp_path)
+    store.record_event(ts="t1", source="chaff", event_type="request.sent", payload={"n": 1})
+    store.record_event(ts="t2", source="chaff", event_type="error", payload={"n": 2})
+    recent = store.recent_events(limit=50)
+    assert [e["payload"]["n"] for e in recent] == [2, 1]  # newest first, decrypted
+
+
+def test_recent_events_respects_limit(tmp_path):
+    store = _store(tmp_path)
+    for i in range(5):
+        store.record_event(ts="t", source="chaff", event_type="request.sent", payload={"n": i})
+    assert len(store.recent_events(limit=3)) == 3
+
+
+def test_summary_counts_by_source_and_type(tmp_path):
+    store = _store(tmp_path)
+    store.record_event(ts="t", source="chaff", event_type="request.sent", payload={})
+    store.record_event(ts="t", source="chaff", event_type="request.sent", payload={})
+    store.record_event(ts="t", source="chaff", event_type="error", payload={})
+    summary = store.summary()
+    assert summary["total"] == 3
+    assert summary["by_source"]["chaff"] == 3
+    assert summary["by_type"]["request.sent"] == 2
+    assert summary["by_type"]["error"] == 1
+
+
+def test_summary_empty_baseline(tmp_path):
+    store = _store(tmp_path)
+    summary = store.summary()
+    assert summary["total"] == 0

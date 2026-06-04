@@ -23,8 +23,23 @@ from core.server import Server
 from core.tokens import TokenIssuer
 from oracle.baseline import BaselineStore
 from oracle.client import OracleClient
+from oracle.detector import Detector
+from oracle.llm import LlmClient
 
 pytestmark = pytest.mark.integration
+
+
+class FakeDetector:
+    """Hermetic detector injected into the client (no Ollama)."""
+
+    async def classify(self, event):
+        return {"score": 0.42, "reasoning": "hermetic"}
+
+    def get_threshold(self):
+        return 0.7
+
+    def set_threshold(self, value):
+        return {"threshold": value}
 
 
 def _make_core(tmp_path):
@@ -128,3 +143,82 @@ async def test_oracle_emits_baseline_updated(tmp_path):
         sub.close()
         task.cancel()
         await server.stop()
+
+
+# -- Mode B (MD-B slice) ----------------------------------------------------
+
+
+async def test_oracle_classify_via_4a(tmp_path):
+    server, registry, _ = _make_core(tmp_path)
+    await server.start()
+    store = BaselineStore(tmp_path / "baseline.db", tmp_path / "baseline.key")
+    client = OracleClient(tmp_path, store, detector=FakeDetector())
+    task = asyncio.create_task(client.run())
+    try:
+        assert await _wait(lambda: registry.is_registered("oracle"))
+        resp = await _roundtrip(
+            tmp_path / "core.sock",
+            '{"jsonrpc":"2.0","id":1,"method":"oracle.classify",'
+            '"params":{"event":{"source":"chaff","type":"request.sent"}}}\n',
+        )
+        assert resp.error is None
+        assert "score" in resp.result
+        assert "reasoning" in resp.result
+    finally:
+        task.cancel()
+        await server.stop()
+
+
+async def test_oracle_threshold_set_via_4a(tmp_path):
+    server, registry, _ = _make_core(tmp_path)
+    await server.start()
+    store = BaselineStore(tmp_path / "baseline.db", tmp_path / "baseline.key")
+    client = OracleClient(tmp_path, store, detector=FakeDetector())
+    task = asyncio.create_task(client.run())
+    try:
+        assert await _wait(lambda: registry.is_registered("oracle"))
+        resp = await _roundtrip(
+            tmp_path / "core.sock",
+            '{"jsonrpc":"2.0","id":2,"method":"oracle.threshold.set",'
+            '"params":{"threshold":0.5}}\n',
+        )
+        assert resp.error is None
+        assert resp.result["threshold"] == 0.5
+    finally:
+        task.cancel()
+        await server.stop()
+
+
+async def test_oracle_status_reports_model_and_classifications(tmp_path):
+    server, registry, _ = _make_core(tmp_path)
+    await server.start()
+    store = BaselineStore(tmp_path / "baseline.db", tmp_path / "baseline.key")
+    client = OracleClient(tmp_path, store, detector=FakeDetector())
+    task = asyncio.create_task(client.run())
+    try:
+        assert await _wait(lambda: registry.is_registered("oracle"))
+        resp = await _roundtrip(
+            tmp_path / "core.sock",
+            '{"jsonrpc":"2.0","id":3,"method":"oracle.status"}\n',
+        )
+        assert resp.error is None
+        assert "model" in resp.result
+        assert "classifications_today" in resp.result  # added by Mode B slice
+    finally:
+        task.cancel()
+        await server.stop()
+
+
+@pytest.mark.ollama
+async def test_classify_real_ollama(tmp_path):
+    """Opt-in (-m ollama): hit the real llama3.2:1b. Structural asserts only."""
+    llm = LlmClient()
+    if not llm.available():
+        pytest.skip("Ollama not reachable on localhost:11434")
+    store = BaselineStore(tmp_path / "baseline.db", tmp_path / "baseline.key")
+    det = Detector(llm, store)
+    result = await det.classify(
+        {"source": "chaff", "type": "request.sent", "payload": {"url": "https://x"}}
+    )
+    assert 0.0 <= result["score"] <= 1.0
+    assert isinstance(result["reasoning"], str) and result["reasoning"]

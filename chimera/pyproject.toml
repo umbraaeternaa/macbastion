@@ -11,6 +11,7 @@ authors = [
 
 dependencies = [
     "cryptography>=42.0",
+    "ollama>=0.6.2",
     "pydantic>=2.6",
     "pydantic-settings>=2.0",
 ]
@@ -91,6 +92,7 @@ python_functions = "test_*"
 asyncio_mode = "auto"
 markers = [
     "integration: spawns the chaff binary against a live core (slow; deselected by default — run with `pytest -m integration`)",
+    "ollama: hits a real local Ollama server (llama3.2:1b); opt-in, deselected by default (run with `pytest -m ollama`)",
 ]
 addopts = [
     "--strict-markers",
