@@ -63,8 +63,9 @@ the architectural document is whole and authoritative. No spec work remains.
 
 Code phase: all 8 core modules implemented (ETAP 2 closed). ETAP 3 underway —
 Step 0 (CHAFF spec align), Step 1A (config request_timeout_s), Step 1B
-(Router 4A), Step 2 (CHAFF: 2A bootstrap, 2B RED, 2C GREEN) done. Last
-completed: **CHAFF Phase B GREEN** (commit `250e478`).
+(Router 4A), Step 2 (CHAFF: 2A bootstrap, 2B RED, 2C GREEN, 2D daemon +
+integration) done. Last completed: **CHAFF Phase B daemon + integration**
+(commit `4f443f5`).
 
 **Skeleton scope check (MANIFESTO §4 — honest accounting):**
 
@@ -92,11 +93,12 @@ etc.) and will be addressed before or alongside ETAP 3 (native modules).
 No scaffold remains — all 8 core modules implemented.
 
 **Native modules (`chimera/modules/`) — 1 of 8 started:**
-- `chaff` (§5.1) — first native module. C17 + ARM64 (Make + vendored Unity/cJSON);
-  Phase B logic: cJSON parse, weighted pick, Box-Muller jitter, openssl Fernet,
-  SQLite, JSON-RPC dispatch. 43/43 Unity, binary -Werror clean. Phase A (profiling)
-  deferred to privileged shim (pf/dtrace = root). Daemon wiring + pytest E2E pending.
-  — Phase B IMPLEMENTED (`250e478`)
+- `chaff` (§5.1) — first native module, working daemon. C17 + ARM64 (Make +
+  vendored Unity/cJSON); connects to core, registers + heartbeats, serves chaff.*
+  via the 4A router, emits events, generates decoy HTTPS traffic (two pthread
+  threads, poll-based IPC, openssl Fernet, SQLite). 46 Unity + 4 integration
+  (hermetic). binary -Werror clean. Phase A (profiling) deferred to the
+  privileged shim (pf/dtrace = root). — Phase B daemon DONE (`4f443f5`)
 - ECHO, ORACLE, MIRROR, PULSE, VAULT, TETHER, PURGE — pending (specs in docs/modules/)
 
 `chimera/proto/` — still empty (`.gitkeep`).
@@ -104,12 +106,14 @@ No scaffold remains — all 8 core modules implemented.
 **Tooling:** `pyproject.toml` + `uv.lock` + `.venv` (Python 3.13.9); ruff + mypy (strict) + pytest configured.
 
 **Tests:**
-- Python (pytest): 383 passing (31 errors + 41 envelope + 36 config + 35 tokens + 36 broker + 63 lifecycle + 60 registry + 81 server)
-- Native (CHAFF Unity): 43 passing (7 endpoints + 6 schedule + 6 crypto + 6 db + 7 jsonrpc + 6 commands + 5 generation)
-- Total: 426 passing
+- Python (pytest, default): 383 passing (31 errors + 41 envelope + 36 config + 35 tokens + 36 broker + 63 lifecycle + 60 registry + 81 server)
+- Python (integration, marked — `pytest -m integration`): 4 passing (CHAFF daemon E2E vs live core, hermetic)
+- Native (CHAFF Unity): 46 passing (7 endpoints + 6 schedule + 6 crypto + 6 db + 10 jsonrpc + 6 commands + 5 generation)
+- Total: 433 passing
 
 **Open tails (honest tracking, MANIFESTO §4):**
-- CHAFF daemon wiring — `http_get` (libcurl) + `ipc_*` (core socket) not yet connected in main.c; the generation loop does not run as a daemon.
-- CHAFF Step 2D — pytest E2E (chaff ↔ core 4A) + Python `cryptography.Fernet` interop verification.
+- CHAFF Fernet ↔ Python `cryptography.Fernet` interop NOT cross-tested (B1 deferred; format-faithful).
+- No supervisor — CHAFF exits on core-disconnect (graceful, but no auto-restart until the launchd shim lands).
+- ruff-clean test files — test_server.py has 3 latent ruff findings (test files were never ruff-checked).
 - Privileged shim (§7.10/§8.8) — not started; blocks CHAFF Phase A + ECHO/VAULT/TETHER/PURGE.
 - 7 of 8 native modules pending (ECHO, ORACLE, MIRROR, PULSE, VAULT, TETHER, PURGE).
