@@ -40,7 +40,7 @@ from typing import Any
 import pytest
 from core.broker import EventBroker
 from core.config import CoreConfig
-from core.envelope import Request, Response, parse
+from core.envelope import Request, Response, parse, serialize_frame
 from core.lifecycle import Lifecycle
 from core.registry import Registry
 from core.server import Connection, Server
@@ -64,10 +64,14 @@ class FakeClock:
         self._t += seconds
 
 
-def _make_server(tmp_path: Any) -> Server:
+def _make_server(tmp_path: Any, request_timeout_s: float | None = None) -> Server:
     """Full DI wiring with sockets under tmp_path. TokenIssuer uses real time
-    (TTL is 3600s; tests run in milliseconds)."""
-    config = CoreConfig.model_validate({"socket_dir": str(tmp_path)})
+    (TTL is 3600s; tests run in milliseconds). request_timeout_s overrides the
+    routing deadline for fast timeout tests."""
+    data: dict[str, Any] = {"socket_dir": str(tmp_path)}
+    if request_timeout_s is not None:
+        data["request_timeout_s"] = request_timeout_s
+    config = CoreConfig.model_validate(data)
     broker = EventBroker()
     lifecycle = Lifecycle(config, broker, clock=FakeClock().now)
     registry = Registry(lifecycle, broker)
@@ -117,6 +121,89 @@ async def _roundtrip(sock_path: Any, line: str, timeout: float = 2.0) -> Respons
 
 def _mode(path: Any) -> int:
     return stat.S_IMODE(os.stat(path).st_mode)
+
+
+class FakeWriter:
+    """A StreamWriter stand-in for unit-testing the router without a socket.
+
+    Captures every frame the server forwards to a module's connection so a
+    test can read the assigned internal id and simulate the module's reply.
+    """
+
+    def __init__(self) -> None:
+        self._chunks: list[bytes] = []
+
+    def write(self, data: bytes) -> None:
+        self._chunks.append(data)
+
+    async def drain(self) -> None:
+        return None
+
+    def frames(self) -> list[str]:
+        return b"".join(self._chunks).decode().splitlines()
+
+    def last_request(self) -> Request:
+        msg = parse(self.frames()[-1])
+        assert isinstance(msg, Request)
+        return msg
+
+
+async def _attach_registered_module(
+    server: Server, name: str = "vault", methods: list[str] | None = None
+) -> tuple[Connection, FakeWriter]:
+    """Register a module and attach a FakeWriter as its live connection (seam-B)."""
+    conn = server.new_connection()
+    await server.handle_command(
+        _req(
+            "core.register",
+            module=name,
+            version="1.0",
+            methods=methods if methods is not None else [f"{name}.do"],
+            events=[],
+        ),
+        conn,
+    )
+    fake = FakeWriter()
+    server._attach_module_writer(name, fake)
+    return conn, fake
+
+
+async def _module_caller(server: Server, name: str = "oracle") -> Connection:
+    """A connection that has registered as a module (is_module=True)."""
+    conn = server.new_connection()
+    await server.handle_command(
+        _req("core.register", module=name, version="1.0", methods=[], events=[]),
+        conn,
+    )
+    return conn
+
+
+async def _routed_call(
+    server: Server,
+    surface: Connection,
+    module_conn: Connection,
+    fake: FakeWriter,
+    method: str,
+    req_id: int = 1,
+    params: dict[str, Any] | None = None,
+    result: dict[str, Any] | None = None,
+    error: dict[str, Any] | None = None,
+    wait: float = 1.0,
+) -> Response:
+    """Drive a full route: surface request -> forwarded frame -> module reply."""
+    task = asyncio.create_task(
+        server.handle_command(_req(method, req_id, **(params or {})), surface)
+    )
+    await asyncio.sleep(0)  # let _route forward + register the pending future
+    forwarded = fake.last_request()
+    if error is not None:
+        reply = Response(jsonrpc="2.0", id=forwarded.id, error=error)
+    else:
+        reply = Response(
+            jsonrpc="2.0", id=forwarded.id, result=result if result is not None else {"ok": True}
+        )
+    await server._handle_line(serialize_frame(reply), module_conn)
+    return await asyncio.wait_for(task, timeout=wait)
 
 
 # ---------------------------------------------------------------------------
@@ -432,20 +519,16 @@ class TestCoreSubscribe:
 
 
 class TestModuleMethodDispatch:
-    """In v0.2.0 (4B) any module-namespaced method returns module offline."""
+    """A module method whose owner is unregistered returns module offline.
+
+    (The former 4B test 'offline even if registered' was rewritten for the 4A
+    router as TestRouteResolution.test_registered_connected_module_method_routes
+    — under 4A a registered+connected module's method is routed, not -31000.)
+    """
 
     async def test_module_method_is_offline(self, tmp_path: Any) -> None:
         server = _make_server(tmp_path)
         conn = server.new_connection()
-        resp = await server.handle_command(_req("vault.unlock"), conn)
-        assert resp.error is not None and resp.error["code"] == -31000
-
-    async def test_module_method_offline_even_if_registered(
-        self, tmp_path: Any
-    ) -> None:
-        server = _make_server(tmp_path)
-        conn = server.new_connection()
-        await _register(server, conn, name="vault", methods=["vault.unlock"])
         resp = await server.handle_command(_req("vault.unlock"), conn)
         assert resp.error is not None and resp.error["code"] == -31000
 
@@ -679,3 +762,431 @@ class TestEdgeCases:
         conn = server.new_connection()
         resp = await server.handle_command(_req("core.capabilities", req_id=42), conn)
         assert resp.id == 42
+
+
+# ===========================================================================
+# Router 4A — forward module.method to the owning module's connection
+# ===========================================================================
+
+
+class TestRouteAuthorization:
+    """D7: module-method authz uses conn.is_module (tokens.py untouched)."""
+
+    async def test_surface_caller_is_routed(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        surface = server.new_connection()
+        modconn, fake = await _attach_registered_module(server, "vault", ["vault.do"])
+        resp = await _routed_call(server, surface, modconn, fake, "vault.do", 1)
+        assert resp.error is None  # surface is allowed to route
+
+    async def test_module_caller_other_module_denied(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        caller = await _module_caller(server, "oracle")  # is_module = True
+        resp = await server.handle_command(_req("vault.do"), caller)
+        assert resp.error is not None and resp.error["code"] == -31007
+
+    async def test_module_caller_own_namespace_denied(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        caller = await _module_caller(server, "vault")  # registered as vault
+        resp = await server.handle_command(_req("vault.do"), caller)
+        assert resp.error is not None and resp.error["code"] == -31007
+
+
+class TestRouteResolution:
+    """D8: granular resolution — offline / capability-missing / routes."""
+
+    async def test_unregistered_module_offline(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        surface = server.new_connection()
+        resp = await server.handle_command(_req("ghost.do"), surface)
+        assert resp.error is not None and resp.error["code"] == -31000
+
+    async def test_registered_method_not_advertised_capability_missing(
+        self, tmp_path: Any
+    ) -> None:
+        server = _make_server(tmp_path)
+        surface = server.new_connection()
+        await _attach_registered_module(server, "vault", ["vault.unlock"])
+        resp = await server.handle_command(_req("vault.lock"), surface)
+        assert resp.error is not None and resp.error["code"] == -31002
+
+    async def test_registered_without_connection_offline(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        modconn = server.new_connection()
+        await server.handle_command(
+            _req("core.register", module="vault", version="1.0", methods=["vault.do"], events=[]),
+            modconn,
+        )  # registered but NO _attach_module_writer — no live connection
+        surface = server.new_connection()
+        resp = await server.handle_command(_req("vault.do"), surface)
+        assert resp.error is not None and resp.error["code"] == -31000
+
+    async def test_registered_connected_module_method_routes(self, tmp_path: Any) -> None:
+        # CONTRACT CHANGE: rewrites the former 4B test
+        # 'test_module_method_offline_even_if_registered'. Under 4A a
+        # registered + connected module's method is FORWARDED and its result
+        # relayed — not short-circuited to -31000.
+        server = _make_server(tmp_path)
+        surface = server.new_connection()
+        modconn, fake = await _attach_registered_module(server, "vault", ["vault.do"])
+        resp = await _routed_call(
+            server, surface, modconn, fake, "vault.do", 1, result={"unlocked": True}
+        )
+        assert resp.error is None
+        assert resp.result == {"unlocked": True}
+
+
+class TestRouteCorrelation:
+    """D2: internal-id remap is collision-safe."""
+
+    async def test_forwarded_request_uses_internal_id(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        surface = server.new_connection()
+        modconn, fake = await _attach_registered_module(server, "vault", ["vault.do"])
+        task = asyncio.create_task(server.handle_command(_req("vault.do", 5), surface))
+        await asyncio.sleep(0)
+        forwarded = fake.last_request()
+        assert forwarded.id != 5  # core assigns a fresh internal id
+        # resolve so the task completes cleanly
+        await server._handle_line(
+            serialize_frame(Response(jsonrpc="2.0", id=forwarded.id, result={"ok": True})),
+            modconn,
+        )
+        await asyncio.wait_for(task, 1.0)
+
+    async def test_response_id_rewritten_to_original(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        surface = server.new_connection()
+        modconn, fake = await _attach_registered_module(server, "vault", ["vault.do"])
+        resp = await _routed_call(server, surface, modconn, fake, "vault.do", 5)
+        assert resp.id == 5
+
+    async def test_same_original_id_no_collision(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        surface_a = server.new_connection()
+        surface_b = server.new_connection()
+        modconn, fake = await _attach_registered_module(server, "vault", ["vault.do"])
+        task_a = asyncio.create_task(
+            server.handle_command(_req("vault.do", 1, who="a"), surface_a)
+        )
+        task_b = asyncio.create_task(
+            server.handle_command(_req("vault.do", 1, who="b"), surface_b)
+        )
+        await asyncio.sleep(0)
+        reqs = [m for m in (parse(f) for f in fake.frames()) if isinstance(m, Request)]
+        assert len(reqs) == 2
+        assert reqs[0].id != reqs[1].id
+        for r in reqs:
+            assert isinstance(r.params, dict)
+            await server._handle_line(
+                serialize_frame(
+                    Response(jsonrpc="2.0", id=r.id, result={"who": r.params["who"]})
+                ),
+                modconn,
+            )
+        resp_a = await asyncio.wait_for(task_a, 1.0)
+        resp_b = await asyncio.wait_for(task_b, 1.0)
+        assert resp_a.id == 1 and resp_b.id == 1
+        assert resp_a.result == {"who": "a"}
+        assert resp_b.result == {"who": "b"}
+
+
+class TestRouteForwarding:
+    """D6: the forwarded frame and the relayed response."""
+
+    async def test_forwarded_method_and_params(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        surface = server.new_connection()
+        modconn, fake = await _attach_registered_module(server, "vault", ["vault.do"])
+        task = asyncio.create_task(
+            server.handle_command(_req("vault.do", 1, x=7), surface)
+        )
+        await asyncio.sleep(0)
+        forwarded = fake.last_request()
+        assert forwarded.method == "vault.do"
+        assert forwarded.params == {"x": 7}
+        await server._handle_line(
+            serialize_frame(Response(jsonrpc="2.0", id=forwarded.id, result={"ok": True})),
+            modconn,
+        )
+        await asyncio.wait_for(task, 1.0)
+
+    async def test_success_result_relayed(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        surface = server.new_connection()
+        modconn, fake = await _attach_registered_module(server, "vault", ["vault.do"])
+        resp = await _routed_call(
+            server, surface, modconn, fake, "vault.do", 1, result={"value": 42}
+        )
+        assert resp.result == {"value": 42}
+
+    async def test_error_relayed(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        surface = server.new_connection()
+        modconn, fake = await _attach_registered_module(server, "vault", ["vault.do"])
+        resp = await _routed_call(
+            server, surface, modconn, fake, "vault.do", 1,
+            error={"code": -31003, "message": "denied by policy"},
+        )
+        assert resp.error is not None and resp.error["code"] == -31003
+
+
+class TestRouteTimeout:
+    """D3: hybrid timeout — config default + per-method overrides (§6.8)."""
+
+    async def test_known_method_timeout_overrides(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        assert server._timeout_for("vault.unlock") == 10.0
+        assert server._timeout_for("oracle.classify") == 30.0
+
+    async def test_unknown_method_uses_config_default(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        assert server._timeout_for("foo.bar") == 5.0
+
+    async def test_no_reply_times_out(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path, request_timeout_s=0.05)
+        surface = server.new_connection()
+        await _attach_registered_module(server, "vault", ["vault.do"])
+        resp = await server.handle_command(_req("vault.do"), surface)  # no reply fed
+        assert resp.error is not None and resp.error["code"] == -31001
+
+    async def test_pending_cleared_after_timeout(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path, request_timeout_s=0.05)
+        surface = server.new_connection()
+        await _attach_registered_module(server, "vault", ["vault.do"])
+        await server.handle_command(_req("vault.do"), surface)
+        assert server._pending == {}
+
+
+class TestRouteConcurrency:
+    """D5: multiple in-flight requests to the same module."""
+
+    async def test_two_inflight_resolved_independently(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        sa, sb = server.new_connection(), server.new_connection()
+        modconn, fake = await _attach_registered_module(server, "vault", ["vault.do"])
+        ta = asyncio.create_task(server.handle_command(_req("vault.do", 1, k="a"), sa))
+        tb = asyncio.create_task(server.handle_command(_req("vault.do", 2, k="b"), sb))
+        await asyncio.sleep(0)
+        reqs = [m for m in (parse(f) for f in fake.frames()) if isinstance(m, Request)]
+        for r in reqs:
+            assert isinstance(r.params, dict)
+            await server._handle_line(
+                serialize_frame(Response(jsonrpc="2.0", id=r.id, result={"k": r.params["k"]})),
+                modconn,
+            )
+        ra = await asyncio.wait_for(ta, 1.0)
+        rb = await asyncio.wait_for(tb, 1.0)
+        assert ra.result == {"k": "a"}
+        assert rb.result == {"k": "b"}
+
+    async def test_replies_out_of_order_matched(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        sa, sb = server.new_connection(), server.new_connection()
+        modconn, fake = await _attach_registered_module(server, "vault", ["vault.do"])
+        ta = asyncio.create_task(server.handle_command(_req("vault.do", 1, k="a"), sa))
+        tb = asyncio.create_task(server.handle_command(_req("vault.do", 2, k="b"), sb))
+        await asyncio.sleep(0)
+        reqs = [m for m in (parse(f) for f in fake.frames()) if isinstance(m, Request)]
+        for r in reversed(reqs):  # reply in reverse order
+            assert isinstance(r.params, dict)
+            await server._handle_line(
+                serialize_frame(Response(jsonrpc="2.0", id=r.id, result={"k": r.params["k"]})),
+                modconn,
+            )
+        ra = await asyncio.wait_for(ta, 1.0)
+        rb = await asyncio.wait_for(tb, 1.0)
+        assert ra.result == {"k": "a"}
+        assert rb.result == {"k": "b"}
+
+
+class TestRouteDisconnect:
+    """D4: a module disconnect resolves its pending requests with -31000."""
+
+    async def test_disconnect_resolves_pending_offline(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        surface = server.new_connection()
+        await _attach_registered_module(server, "vault", ["vault.do"])
+        task = asyncio.create_task(server.handle_command(_req("vault.do"), surface))
+        await asyncio.sleep(0)  # request now pending
+        server._detach_module_writer("vault")  # simulate disconnect
+        resp = await asyncio.wait_for(task, 1.0)
+        assert resp.error is not None and resp.error["code"] == -31000
+
+    async def test_detach_removes_writer(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        surface = server.new_connection()
+        await _attach_registered_module(server, "vault", ["vault.do"])
+        server._detach_module_writer("vault")
+        resp = await server.handle_command(_req("vault.do"), surface)
+        assert resp.error is not None and resp.error["code"] == -31000
+
+    async def test_detach_unknown_is_safe(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        server._detach_module_writer("ghost")  # no error
+
+
+class TestRouteInboundResponse:
+    """_handle_line routes an inbound Response to the pending future."""
+
+    async def test_inbound_response_resolves_pending(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        surface = server.new_connection()
+        modconn, fake = await _attach_registered_module(server, "vault", ["vault.do"])
+        resp = await _routed_call(server, surface, modconn, fake, "vault.do", 3, result={"x": 1})
+        assert resp.result == {"x": 1}
+
+    async def test_unknown_response_id_ignored(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        conn = server.new_connection()
+        out = await server._handle_line(
+            serialize_frame(Response(jsonrpc="2.0", id=999999, result={"x": 1})), conn
+        )
+        assert out is None  # no pending with that id — ignored, no crash
+
+    async def test_double_response_ignored(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        surface = server.new_connection()
+        modconn, fake = await _attach_registered_module(server, "vault", ["vault.do"])
+        resp = await _routed_call(server, surface, modconn, fake, "vault.do", 4, result={"x": 1})
+        forwarded = fake.last_request()
+        out = await server._handle_line(
+            serialize_frame(Response(jsonrpc="2.0", id=forwarded.id, result={"x": 2})), modconn
+        )
+        assert out is None  # pending already resolved — second reply ignored
+        assert resp.result == {"x": 1}  # original caller unaffected
+
+
+# ---------------------------------------------------------------------------
+# Router 4A — end-to-end over real sockets with a fake module client
+# ---------------------------------------------------------------------------
+
+
+async def _run_fake_module(
+    sock_path: Any,
+    name: str,
+    methods: list[str],
+    *,
+    respond: bool = True,
+    error: dict[str, Any] | None = None,
+    disconnect_on_request: bool = False,
+) -> None:
+    """A minimal module client: registers, then answers forwarded requests."""
+    reader, writer = await asyncio.open_unix_connection(str(sock_path))
+    try:
+        writer.write(
+            serialize_frame(
+                Request(
+                    jsonrpc="2.0",
+                    id=1,
+                    method="core.register",
+                    params={"module": name, "version": "1.0", "methods": methods, "events": []},
+                )
+            ).encode()
+        )
+        await writer.drain()
+        await reader.readline()  # register ack
+        while True:
+            line = await reader.readline()
+            if not line:
+                break
+            msg = parse(line.decode())
+            if not isinstance(msg, Request):
+                continue
+            if disconnect_on_request:
+                break
+            if not respond:
+                continue
+            reply = (
+                Response(jsonrpc="2.0", id=msg.id, error=error)
+                if error is not None
+                else Response(jsonrpc="2.0", id=msg.id, result={"ok": True})
+            )
+            writer.write(serialize_frame(reply).encode())
+            await writer.drain()
+    finally:
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except (ConnectionError, BrokenPipeError):
+            pass
+
+
+async def _cancel(task: "asyncio.Task[None]") -> None:
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+
+class TestRealSocketRouting:
+    """End-to-end routing over real UNIX sockets with a responding module."""
+
+    async def test_e2e_round_trip(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        await server.start()
+        mod = asyncio.create_task(
+            _run_fake_module(tmp_path / "core.sock", "vault", ["vault.unlock"])
+        )
+        try:
+            await asyncio.sleep(0.05)  # let the module register
+            resp = await _roundtrip(
+                tmp_path / "core.sock",
+                '{"jsonrpc":"2.0","id":7,"method":"vault.unlock"}\n',
+            )
+            assert resp.error is None
+            assert resp.result == {"ok": True}
+            assert resp.id == 7
+        finally:
+            await _cancel(mod)
+            await server.stop()
+
+    async def test_e2e_timeout(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path, request_timeout_s=0.1)
+        await server.start()
+        mod = asyncio.create_task(
+            _run_fake_module(tmp_path / "core.sock", "vault", ["vault.unlock"], respond=False)
+        )
+        try:
+            await asyncio.sleep(0.05)
+            resp = await _roundtrip(
+                tmp_path / "core.sock",
+                '{"jsonrpc":"2.0","id":7,"method":"vault.unlock"}\n',
+            )
+            assert resp.error is not None and resp.error["code"] == -31001
+        finally:
+            await _cancel(mod)
+            await server.stop()
+
+    async def test_e2e_error_relayed(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        await server.start()
+        mod = asyncio.create_task(
+            _run_fake_module(
+                tmp_path / "core.sock", "vault", ["vault.unlock"],
+                error={"code": -31003, "message": "denied"},
+            )
+        )
+        try:
+            await asyncio.sleep(0.05)
+            resp = await _roundtrip(
+                tmp_path / "core.sock",
+                '{"jsonrpc":"2.0","id":7,"method":"vault.unlock"}\n',
+            )
+            assert resp.error is not None and resp.error["code"] == -31003
+        finally:
+            await _cancel(mod)
+            await server.stop()
+
+    async def test_e2e_unregistered_offline(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        await server.start()
+        try:
+            resp = await _roundtrip(
+                tmp_path / "core.sock",
+                '{"jsonrpc":"2.0","id":7,"method":"vault.unlock"}\n',
+            )
+            assert resp.error is not None and resp.error["code"] == -31000
+        finally:
+            await server.stop()
