@@ -17,7 +17,7 @@ INCLUDES := -Iinclude -Isrc/vendor/cjson -I$(OPENSSL)/include
 # third-party code is not held to our -Werror bar.
 STRICT  := -std=c17 -Wall -Wextra -Werror -O2 $(INCLUDES)
 RELAXED := -std=c17 -O2 $(INCLUDES)
-TESTCFL := -std=c17 -Wall -Wextra -O2 $(INCLUDES) -Itests/vendor/unity
+TESTCFL := -std=c17 -Wall -Wextra -O2 $(INCLUDES) -Itests/vendor/unity -DUNITY_INCLUDE_DOUBLE
 LDFLAGS := -lcurl -lsqlite3 -L$(OPENSSL)/lib -lcrypto
 
 BIN       := chaff
