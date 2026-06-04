@@ -17,8 +17,29 @@ static char *dupstr(const char *s) {
 }
 
 jsonrpc_kind_t jsonrpc_classify(const char *line) {
-    (void)line;
-    return JSONRPC_INVALID; /* TODO(green): method+id=req, method-no-id=notif, payload-no-method=resp */
+    if (!line) {
+        return JSONRPC_INVALID;
+    }
+    cJSON *root = cJSON_Parse(line);
+    if (!root) {
+        return JSONRPC_INVALID;
+    }
+    int has_method = cJSON_GetObjectItemCaseSensitive(root, "method") != NULL;
+    int has_id = cJSON_GetObjectItemCaseSensitive(root, "id") != NULL;
+    int has_payload = cJSON_GetObjectItemCaseSensitive(root, "result") != NULL ||
+                      cJSON_GetObjectItemCaseSensitive(root, "error") != NULL;
+    jsonrpc_kind_t kind;
+    if (has_method && has_id) {
+        kind = JSONRPC_REQUEST;
+    } else if (has_method) {
+        kind = JSONRPC_NOTIFICATION;
+    } else if (has_payload) {
+        kind = JSONRPC_RESPONSE;
+    } else {
+        kind = JSONRPC_INVALID;
+    }
+    cJSON_Delete(root);
+    return kind;
 }
 
 chaff_result_t jsonrpc_parse_request(const char *line, jsonrpc_request_t **out) {
