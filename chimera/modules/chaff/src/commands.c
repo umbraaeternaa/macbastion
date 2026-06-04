@@ -12,8 +12,16 @@ void chaff_runtime_init(chaff_runtime_t *rt) {
     }
     rt->state = CHAFF_IDLE;
     rt->multiplier = CHAFF_DEFAULT_MULTIPLIER;
+    rt->base_gap_ms = 2000.0; /* §5.1 Phase B default (no profile) */
     rt->requests_today = 0;
     rt->bytes_today = 0;
+    rt->rng_state = (uint64_t)time(NULL) ^ 0x9e3779b97f4a7c15ULL; /* nonzero seed */
+    pthread_mutex_init(&rt->mutex, NULL);
+    rt->stop = 0;
+    rt->evq_head = NULL;
+    rt->evq_tail = NULL;
+    rt->heartbeat_at = 0;
+    rt->db = NULL;
 }
 
 static char *ok_result(const cJSON *id) {

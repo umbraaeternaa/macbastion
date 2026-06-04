@@ -3,7 +3,12 @@
 #ifndef CHAFF_COMMANDS_H
 #define CHAFF_COMMANDS_H
 
+#include <pthread.h>
+#include <signal.h>
 #include <stdint.h>
+#include <time.h>
+
+#include <sqlite3.h>
 
 #include "cJSON.h"
 
@@ -17,11 +22,27 @@ typedef enum {
     CHAFF_GENERATING = 1,
 } chaff_state_t;
 
+/* Outbound event awaiting send (mutex-protected singly-linked queue). */
+typedef struct chaff_event {
+    char *line; /* owned NDJSON frame (no trailing newline) */
+    struct chaff_event *next;
+} chaff_event_t;
+
+/* Shared daemon runtime. All fields are guarded by `mutex` except `stop`
+ * (a signal-safe flag) and `rng_state` (touched only by the generation thread). */
 typedef struct {
     chaff_state_t state;
     double multiplier;
+    double base_gap_ms; /* default generation gap (no profile in Phase B) */
     uint64_t requests_today;
     uint64_t bytes_today;
+    uint64_t rng_state;
+    pthread_mutex_t mutex;
+    volatile sig_atomic_t stop;
+    chaff_event_t *evq_head;
+    chaff_event_t *evq_tail;
+    time_t heartbeat_at;
+    sqlite3 *db; /* optional generation log; NULL disables logging */
 } chaff_runtime_t;
 
 /* Initialise runtime to defaults (IDLE, multiplier = CHAFF_DEFAULT_MULTIPLIER). */
