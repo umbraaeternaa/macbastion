@@ -190,6 +190,20 @@ class BaselineStore:
             ).fetchone()
         return int(row["n"])
 
+    def first_seen(self, source: str, event_type: str | None = None) -> str | None:
+        """Earliest ts for a source (optionally a type); None if never seen.
+
+        STUB — RED slice (Time-Machine #2).
+        """
+        raise NotImplementedError("BaselineStore.first_seen — RED slice")
+
+    def period_summary(self, start: str, end: str) -> dict[str, Any]:
+        """Counts in the half-open window [start, end): total/by_source/by_type.
+
+        STUB — RED slice (Time-Machine #2).
+        """
+        raise NotImplementedError("BaselineStore.period_summary — RED slice")
+
     def event_count(self) -> int:
         """Total number of recorded events (from baseline_meta)."""
         value = self.get_meta("event_count")

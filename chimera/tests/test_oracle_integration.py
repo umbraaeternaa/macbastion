@@ -247,3 +247,55 @@ async def test_classify_real_ollama_explainable(tmp_path):
     assert isinstance(result["context_factors"], list)
     assert all(isinstance(x, str) for x in result["context_factors"])
     assert isinstance(result["similar_events"], list)
+
+
+# -- Time-Machine (#2) ------------------------------------------------------
+
+
+async def test_oracle_query_first_seen_via_4a(tmp_path):
+    server, registry, _ = _make_core(tmp_path)
+    await server.start()
+    store = BaselineStore(tmp_path / "baseline.db", tmp_path / "baseline.key")
+    store.record_event(
+        ts="2026-06-01T10:00:00+00:00", source="chaff", event_type="request.sent", payload={}
+    )
+    client = OracleClient(tmp_path, store)
+    task = asyncio.create_task(client.run())
+    try:
+        assert await _wait(lambda: registry.is_registered("oracle"))
+        resp = await _roundtrip(
+            tmp_path / "core.sock",
+            '{"jsonrpc":"2.0","id":1,"method":"oracle.query.first_seen",'
+            '"params":{"source":"chaff"}}\n',
+        )
+        assert resp.error is None
+        assert resp.result["first_seen"] == "2026-06-01T10:00:00+00:00"
+    finally:
+        task.cancel()
+        await server.stop()
+
+
+async def test_oracle_query_period_via_4a(tmp_path):
+    server, registry, _ = _make_core(tmp_path)
+    await server.start()
+    store = BaselineStore(tmp_path / "baseline.db", tmp_path / "baseline.key")
+    store.record_event(
+        ts="2026-06-02T10:00:00+00:00", source="chaff", event_type="request.sent", payload={}
+    )
+    store.record_event(
+        ts="2026-06-03T10:00:00+00:00", source="mirror", event_type="move", payload={}
+    )
+    client = OracleClient(tmp_path, store)
+    task = asyncio.create_task(client.run())
+    try:
+        assert await _wait(lambda: registry.is_registered("oracle"))
+        resp = await _roundtrip(
+            tmp_path / "core.sock",
+            '{"jsonrpc":"2.0","id":2,"method":"oracle.query.period",'
+            '"params":{"start":"2026-06-02","end":"2026-06-03"}}\n',
+        )
+        assert resp.error is None
+        assert resp.result["total"] == 1  # half-open: 06-02 in, 06-03 out
+    finally:
+        task.cancel()
+        await server.stop()

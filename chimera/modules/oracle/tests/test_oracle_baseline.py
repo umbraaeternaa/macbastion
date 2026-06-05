@@ -154,3 +154,32 @@ def test_days_observed_distinct_days(tmp_path):
 
 def test_days_observed_empty(tmp_path):
     assert _store(tmp_path).days_observed() == 0
+
+
+# -- Time-Machine queries (#2, TM-3/TM-11) ----------------------------------
+
+
+def _rec(store, ts, source, etype):
+    store.record_event(ts=ts, source=source, event_type=etype, payload={})
+
+
+def test_first_seen_returns_min_ts(tmp_path):
+    store = _store(tmp_path)
+    _rec(store, "2026-06-02T10:00:00+00:00", "chaff", "request.sent")
+    _rec(store, "2026-06-01T10:00:00+00:00", "chaff", "request.sent")
+    assert store.first_seen("chaff") == "2026-06-01T10:00:00+00:00"
+
+
+def test_first_seen_none_when_absent(tmp_path):
+    assert _store(tmp_path).first_seen("nope") is None
+
+
+def test_period_summary_half_open_window(tmp_path):
+    store = _store(tmp_path)
+    _rec(store, "2026-06-01T10:00:00+00:00", "chaff", "request.sent")
+    _rec(store, "2026-06-02T10:00:00+00:00", "chaff", "error")
+    _rec(store, "2026-06-03T10:00:00+00:00", "mirror", "move")
+    out = store.period_summary("2026-06-02", "2026-06-03")  # only 06-02
+    assert out["total"] == 1
+    assert out["by_source"] == {"chaff": 1}
+    assert out["by_type"] == {"error": 1}
