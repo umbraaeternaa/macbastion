@@ -1,6 +1,6 @@
 # CHIMERA — Project State Snapshot
 
-> Updated: 2026-06-04
+> Updated: 2026-06-05
 > Version: 0.1.0-alpha (genesis)
 
 ---
@@ -28,7 +28,7 @@ Genesis commit (manifesto + architecture Part 1): `f229751`
 |--------|-----------|--------------------------------------------------|
 | UX     | `cb10247` | UX surface decision — CLI + swiftbar + event stream (`chimera/docs/UX.md`) |
 | OPSEC  | `a3ae3ad` | Operator security discipline — companion to §8 (`chimera/docs/OPSEC.md`) |
-| SHIM   | `—`       | Privileged shim impl decisions SH-1…SH-12 (`chimera/docs/SHIM.md`) |
+| SHIM   | `7092f8e` | Privileged shim decisions SH-1…12 + secret-handoff SS-0…7 + SH-5 staged amendment (`chimera/docs/SHIM.md`) |
 | ORACLE_EXPLAIN | `ea10e5e` | Explainability design EP-1…9 (`chimera/docs/ORACLE_EXPLAIN.md`) |
 | ORACLE_TIMEMACHINE | `e1c3cbc` | Time-machine design TM-1…11 (`chimera/docs/ORACLE_TIMEMACHINE.md`) |
 
@@ -68,12 +68,17 @@ Code phase: all 8 core modules implemented (ETAP 2 closed). ETAP 3 underway —
 Step 0 (CHAFF spec align), Step 1A (config request_timeout_s), Step 1B
 (Router 4A), Step 2 (CHAFF: 2A bootstrap, 2B RED, 2C GREEN, 2D daemon + integration),
 MIRROR (bootstrap, RED, engine GREEN, daemon wiring), ORACLE (RED, observe-first
-GREEN, Mode B GREEN, explainability GREEN, time-machine GREEN) done.
-Last completed: **ORACLE NL-ask (Time-Machine Layer 2)** (#2, commit `2feaf67`) —
-oracle.ask answers NL questions: enum-constrained LLM intent → deterministic
-dispatch to a Layer 1 query → code-templated {answer, query_used, raw_result}.
-"unknown" fallback; raw_result safeguard vs semantic mis-routing; core
-oracle.ask:15.0 timeout (NL-12a). Design recorded in docs/ORACLE_TIMEMACHINE.md.
+GREEN, Mode B GREEN, explainability GREEN, time-machine GREEN) done. Privileged
+shim (trust-plane, NOT an organ): Slice 1 NO-OP skeleton (RED→GREEN) done.
+Last completed: **shim Slice 1 NO-OP skeleton** (commit `e60e8ae`) — the
+privileged trust-plane's first slice: UNIX socket SERVER + LOCAL_PEERCRED peer
+auth (peercred-only, SS-6, no secret) + 4-op enum whitelist (lock/evict/reboot/
+killall — ALL no-op, F3, ZERO destructive effect) + ping/pong; CHIMERA §6 error
+codes (-31007 wrong-uid auth-first, -31002 unknown op); shim.* namespace; C17
+strict -Werror. ownership_apply = documented-stub (real chmod 0660 + chown
+root:group is a -m privileged follow-up). Secret handshake = Slice 2 (gated on
+code-signing, §5.5); real ops = Slice 3+ (destructive last). Design in
+docs/SHIM.md (SS-0…7 + SH-5 staged amendment).
 
 **Skeleton scope check (MANIFESTO §4 — honest accounting):**
 
@@ -82,11 +87,12 @@ capability-token issuer, AND a privileged shim (§7.10 / §8.8 — a separate
 C/LaunchDaemon for elevated operations, not among the 8 Python `core/` modules).
 
 - Python `core/`: 8/8 modules done ✓
-- Privileged shim: NOT YET started ⚠️
+- Privileged shim: Slice 1 NO-OP skeleton done ✓ (peercred-only; secret = Slice 2 gated on code-signing, real ops = Slice 3+)
 
 **ETAP 2 verdict:** Python core skeleton complete. The privileged shim is a
 prerequisite for native modules requiring elevated capabilities (VAULT, PURGE,
-etc.) and will be addressed before or alongside ETAP 3 (native modules).
+etc.); its Slice 1 NO-OP skeleton is now done (`e60e8ae`), with the per-boot
+secret (Slice 2) gated on code-signing (§5.5) and real ops deferred to Slice 3+.
 
 **`chimera/core/` — 8 of 8 modules implemented:**
 - `errors` (§6.5) — JSON-RPC + CHIMERA error codes, RpcError — DONE (`f284891`)
@@ -148,6 +154,20 @@ No scaffold remains — all 8 core modules implemented.
   explainability + time-machine L1+L2). — NL-ask GREEN (`2feaf67`)
 - ECHO, PULSE, VAULT, TETHER, PURGE — pending (specs in docs/modules/)
 
+**Privileged shim (`chimera/shim/`) — trust-plane, NOT one of the 8 organs:**
+- Top-level `chimera/shim/` (§8.8 / §7.10) — a root LaunchDaemon doing EXACTLY 4
+  ops, distinct from the 8 module organs AND from the Python `core/`. C17 (Make +
+  vendored Unity/cJSON; jsonrpc copied from the CHAFF/MIRROR lineage). Slice 1
+  NO-OP security skeleton: socket SERVER (socket/bind/listen/accept — the inverse
+  of the CHAFF/MIRROR clients) + real `getsockopt(SOL_LOCAL, LOCAL_PEERCRED)` →
+  xucred uid check (deny-by-default; SS-7 resolver-swap seam lets tests inject a
+  mock) + 4-op whitelist (lock/evict/reboot/killall — ALL no-op, F3) + auth-first
+  JSON-RPC dispatch (ping/pong, §6 error codes -31007/-31002, shim.* namespace).
+  23 Unity, binary -Werror clean. peercred-only (SS-6 — NO per-boot secret this
+  slice). `ownership_apply` (SS-0(b) chmod 0660 + chown root:operatorgroup) =
+  documented-stub, applied only under the manual `-m privileged` tier (not
+  hermetic, SS-7). — Slice 1 GREEN (`e60e8ae`)
+
 `chimera/proto/` — still empty (`.gitkeep`).
 
 **Tooling:** `pyproject.toml` + `uv.lock` + `.venv` (Python 3.13.9); ruff + mypy (strict) + pytest configured. Direct deps: cryptography, pydantic(-settings), **ollama==0.6.2** (§6-allowed; httpx + anyio/certifi transitive). pytest markers: `integration`, `ollama`.
@@ -158,12 +178,16 @@ No scaffold remains — all 8 core modules implemented.
 - Python (ollama, marked — `pytest -m ollama`): 3 passing (subset of integration; real llama3.2:1b)
 - Native (CHAFF Unity): 46 passing (7 endpoints + 6 schedule + 6 crypto + 6 db + 10 jsonrpc + 6 commands + 5 generation)
 - Native (MIRROR Unity): 42 passing (6 perturb + 6 profile + 5 exclude + 5 stats + 4 rng + 10 jsonrpc + 6 commands)
-- Total: 548 passing (ollama subset not double-counted)
+- Native (shim Unity): 23 passing (11 ops + 6 peercred + 2 server + 4 protocol) — separate C trust-plane suite, NOT in pytest
+- Total: 571 passing (548 + 23 shim Unity; ollama subset not double-counted)
 
 **Open tails (honest tracking, MANIFESTO §4):**
 - Fernet at-rest: CHAFF (C/OpenSSL) and ORACLE (Python `cryptography.Fernet`) share the format but interop is NOT cross-tested (B1 deferred; format-faithful).
 - No supervisor — CHAFF, MIRROR, and ORACLE all exit on core-disconnect (graceful, no module auto-restart yet). Core auto-restart is launchd's job (a LaunchAgent KeepAlive plist), which is SEPARATE from the §8.8 privileged-ops shim — §7.10 prose conflates the two.
-- Privileged shim (§8.8) — not started. Scope is EXACTLY 4 root ops: lock screen (TETHER L1), evict CHIMERA Keychain (PURGE Tier 0), force-reboot (PURGE post-action), force-killall (Core §7.7 shutdown). §8.8 explicitly never opens sockets, reads files, or runs operator code; only core talks to it (per-boot shared secret).
+- Privileged shim (§8.8) — Slice 1 NO-OP skeleton DONE (`e60e8ae`): socket SERVER + peercred (LOCAL_PEERCRED) + 4-op enum + ping/pong; peercred-only (SS-6, no secret); all 4 ops no-op (F3 — ZERO destructive effect). Scope is EXACTLY 4 root ops: lock screen (TETHER L1), evict CHIMERA Keychain (PURGE Tier 0), force-reboot (PURGE post-action), force-killall (Core §7.7 shutdown). §8.8 explicitly never opens sockets, reads files, or runs operator code; only core talks to it (per-boot shared secret — Slice 2).
+- Shim Slice 2 (per-boot secret handshake) — gated on code-signing (§5.5 / Finding F2): the in-memory secret only beats a same-uid attacker once core's memory is hardened-runtime-protected. SAME code-signing tail that gates the MIRROR CGEventTap.
+- Shim `ownership_apply` (SS-0(b): chmod 0660 + chown root:operatorgroup) = documented-stub — real chmod/chown is a `-m privileged`-tier follow-up (not hermetically testable, SS-7; non-root skeleton binds at umask default).
+- Shim real ops (lock/evict/reboot/killall) = Slice 3+ — landed one at a time, destructive (evict/reboot) LAST and only behind the Slice 2 secret; reboot never in autotests (SH-11).
 - Packet-plane root is a SEPARATE track, NOT the §8.8 shim: CHAFF Phase A (pf/dtrace) and ECHO (pfctl/BPF/raw socket) need packet-level root, which §8.8 forbids — future §8 amendment or a dedicated packet-helper. CHAFF code returns required_capability='privileged_shim' for profile.*, but §8.8 grants no such capability — spec gap to resolve before that path unblocks.
 - VAULT's blocker is Keychain / Secure-Enclave entitlements (code-signing + TCC), not root — the §8.8 shim does not unblock VAULT (it evicts Keychain for PURGE, it does not grant access).
 - 5 of 8 native modules pending (ECHO, PULSE, VAULT, TETHER, PURGE) — CHAFF + MIRROR + ORACLE done.
