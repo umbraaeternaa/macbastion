@@ -16,10 +16,24 @@ STUB — RED slice. __init__ wires deps; ask() raises NotImplementedError.
 INTENT_SCHEMA is real data (present in RED).
 """
 
+import asyncio
+import json
 from typing import Any
 
-from oracle.llm import LlmClient
+from core.errors import ChimeraError, RpcError
+
+from oracle.llm import LlmClient, LlmUnavailableError
 from oracle.query import TimeMachine
+
+_INTENT_PROMPT = """\
+You map a user's question about their own activity history to ONE query.
+query_type must be one of:
+- "first_seen": when a source (optionally a type) was first seen — needs `source`.
+- "period": event counts in a date window — needs `start` and `end` (YYYY-MM-DD).
+- "unknown": the question maps to neither.
+Fill only the relevant params; use "unknown" if unsure.
+
+Question: {question}"""
 
 # NL-3a: flat structured-intent schema. The enum constrains query_type to the
 # known set (+ "unknown" honest fallback) — the model cannot return a
@@ -48,5 +62,70 @@ class Asker:
         self._timemachine = timemachine
 
     async def ask(self, question: str) -> dict[str, Any]:
-        """Map a question to a query, run it, return {answer, query_used, raw_result}."""
-        raise NotImplementedError("Asker.ask — RED slice")
+        """Map a question to a query, run it, return {answer, query_used, raw_result}.
+
+        Ollama down -> -31004 (NL-7). Malformed/unsure/invalid-params -> "unknown"
+        (NL-4a — honest "don't know" beats guessing). raw_result is returned
+        verbatim as the transparent safeguard against semantic mis-routing.
+        """
+        prompt = _INTENT_PROMPT.format(question=question)
+        try:
+            raw = await asyncio.to_thread(self._llm.generate, prompt, INTENT_SCHEMA)
+        except LlmUnavailableError as e:
+            raise RpcError(code=ChimeraError.PRECONDITION_FAILED) from e
+
+        intent = self._parse_intent(raw)
+        query_type = intent.get("query_type")
+
+        if query_type == "first_seen" and isinstance(intent.get("source"), str):
+            event_type = intent.get("event_type")
+            event_type = event_type if isinstance(event_type, str) else None
+            raw_result = await self._timemachine.first_seen(intent["source"], event_type)
+            return self._shape("first_seen", raw_result)
+
+        if (
+            query_type == "period"
+            and isinstance(intent.get("start"), str)
+            and isinstance(intent.get("end"), str)
+        ):
+            raw_result = await self._timemachine.period_summary(
+                intent["start"], intent["end"]
+            )
+            return self._shape("period", raw_result)
+
+        # unknown query_type, or required params missing/invalid (NL-4a/NL-5)
+        return self._shape("unknown", None)
+
+    @staticmethod
+    def _parse_intent(raw: str) -> dict[str, Any]:
+        """Parse the LLM intent; any failure degrades to {'query_type': 'unknown'}."""
+        try:
+            data = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return {"query_type": "unknown"}
+        if not isinstance(data, dict) or data.get("query_type") not in (
+            "first_seen",
+            "period",
+            "unknown",
+        ):
+            return {"query_type": "unknown"}
+        return data
+
+    @staticmethod
+    def _shape(query_used: str, raw_result: dict[str, Any] | None) -> dict[str, Any]:
+        """Build the code-templated answer (NL-2a — deterministic, no LLM narration)."""
+        answer = "I couldn't map that question to a supported query (first_seen or period)."
+        if query_used == "first_seen" and raw_result is not None:
+            source = raw_result["source"]
+            ts = raw_result["first_seen"]
+            answer = (
+                f"'{source}' was first seen at {ts}."
+                if ts is not None
+                else f"No '{source}' events in the baseline yet."
+            )
+        elif query_used == "period" and raw_result is not None:
+            answer = (
+                f"Between {raw_result['start']} and {raw_result['end']} "
+                f"there were {raw_result['total']} events."
+            )
+        return {"answer": answer, "query_used": query_used, "raw_result": raw_result}
