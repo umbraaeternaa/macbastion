@@ -69,11 +69,11 @@ Step 0 (CHAFF spec align), Step 1A (config request_timeout_s), Step 1B
 (Router 4A), Step 2 (CHAFF: 2A bootstrap, 2B RED, 2C GREEN, 2D daemon + integration),
 MIRROR (bootstrap, RED, engine GREEN, daemon wiring), ORACLE (RED, observe-first
 GREEN, Mode B GREEN, explainability GREEN, time-machine GREEN) done.
-Last completed: **ORACLE time-machine** (#2, commit `8522c87`) — structured
-time-range baseline queries: oracle.query.first_seen + oracle.query.period
-(Layer 1, deterministic, no LLM). query.py TimeMachine orchestrates; SQL in
-baseline; half-open [start, end), ISO-8601 lexicographic. Advisory read-only;
-design recorded in docs/ORACLE_TIMEMACHINE.md.
+Last completed: **ORACLE NL-ask (Time-Machine Layer 2)** (#2, commit `2feaf67`) —
+oracle.ask answers NL questions: enum-constrained LLM intent → deterministic
+dispatch to a Layer 1 query → code-templated {answer, query_used, raw_result}.
+"unknown" fallback; raw_result safeguard vs semantic mis-routing; core
+oracle.ask:15.0 timeout (NL-12a). Design recorded in docs/ORACLE_TIMEMACHINE.md.
 
 **Skeleton scope check (MANIFESTO §4 — honest accounting):**
 
@@ -137,12 +137,15 @@ No scaffold remains — all 8 core modules implemented.
   (#1): classify returns {score, reasoning, context_factors[] (LLM-emitted),
   similar_events[] (naive top-3, §5.3 debt repaid)}; derived prompt facts
   (source/type-seen, hour_freq, days_observed) + directive; advisory invariant test.
-  Time-Machine (#2): oracle.query.first_seen + oracle.query.period — structured
-  time-range queries (Layer 1, deterministic, no LLM); query.py TimeMachine
-  orchestrates, SQL in baseline; half-open [start, end). Reuses core.envelope +
-  core.errors only (D1=c). 47 unit + 11 integration (2 real-Ollama, -m ollama).
-  ruff + mypy --strict clean. ORACLE fully done (Mode A + Mode B + explainability
-  + time-machine). — time-machine GREEN (`8522c87`)
+  Time-Machine (#2): Layer 1 — oracle.query.first_seen + oracle.query.period
+  (structured time-range, deterministic, no LLM; query.py TimeMachine, SQL in
+  baseline, half-open [start, end)). Layer 2 — oracle.ask: enum-constrained LLM
+  intent → dispatch Layer 1 → code-templated {answer, query_used, raw_result};
+  "unknown" fallback; raw_result safeguard; ask.py Asker composes TimeMachine
+  (Layer 1 stays LLM-free); core oracle.ask:15.0 timeout (NL-12a). Reuses
+  core.envelope + core.errors only (D1=c). 55 unit + 14 integration (3 real-Ollama,
+  -m ollama). ruff + mypy --strict clean. ORACLE fully done (Mode A + Mode B +
+  explainability + time-machine L1+L2). — NL-ask GREEN (`2feaf67`)
 - ECHO, PULSE, VAULT, TETHER, PURGE — pending (specs in docs/modules/)
 
 `chimera/proto/` — still empty (`.gitkeep`).
@@ -150,12 +153,12 @@ No scaffold remains — all 8 core modules implemented.
 **Tooling:** `pyproject.toml` + `uv.lock` + `.venv` (Python 3.13.9); ruff + mypy (strict) + pytest configured. Direct deps: cryptography, pydantic(-settings), **ollama==0.6.2** (§6-allowed; httpx + anyio/certifi transitive). pytest markers: `integration`, `ollama`.
 
 **Tests:**
-- Python (pytest, default): 430 passing (31 errors + 41 envelope + 36 config + 35 tokens + 36 broker + 63 lifecycle + 60 registry + 81 server + 12 oracle observe-first + 17 oracle Mode B + 10 oracle explainability + 8 oracle time-machine [3 baseline + 4 query + 1 advisory])
-- Python (integration, marked — `pytest -m integration`): 19 passing (4 CHAFF + 4 MIRROR + 11 ORACLE: 4 observe-first + 3 Mode B hermetic + 2 Time-Machine query + 2 real-Ollama); the 2 real-Ollama skip when Ollama is down
-- Python (ollama, marked — `pytest -m ollama`): 2 passing (subset of integration; real llama3.2:1b)
+- Python (pytest, default): 438 passing (31 errors + 41 envelope + 36 config + 35 tokens + 36 broker + 63 lifecycle + 60 registry + 81 server + 12 oracle observe-first + 17 oracle Mode B + 10 oracle explainability + 8 oracle time-machine + 8 oracle NL-ask [7 ask + 1 advisory])
+- Python (integration, marked — `pytest -m integration`): 22 passing (4 CHAFF + 4 MIRROR + 14 ORACLE: 4 observe-first + 3 Mode B hermetic + 2 Time-Machine query + 2 NL-ask + 3 real-Ollama); the 3 real-Ollama skip when Ollama is down
+- Python (ollama, marked — `pytest -m ollama`): 3 passing (subset of integration; real llama3.2:1b)
 - Native (CHAFF Unity): 46 passing (7 endpoints + 6 schedule + 6 crypto + 6 db + 10 jsonrpc + 6 commands + 5 generation)
 - Native (MIRROR Unity): 42 passing (6 perturb + 6 profile + 5 exclude + 5 stats + 4 rng + 10 jsonrpc + 6 commands)
-- Total: 537 passing (ollama subset not double-counted)
+- Total: 548 passing (ollama subset not double-counted)
 
 **Open tails (honest tracking, MANIFESTO §4):**
 - Fernet at-rest: CHAFF (C/OpenSSL) and ORACLE (Python `cryptography.Fernet`) share the format but interop is NOT cross-tested (B1 deferred; format-faithful).
@@ -174,7 +177,10 @@ No scaffold remains — all 8 core modules implemented.
 - ORACLE similar_events is naive recency (top-3 same source+type) — embeddings-based similarity is v2 (TODO).
 - ORACLE explainability deferred: oracle.explain (separate method) + confidence field (EP-2 enriched classify instead).
 - ORACLE next slices: auto-classify per event + oracle.anomaly.detected emission + oracle.model.swap (similar_events debt already repaid naive).
-- ORACLE Time-Machine Layer 2 deferred: conversational oracle.ask(NL) + LLM narration of query results; trend (per-day) / compare (periodA vs B) / new_since(cutoff).
+- ORACLE Time-Machine Layer 2 (NL ask) DONE — oracle.ask: enum-intent → Layer 1 dispatch → code-templated answer; "unknown" fallback.
+- ORACLE NL-ask: enum stops invented queries but NOT semantic mis-routing (1B answered "whatsapp" to a "chaff" question); raw_result is the transparent safeguard.
+- ORACLE Layer 2 LLM-narration deferred (code-template now; richer narration + timeout re-check next); trend/compare/new_since routing deferred.
+- ORACLE first core touch: core/server.py METHOD_TIMEOUTS += oracle.ask:15.0 (NL-12a, data-driven cold ~4.4s).
 - ORACLE baseline.export (§5.3 spec-debt) explicitly deferred (TM-9b) — separate slice.
 - ORACLE real event input is CHAFF only — MIRROR emits nothing yet, so chaff.* is the sole live source feeding the baseline.
 - ORACLE standalone `python -m oracle` needs modules/oracle on PYTHONPATH (proper editable-package install is a follow-up; __main__ cannot self-fix the import path).
