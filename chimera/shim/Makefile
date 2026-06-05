@@ -1,0 +1,48 @@
+# CHIMERA privileged shim — root LaunchDaemon, 4 enumerated ops (§8.8 / SHIM.md).
+#   make         build the shim daemon binary
+#   make test    build + run the Unity test suite
+#   make format  clang-format our sources (vendored excluded)
+#   make clean   remove build artifacts
+#
+# Slice 1 (SHIM.md §5.4): NO-OP security skeleton — socket server + LOCAL_PEERCRED
+# (peercred-only, SS-6) + op-enum whitelist + ping/pong. No secret (Slice 2),
+# no launchd plist (SH-8), no code-signing (Slice 2), no real ops (Slice 3+).
+CC := clang
+
+# No external libraries — POSIX sockets + getsockopt(LOCAL_PEERCRED) only. The
+# shim NEVER opens network sockets (§8.8); UNIX-domain only. No curl/sqlite/openssl,
+# no frameworks (Keychain eviction is Slice 3+, gated separately).
+INCLUDES := -Iinclude -Isrc/vendor/cjson
+STRICT  := -std=c17 -Wall -Wextra -Werror -O2 $(INCLUDES)
+RELAXED := -std=c17 -O2 $(INCLUDES)
+TESTCFL := -std=c17 -Wall -Wextra -O2 $(INCLUDES) -Itests/vendor/unity -DUNITY_INCLUDE_DOUBLE
+
+BIN       := chimera-shim
+OUR_OBJS  := $(patsubst %.c,%.o,$(filter-out src/main.c,$(wildcard src/*.c)))
+VEND_OBJS := src/vendor/cjson/cJSON.o
+
+$(BIN): src/main.o $(OUR_OBJS) $(VEND_OBJS)
+	$(CC) $^ -o $@
+
+# Vendored objects — relaxed flags (more specific stem wins over src/%.o).
+src/vendor/%.o: src/vendor/%.c
+	$(CC) $(RELAXED) -c $< -o $@
+
+# Our objects — strict flags.
+src/%.o: src/%.c
+	$(CC) $(STRICT) -c $< -o $@
+
+# Tests link our logic (minus main) + vendored cJSON + Unity, no -Werror.
+test:
+	$(CC) $(TESTCFL) $(wildcard tests/*.c) tests/vendor/unity/unity.c \
+	  $(filter-out src/main.c,$(wildcard src/*.c)) src/vendor/cjson/cJSON.c \
+	  -o run_tests
+	./run_tests
+
+format:
+	clang-format -i include/*.h src/*.c tests/test_*.c
+
+clean:
+	rm -f $(BIN) run_tests src/main.o $(OUR_OBJS) $(VEND_OBJS)
+
+.PHONY: test format clean
