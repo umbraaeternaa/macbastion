@@ -16,5 +16,6 @@ int main(void) {
     run_escalation_tests();
     run_emit_tests();
     run_commands_tests();
+    run_monitor_tests();
     return UNITY_END();
 }
