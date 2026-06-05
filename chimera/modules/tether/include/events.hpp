@@ -11,9 +11,11 @@
 
 namespace tether {
 
-/* Wire-string helpers (e.g. Stage::L1 -> "L1", Disappearance::FADE -> "fade"). */
+/* Wire-string helpers (e.g. Stage::L1 -> "L1", Disappearance::FADE -> "fade",
+ * Presence::ABSENT -> "absent"). */
 const char *stage_name(Stage s);
 const char *disappearance_name(Disappearance d);
+const char *presence_name(Presence p);
 
 /* {rssi_smoothed} */
 cJSON *event_present(double rssi_smoothed);

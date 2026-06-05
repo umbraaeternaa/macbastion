@@ -1,7 +1,6 @@
-/* ewma — EWMA RSSI smoother (§3, alpha 0.3).
- *
- * RED STUB (Slice 1): update() returns a sentinel and does not blend; GREEN
- * implements alpha_*sample + (1-alpha_)*value_ with first-sample init. */
+/* ewma — EWMA RSSI smoother (§3, alpha 0.3). The first sample initializes the
+ * average; subsequent samples blend alpha_*sample + (1-alpha_)*value_, rejecting
+ * momentary spikes. */
 #include "ewma.hpp"
 
 namespace tether {
@@ -9,9 +8,13 @@ namespace tether {
 Ewma::Ewma(double alpha) : alpha_(alpha), value_(0.0), initialized_(false) {}
 
 double Ewma::update(double sample) {
-    (void)sample; /* RED: GREEN blends alpha_*sample + (1-alpha_)*value_. */
-    (void)alpha_;
-    return 0.0; /* RED sentinel */
+    if (!initialized_) {
+        value_ = sample;
+        initialized_ = true;
+    } else {
+        value_ = alpha_ * sample + (1.0 - alpha_) * value_;
+    }
+    return value_;
 }
 
 double Ewma::value() const { return value_; }
