@@ -1,0 +1,7 @@
+# build artifacts
+*.o
+/tether
+/run_tests
+
+# runtime state
+*.db
