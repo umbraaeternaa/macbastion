@@ -43,6 +43,7 @@ from core.errors import (
     RpcError,
 )
 
+from oracle.ask import Asker
 from oracle.baseline import BaselineStore
 from oracle.detector import Detector
 from oracle.observer import Observer
@@ -66,6 +67,7 @@ class OracleClient:
         "oracle.threshold.set",
         "oracle.query.first_seen",
         "oracle.query.period",
+        "oracle.ask",
     )
     EVENTS: tuple[str, ...] = ("oracle.baseline.updated", "oracle.error")
     # D5=b: allow-list of real producers. MIRROR emits nothing yet, so only
@@ -78,6 +80,7 @@ class OracleClient:
         store: BaselineStore,
         *,
         detector: Detector | None = None,
+        asker: Asker | None = None,
         baseline_every: int = 100,
         heartbeat_interval: float = 2.0,
     ) -> None:
@@ -85,6 +88,7 @@ class OracleClient:
         self._store = store
         self._detector = detector  # DI (MD-B-1); None -> classify gated -31004
         self._timemachine = TimeMachine(store)  # #2 — always available (no LLM)
+        self._asker = asker  # DI (#2 Layer 2); None -> ask gated -31004
         self._heartbeat_interval = heartbeat_interval
         self._observer = Observer(
             store,
@@ -196,6 +200,8 @@ class OracleClient:
                 result = await self._handle_query_first_seen(request.params)
             elif request.method == "oracle.query.period":
                 result = await self._handle_query_period(request.params)
+            elif request.method == "oracle.ask":
+                result = await self._handle_ask(request.params)
             else:
                 raise RpcError(code=JSONRPC_METHOD_NOT_FOUND)
             return Response(jsonrpc="2.0", id=request.id, result=result)
@@ -283,6 +289,16 @@ class OracleClient:
         if not isinstance(start, str) or not isinstance(end, str):
             raise RpcError(code=JSONRPC_INVALID_PARAMS, message="start/end required")
         return await self._timemachine.period_summary(start, end)
+
+    async def _handle_ask(
+        self, params: dict[str, Any] | list[Any] | None
+    ) -> dict[str, Any]:
+        """Time-Machine Layer 2 (#2): NL ask. Gated -31004 if no Asker (no LLM)."""
+        if self._asker is None:
+            raise RpcError(code=ChimeraError.PRECONDITION_FAILED)
+        if not isinstance(params, dict) or not isinstance(params.get("question"), str):
+            raise RpcError(code=JSONRPC_INVALID_PARAMS, message="question required")
+        return await self._asker.ask(params["question"])
 
     async def _heartbeat_loop(self) -> None:
         await self._registered.wait()

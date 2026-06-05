@@ -5,6 +5,7 @@ passes today; it locks the invariant against future explainability changes.
 No core, mock LLM.
 """
 
+from oracle.ask import Asker
 from oracle.baseline import BaselineStore
 from oracle.detector import Detector
 from oracle.query import TimeMachine
@@ -43,3 +44,14 @@ async def test_query_does_not_mutate_baseline(tmp_path):
     await tm.first_seen("chaff")
     await tm.period_summary("2026-06-01", "2026-06-02")
     assert store.event_count() == before  # advisory: queries are read-only
+
+
+async def test_ask_does_not_mutate_baseline(tmp_path):
+    store = BaselineStore(tmp_path / "b.db", tmp_path / "b.key")
+    store.record_event(
+        ts="2026-06-01T10:00:00+00:00", source="chaff", event_type="request.sent", payload={}
+    )
+    before = store.event_count()
+    asker = Asker(_FakeLlm(), TimeMachine(store))
+    await asker.ask("when did chaff first appear?")
+    assert store.event_count() == before  # advisory: ask is read + LLM, never acts

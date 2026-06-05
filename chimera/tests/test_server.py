@@ -937,6 +937,7 @@ class TestRouteTimeout:
         server = _make_server(tmp_path)
         assert server._timeout_for("vault.unlock") == 10.0
         assert server._timeout_for("oracle.classify") == 30.0
+        assert server._timeout_for("oracle.ask") == 15.0  # NL-12a (cold LLM load)
 
     async def test_unknown_method_uses_config_default(self, tmp_path: Any) -> None:
         server = _make_server(tmp_path)

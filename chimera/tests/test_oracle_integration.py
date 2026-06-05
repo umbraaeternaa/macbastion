@@ -21,10 +21,12 @@ from core.lifecycle import Lifecycle
 from core.registry import Registry
 from core.server import Server
 from core.tokens import TokenIssuer
+from oracle.ask import Asker
 from oracle.baseline import BaselineStore
 from oracle.client import OracleClient
 from oracle.detector import Detector
 from oracle.llm import LlmClient
+from oracle.query import TimeMachine
 
 pytestmark = pytest.mark.integration
 
@@ -299,3 +301,89 @@ async def test_oracle_query_period_via_4a(tmp_path):
     finally:
         task.cancel()
         await server.stop()
+
+
+# -- Time-Machine Layer 2 (#2 NL ask) ---------------------------------------
+
+
+class _FakeIntentLlm:
+    """Returns a canned intent JSON — hermetic ask routing (no real Ollama)."""
+
+    def __init__(self, response):
+        self._response = response
+
+    @property
+    def model(self):
+        return "fake"
+
+    def available(self):
+        return True
+
+    def generate(self, prompt, schema, *, temperature=0.0, num_predict=200):
+        return self._response
+
+
+async def test_oracle_ask_via_4a(tmp_path):
+    server, registry, _ = _make_core(tmp_path)
+    await server.start()
+    store = BaselineStore(tmp_path / "baseline.db", tmp_path / "baseline.key")
+    store.record_event(
+        ts="2026-06-01T10:00:00+00:00", source="chaff", event_type="request.sent", payload={}
+    )
+    asker = Asker(
+        _FakeIntentLlm('{"query_type":"first_seen","source":"chaff"}'),
+        TimeMachine(store),
+    )
+    client = OracleClient(tmp_path, store, asker=asker)
+    task = asyncio.create_task(client.run())
+    try:
+        assert await _wait(lambda: registry.is_registered("oracle"))
+        resp = await _roundtrip(
+            tmp_path / "core.sock",
+            '{"jsonrpc":"2.0","id":1,"method":"oracle.ask",'
+            '"params":{"question":"when did chaff first appear?"}}\n',
+        )
+        assert resp.error is None
+        assert resp.result["query_used"] == "first_seen"
+        assert resp.result["raw_result"]["first_seen"] == "2026-06-01T10:00:00+00:00"
+    finally:
+        task.cancel()
+        await server.stop()
+
+
+async def test_oracle_ask_unknown_via_4a(tmp_path):
+    server, registry, _ = _make_core(tmp_path)
+    await server.start()
+    store = BaselineStore(tmp_path / "baseline.db", tmp_path / "baseline.key")
+    asker = Asker(_FakeIntentLlm('{"query_type":"unknown"}'), TimeMachine(store))
+    client = OracleClient(tmp_path, store, asker=asker)
+    task = asyncio.create_task(client.run())
+    try:
+        assert await _wait(lambda: registry.is_registered("oracle"))
+        resp = await _roundtrip(
+            tmp_path / "core.sock",
+            '{"jsonrpc":"2.0","id":2,"method":"oracle.ask",'
+            '"params":{"question":"what is the meaning of life?"}}\n',
+        )
+        assert resp.error is None
+        assert resp.result["query_used"] == "unknown"
+        assert resp.result["raw_result"] is None
+    finally:
+        task.cancel()
+        await server.stop()
+
+
+@pytest.mark.ollama
+async def test_ask_real_ollama(tmp_path):
+    """Opt-in (-m ollama): NL ask routing on a real llama3.2:1b. Structural only."""
+    llm = LlmClient()
+    if not llm.available():
+        pytest.skip("Ollama not reachable on localhost:11434")
+    store = BaselineStore(tmp_path / "baseline.db", tmp_path / "baseline.key")
+    store.record_event(
+        ts="2026-06-01T10:00:00+00:00", source="chaff", event_type="request.sent", payload={}
+    )
+    result = await Asker(llm, TimeMachine(store)).ask("when did chaff first appear?")
+    assert isinstance(result["answer"], str) and result["answer"]
+    assert result["query_used"] in {"first_seen", "period", "unknown"}
+    assert "raw_result" in result

@@ -91,6 +91,9 @@ class Server:
     METHOD_TIMEOUTS: ClassVar[dict[str, float]] = {
         "vault.unlock": 10.0,
         "oracle.classify": 30.0,
+        # oracle.ask: one LLM intent call; cold model load measured ~4.4s, so the
+        # 5s default is too tight (NL-12a). 15s absorbs cold-load + IPC overhead.
+        "oracle.ask": 15.0,
     }
 
     def __init__(
