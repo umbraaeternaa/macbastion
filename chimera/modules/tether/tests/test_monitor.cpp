@@ -123,8 +123,13 @@ static void test_recovered_after_return(void) {
 
 static void test_present_from_fringe(void) {
     Monitor m = make_monitor();
-    m.step(seen(-85.0), 0); /* -> FRINGE */
-    auto ev = m.step(seen(-45.0), 0); /* strong -> PRESENT */
+    m.step(seen(-85.0), 0); /* weak -> FRINGE; smoothed = -85 */
+    /* EWMA (alpha 0.3) smooths, so ONE strong tick after a weak one does not
+     * cross near_threshold yet (-45 -> smoothed -73, still < -70 -> FRINGE).
+     * A second strong tick accumulates over the threshold (-73 -> -64.6 >= -70)
+     * -> PRESENT. This is the §3 spike-rejection feature, not a recovery bug. */
+    m.step(seen(-45.0), 0); /* smoothed -73: still FRINGE */
+    auto ev = m.step(seen(-45.0), 0); /* smoothed -64.6 >= -70 -> PRESENT */
     TEST_ASSERT_TRUE(has_kind(ev, EventKind::PRESENT));
 }
 
