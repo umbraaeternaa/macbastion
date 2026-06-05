@@ -191,18 +191,43 @@ class BaselineStore:
         return int(row["n"])
 
     def first_seen(self, source: str, event_type: str | None = None) -> str | None:
-        """Earliest ts for a source (optionally a type); None if never seen.
-
-        STUB — RED slice (Time-Machine #2).
-        """
-        raise NotImplementedError("BaselineStore.first_seen — RED slice")
+        """Earliest ts for a source (optionally a type); None if never seen."""
+        sql = "SELECT MIN(ts) AS m FROM events WHERE source = ?"
+        params: list[str] = [source]
+        if event_type is not None:
+            sql += " AND type = ?"
+            params.append(event_type)
+        with self._lock:
+            row = self._con.execute(sql, params).fetchone()
+        m = row["m"]
+        return None if m is None else str(m)
 
     def period_summary(self, start: str, end: str) -> dict[str, Any]:
         """Counts in the half-open window [start, end): total/by_source/by_type.
 
-        STUB — RED slice (Time-Machine #2).
+        ISO-8601 lexicographic comparison; [start, end) avoids double-counting
+        an event on a shared boundary between adjacent periods.
         """
-        raise NotImplementedError("BaselineStore.period_summary — RED slice")
+        with self._lock:
+            total = self._con.execute(
+                "SELECT COUNT(*) AS n FROM events WHERE ts >= ? AND ts < ?",
+                (start, end),
+            ).fetchone()["n"]
+            by_source = self._con.execute(
+                "SELECT source, COUNT(*) AS n FROM events "
+                "WHERE ts >= ? AND ts < ? GROUP BY source",
+                (start, end),
+            ).fetchall()
+            by_type = self._con.execute(
+                "SELECT type, COUNT(*) AS n FROM events "
+                "WHERE ts >= ? AND ts < ? GROUP BY type",
+                (start, end),
+            ).fetchall()
+        return {
+            "total": int(total),
+            "by_source": {r["source"]: r["n"] for r in by_source},
+            "by_type": {r["type"]: r["n"] for r in by_type},
+        }
 
     def event_count(self) -> int:
         """Total number of recorded events (from baseline_meta)."""

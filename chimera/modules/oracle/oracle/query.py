@@ -8,13 +8,14 @@ calls are off-loaded via asyncio.to_thread (consistent with the detector).
 STUB — RED slice. __init__ wires the store; queries raise NotImplementedError.
 """
 
+import asyncio
 from typing import Any
 
 from oracle.baseline import BaselineStore
 
 
 class TimeMachine:
-    """Structured time-range queries over the baseline (#2). STUB (RED slice)."""
+    """Structured time-range queries over the baseline (#2)."""
 
     def __init__(self, store: BaselineStore) -> None:
         self._store = store
@@ -23,8 +24,10 @@ class TimeMachine:
         self, source: str, event_type: str | None = None
     ) -> dict[str, Any]:
         """Earliest occurrence of a source (optionally a type)."""
-        raise NotImplementedError("TimeMachine.first_seen — RED slice")
+        ts = await asyncio.to_thread(self._store.first_seen, source, event_type)
+        return {"source": source, "event_type": event_type, "first_seen": ts}
 
     async def period_summary(self, start: str, end: str) -> dict[str, Any]:
         """Event counts in the half-open window [start, end)."""
-        raise NotImplementedError("TimeMachine.period_summary — RED slice")
+        summary = await asyncio.to_thread(self._store.period_summary, start, end)
+        return {"start": start, "end": end, **summary}
