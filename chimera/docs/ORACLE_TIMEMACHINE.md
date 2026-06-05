@@ -87,15 +87,81 @@ oracle.query.period(start, end)
 
 ## 7. Deferred (next slices)
 
-- **Layer 2 — conversational.** `oracle.ask(NL)` + LLM narration of query
-  results (the non-deterministic layer, split off deliberately).
 - More queries: `trend` (per-day bucket), `compare` (periodA vs periodB),
   `new_since(cutoff)`.
 - `oracle.baseline.export` — the §5.3 spec-debt (TM-9b).
 
 ---
 
-## 8. Status
+## 8. Layer 2 — Conversational NL ask (delivered 2feaf67)
 
-Delivered in `8522c87` (RED `dc80bc2` → GREEN). 537 tests total; ruff + mypy
---strict clean. ARCHITECTURE.md untouched.
+### Architecture (two-step, one LLM call)
+
+- `oracle.ask(question)` → `Asker(llm, timemachine)`.
+- **Step 1 (LLM):** intent extraction — question → `{query_type enum, params}` via
+  `format=INTENT_SCHEMA`.
+- **Step 2 (code):** validate params per type → dispatch the Layer 1 query
+  (deterministic).
+- **Step 3 (code):** code-templated answer (NL-2a — NO LLM narration this
+  sub-slice).
+- Asker **composes** TimeMachine — Layer 1 stays LLM-free (its 10 tests intact).
+
+### Return shape
+
+`oracle.ask` → `{answer, query_used, raw_result}`
+- `answer` — code-templated human sentence (deterministic).
+- `query_used` — which query the LLM chose (transparency).
+- `raw_result` — verbatim Layer 1 result (the safeguard, see limitation below).
+
+### Honest limitation — enum stops invented queries, NOT semantic mis-routing
+
+The INTENT_SCHEMA enum (`query_type ∈ {first_seen, period, unknown}`) prevents the
+LLM inventing a nonexistent query — but it can still choose the WRONG allowed
+query or hallucinate params. Empirical: asked "when did chaff first appear?",
+llama3.2:1b returned `source="whatsapp"` (query_type right, source hallucinated).
+`raw_result` is the transparent safeguard — the caller sees exactly what ran.
+`ask` is best-effort NL, not a correctness guarantee.
+
+### "unknown" fallback (NL-4a)
+
+A 1B model is often uncertain. Malformed / unsure / invalid-params →
+`query_used="unknown"` + an honest "couldn't map" answer (lenient parse —
+asymmetric with Mode B's strict parse by design; an honest don't-know beats
+guessing).
+
+### core timeout (NL-12a, data-driven)
+
+Measured: a cold `llama3.2:1b` intent call is ~4.4s; the 5s default is too tight
+→ `core/server.py` METHOD_TIMEOUTS gains `oracle.ask: 15.0` (< classify's 30s —
+intent is lighter).
+
+### Decisions (NL-1 … NL-12)
+
+| ID | Area | Chosen | Rationale |
+|----|------|--------|-----------|
+| NL-1 | Routing | (b) structured intent (query_type enum) | enum forbids inventing a query; dispatch deterministic |
+| NL-2 | LLM calls | (a) one (intent) + code-templated answer | Deterministic answer; narration deferred |
+| NL-3 | Intent schema | (a) flat {query_type, source?, event_type?, start?, end?} | Simple for a 1B model |
+| NL-4 | Unsure/unknown | (a) "unknown" enum → honest "don't know" | Beats guessing the wrong query |
+| NL-5 | Param validation | (a) per-type before dispatch | LLM garbage → unknown, not a junk query |
+| NL-6 | Return shape | (a) {answer, query_used, raw_result} | Transparent + deterministic raw_result safeguard |
+| NL-7 | Gate | (a) -31004 when Ollama down | Consistent with Mode B |
+| NL-8 | Testing | (a)+(b) mock intent exact + real-Ollama structural | Deterministic routing tests; real call structural-only |
+| NL-9 | Component | (a) new ask.py Asker(llm, timemachine) | Keeps Layer 1 LLM-free |
+| NL-10 | Spec record | (a) this Layer 2 section | Mirrors the doc's discipline |
+| NL-11 | Scope | (c) intent-only on first_seen + period | Routing tested; narration a later sub-slice |
+| NL-12 | core timeout | (a) oracle.ask: 15.0 | Data-driven (cold ~4.4s vs 5s default) |
+
+### Layer 2 deferred (next sub-slice)
+
+- **LLM narration** — a richer human answer vs the code-template; re-check the
+  timeout if a second LLM call is added.
+- `trend` / `compare` / `new_since` routing — needs those Layer 1 queries first.
+
+---
+
+## 9. Status
+
+Layer 1 delivered in `8522c87`; Layer 2 (NL ask) delivered in `2feaf67`
+(RED `9de26a0` → GREEN). 548 tests total; ruff + mypy --strict clean.
+ARCHITECTURE.md untouched.
