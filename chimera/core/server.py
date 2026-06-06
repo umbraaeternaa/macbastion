@@ -29,6 +29,7 @@ to -31000 before any auth check. A forged token on a core.* method -> -31007.
 
 import asyncio
 import json
+import logging
 import time
 from dataclasses import dataclass
 from typing import Any, ClassVar
@@ -56,6 +57,8 @@ from core.errors import (
 from core.lifecycle import InvalidTransitionError, Lifecycle
 from core.registry import Registry
 from core.tokens import TokenIssuer
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -127,6 +130,9 @@ class Server:
         self._module_writers: dict[str, asyncio.StreamWriter] = {}
         self._pending: dict[int, tuple[asyncio.Future[Response], str]] = {}
         self._next_internal_id: int = 0
+        # Anomaly-tripwire relay (idea #3, path B).
+        self._relay_sub: Subscription | None = None
+        self._relay_task: asyncio.Task[None] | None = None
 
     # -- connections ------------------------------------------------------
 
@@ -267,15 +273,21 @@ class Server:
         if not future.done():
             future.set_result(response)
 
-    async def _route(self, request: Request, conn: Connection) -> Response:
-        """Forward a module method to its module, await the reply, relay it back."""
-        # D7: only surfaces may invoke module methods; a module may not.
-        if conn.is_module:
-            raise RpcError(code=ChimeraError.NOT_AUTHORIZED)
-        owner = request.method.split(".", 1)[0]
+    async def _issue_to_module(
+        self, method: str, params: dict[str, Any] | list[Any] | None
+    ) -> Response:
+        """Send a module method to its owner, await and return the raw reply.
+
+        Shared plumbing for _route (operator-driven, behind the D7 guard) and
+        _dispatch_internal (core-authority, in-process). Does the registry/writer
+        checks, internal-id correlation, write, and bounded await — raising RpcError
+        for an offline owner, a missing method, or a timeout. The returned Response
+        keeps the internal correlation id; the caller maps it to its own context.
+        """
+        owner = method.split(".", 1)[0]
         if not self._registry.is_registered(owner):
             raise RpcError(code=ChimeraError.MODULE_OFFLINE)
-        if not self._registry.has_method(request.method):
+        if not self._registry.has_method(method):
             raise RpcError(code=ChimeraError.CAPABILITY_MISSING)
         writer = self._module_writers.get(owner)
         if writer is None:  # registered but no live connection
@@ -288,18 +300,24 @@ class Server:
         forwarded = Request(
             jsonrpc="2.0",
             id=internal_id,
-            method=request.method,
-            params=request.params,
+            method=method,
+            params=params,
         )
         try:
             writer.write(serialize_frame(forwarded).encode())
             await writer.drain()
-            reply = await asyncio.wait_for(future, self._timeout_for(request.method))
+            return await asyncio.wait_for(future, self._timeout_for(method))
         except TimeoutError as e:
             raise RpcError(code=ChimeraError.MODULE_TIMEOUT) from e
         finally:
             self._pending.pop(internal_id, None)
 
+    async def _route(self, request: Request, conn: Connection) -> Response:
+        """Forward a module method to its module, await the reply, relay it back."""
+        # D7: only surfaces may invoke module methods; a module may not.
+        if conn.is_module:
+            raise RpcError(code=ChimeraError.NOT_AUTHORIZED)
+        reply = await self._issue_to_module(request.method, request.params)
         # Rewrite the module's reply id back to the original caller's id.
         if reply.error is not None:
             return Response(jsonrpc="2.0", id=request.id, error=reply.error)
@@ -307,17 +325,59 @@ class Server:
 
     # -- anomaly-tripwire relay (idea #3, path B) -------------------------
 
+    async def _dispatch_internal(
+        self, method: str, params: dict[str, Any] | None
+    ) -> Response:
+        """Issue a module command on core's OWN authority (no connection).
+
+        The single core-initiated command path. It reuses _issue_to_module but is
+        never reachable from the wire — no JSON-RPC method maps here, so the D7
+        guard in _route (modules cannot invoke modules) is untouched. The raw reply
+        is returned as-is: core has no external caller, so there is no caller-id
+        rewrite. Raises RpcError on offline/timeout, which _relay_handle isolates.
+        """
+        return await self._issue_to_module(method, params)
+
     async def _relay_handle(self, event: Event) -> None:
         """Relay one broker event to its mapped module command (RELAY_RULES).
 
-        Core acts as authority here — it issues the command in-process, never via
-        a connection, so the D7 wire guard is untouched. Resilient: a missing
-        target or a timeout is logged, never raised, so the consume loop survives.
-
-        RED: no-op stub — GREEN looks up RELAY_RULES and dispatches via
-        _dispatch_internal (which reuses the extracted _issue_to_module plumbing).
+        Core acts as authority — it issues the command in-process, never via a
+        connection, so the D7 wire guard is untouched. Resilient: an unmapped topic
+        issues nothing; a missing target, a timeout, or any error is logged, never
+        raised, so the consume loop survives.
         """
-        return None
+        target = self.RELAY_RULES.get(event.topic)
+        if target is None:
+            return  # no rule for this topic — issue nothing
+        try:
+            reply = await self._dispatch_internal(target, None)
+        except RpcError as exc:
+            logger.warning(
+                "anomaly relay %s -> %s failed: %s", event.topic, target, exc
+            )
+            return
+        except Exception:  # noqa: BLE001 — relay must never crash the consume loop
+            logger.exception("anomaly relay %s -> %s raised", event.topic, target)
+            return
+        if reply.error is not None:
+            logger.warning(
+                "anomaly relay %s -> %s returned error: %s",
+                event.topic,
+                target,
+                reply.error,
+            )
+        else:
+            logger.info("anomaly relay %s -> %s ok", event.topic, target)
+
+    async def _relay_loop(self) -> None:
+        """Consume relay-rule events and dispatch each (errors isolated per event)."""
+        assert self._relay_sub is not None
+        try:
+            while True:
+                event = await self._relay_sub.get()
+                await self._relay_handle(event)
+        except SubscriptionClosedError:
+            return
 
     # -- param helpers ----------------------------------------------------
 
@@ -376,6 +436,11 @@ class Server:
         self._events_path.chmod(self._config.socket_mode)
         self._start_time = time.time()
         self._sweep_task = asyncio.create_task(self._lifecycle.run())
+        # Subscribe core itself to the relay-rule topics and consume them in a
+        # dedicated task (mirrors the sweep task; errors isolated per event).
+        if self.RELAY_RULES:
+            self._relay_sub = self._broker.subscribe(list(self.RELAY_RULES))
+            self._relay_task = asyncio.create_task(self._relay_loop())
 
     async def stop(self) -> None:
         """Stop accepting, close both sockets, unlink them, cancel the sweep."""
@@ -386,6 +451,16 @@ class Server:
             except asyncio.CancelledError:
                 pass
             self._sweep_task = None
+        if self._relay_task is not None:
+            self._relay_task.cancel()
+            try:
+                await self._relay_task
+            except asyncio.CancelledError:
+                pass
+            self._relay_task = None
+        if self._relay_sub is not None:
+            self._relay_sub.close()
+            self._relay_sub = None
         for server in (self._core_server, self._events_server):
             if server is not None:
                 server.close()
