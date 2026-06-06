@@ -69,7 +69,11 @@ class OracleClient:
         "oracle.query.period",
         "oracle.ask",
     )
-    EVENTS: tuple[str, ...] = ("oracle.baseline.updated", "oracle.error")
+    EVENTS: tuple[str, ...] = (
+        "oracle.baseline.updated",
+        "oracle.error",
+        "oracle.anomaly.detected",  # idea #3 3C: advisory anomaly signal (emit-on-classify)
+    )
     # D5=b: allow-list of real producers. MIRROR emits nothing yet, so only
     # CHAFF's two topics are subscribed for now.
     SUBSCRIBE_TOPICS: tuple[str, ...] = ("chaff.request.sent", "chaff.error")
