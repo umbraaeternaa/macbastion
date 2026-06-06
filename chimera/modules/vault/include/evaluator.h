@@ -11,7 +11,16 @@
 #include "parser.h"
 #include "vault.h"
 
-/* Evaluate a parsed policy against `ctx`. NULL policy / NULL ctx -> VAULT_DENY. */
+/* Evaluate a parsed policy against `ctx` — the INSTANTANEOUS check. NULL policy /
+ * NULL ctx -> VAULT_DENY. Returns ALLOW/DENY only (never DEFER). Unchanged from
+ * slice 1; the DEFER projection lives in vault_decide. */
 VaultVerdict vault_eval(const VaultPolicy *p, const VaultContext *ctx);
+
+/* Decide with FORWARD TIME PROJECTION: if the policy is not allowed now but a
+ * future wall-clock time (within the cap) would make it ALLOW, return DEFER with
+ * the seconds to wait. Holds non-time variables constant (only time advances), so
+ * a block that time cannot lift -> DENY. A base ERROR (unknown var / type mismatch
+ * / module down) -> DENY, never DEFER. NULL policy / NULL ctx -> {DENY, 0}. */
+VaultDecision vault_decide(const VaultPolicy *p, const VaultContext *ctx);
 
 #endif /* VAULT_EVALUATOR_H */

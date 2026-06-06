@@ -14,5 +14,6 @@ int main(void) {
     run_evaluator_tests();
     run_fail_closed_tests();
     run_relock_tests();
+    run_decide_tests();
     return UNITY_END();
 }

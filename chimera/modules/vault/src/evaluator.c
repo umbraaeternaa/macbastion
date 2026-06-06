@@ -204,3 +204,13 @@ VaultVerdict vault_eval(const VaultPolicy *p, const VaultContext *ctx) {
     const VaultExpr *allow = vault_policy_allow_expr(p);
     return (eval_expr(allow, ctx) == PRED_TRUE) ? VAULT_ALLOW : VAULT_DENY;
 }
+
+VaultDecision vault_decide(const VaultPolicy *p, const VaultContext *ctx) {
+    (void)p;
+    (void)ctx;
+    /* RED stub: always {DENY, 0}. GREEN evaluates now (TRUE->ALLOW, ERROR->DENY)
+     * and, when FALSE, projects wall-clock time forward up to the cap to find the
+     * first ALLOW (DEFER seconds) or gives up (DENY). */
+    VaultDecision d = {VAULT_DENY, 0};
+    return d;
+}

@@ -22,6 +22,15 @@ typedef enum {
     VAULT_DEFER = 2,
 } VaultVerdict;
 
+/* A full decision: the verdict plus, when verdict == VAULT_DEFER, the wall-clock
+ * seconds the operator must wait until the policy would first ALLOW. defer_seconds
+ * is 0 for ALLOW and DENY. (vault_eval stays the instantaneous ALLOW/DENY check;
+ * vault_decide adds the forward time projection that can yield DEFER.) */
+typedef struct {
+    VaultVerdict verdict;
+    long defer_seconds;
+} VaultDecision;
+
 /* Enum policy variables (§4). Each carries an UNKNOWN member so a not-running
  * module fails closed unless the policy explicitly lists unknown. */
 typedef enum {
@@ -57,5 +66,10 @@ typedef struct {
  * parse error / unknown variable / type mismatch returns VAULT_DENY. Slice 1
  * returns ALLOW/DENY (never DEFER yet). */
 VaultVerdict vault_policy_evaluate(const char *policy_text, const VaultContext *ctx);
+
+/* Top-level decide: parse, then evaluate-with-projection against `ctx`, free.
+ * Returns ALLOW (now), DEFER (allowed after defer_seconds of elapsed time), or DENY
+ * (a parse error, or a block time cannot lift). Fail-closed throughout. */
+VaultDecision vault_policy_decide(const char *policy_text, const VaultContext *ctx);
 
 #endif /* VAULT_H */
