@@ -75,25 +75,28 @@ Slice 3A react-entrypoint (RED→GREEN) done. CORE: idea #3 Slice 3B anomaly-rel
 (RED→GREEN) done — a NEW core capability. ORACLE: idea #3 Slice 3C anomaly-emit
 (RED→GREEN) done — the real producer. **Idea #3 (Anomaly-Tripwire) COMPLETE** —
 3A+3B+3C wired + e2e-confirmed by 3D.
-Last completed: **VAULT DEFER — temporal projection** (commit `165a1de`) — the
-FIFTH native module's evaluator is now the FULL three-way (ALLOW/DENY/DEFER). When
-a policy is not allowed now but advancing the wall clock would make it ALLOW,
-`vault_decide` returns DEFER with the seconds to wait. Mechanism: base
-`eval_expr(now)` → TRUE = {ALLOW,0}, ERROR = {DENY,0} (fail-closed — an errored
-policy is never projected), FALSE → brute-force project a CONTEXT COPY forward via
-`advance_hour` (hour wraps 0..23 → on wrap weekday mod 7 + day_of_month++,
-seconds_since_boot += 3600), up to DEFER_CAP_STEPS=168 (7 days @ 1h); the first hour
-that evals TRUE → {DEFER, step×3600}; cap with no TRUE → {DENY,0}. Non-time
-variables are FROZEN, so a block time cannot lift (tether absent, module down, type
-mismatch) → DENY, never an endless DEFER. Reuses `eval_expr` unchanged (zero
-duplicated logic; composites free). ⚠️ `vault_eval` is UNTOUCHED (instantaneous
-ALLOW/DENY) — the 30 slice-1 tests stay green; DEFER is a NEW entrypoint
-(`vault_decide` + `VaultDecision {verdict, defer_seconds}`), avoiding the
-hour>=20→DEFER breakage WITHOUT test-fitting. Resolution is 1h (the context's
-finest clock field); day_of_month / boot-second precision is a documented tail.
-37 C Unity (30 slice-1 + 7 decide); `make all` -Werror clean. Still PURE C — no
-libsodium / Keychain / mount / IPC. (Prior: VAULT slice 1 `655f183`;
-Anomaly-Tripwire e2e 3D `37c3371`; ORACLE 3C `ee794ba`.)
+Last completed: **VAULT crypto engine** (commit `e82f69b`) — the FIFTH native
+module gets real cryptography via libsodium (the first VAULT external dependency;
+the pure-C phase ends here, deliberately). Three primitives:
+- `vault_crypto_derive` — Argon2id MODERATE (crypto_pwhash, OPSLIMIT/MEMLIMIT_MODERATE,
+  ALG_ARGON2ID13); password = master_secret ‖ policy_hash (binds the key to the
+  policy). The combined buffer holds the RAW master secret → it lives in sodium_malloc
+  secure memory and is sodium_free'd (zeroed) the instant derivation ends; the raw
+  secret never reaches swap or a core dump (VAULT's no-leak thesis). Deterministic
+  for fixed inputs (stable salt → same key).
+- `vault_crypto_seal` / `open` — XChaCha20-Poly1305 with a fresh random 192-bit nonce
+  per seal (nonce-misuse-resistant). open verifies the Poly1305 tag BEFORE releasing
+  plaintext; on wrong-key/tamper it returns false AND sodium_memzero's pt_out
+  (defensive active wipe — fail-closed, no partial leak).
+- `vault_secure_alloc/free` — sodium_malloc/free (guard pages + canary + mlock,
+  zeroed on free). `_Static_assert`s confirm the size #defines equal libsodium's.
+⚠️ **catch 1 RESOLVED:** libsodium chosen; CLAUDE.md §6 amended (`a038979`) to a
+per-module allowlist (the old "libcurl only" was already false — CHAFF links
+openssl@3+sqlite3). ⚠️ **spec amended (`a038979`):** XChaCha20-Poly1305 replaces
+AES-256-GCM (nonce-misuse-resistance, catch B), and key_salt is STABLE not
+"per-unlock" (catch A — a per-unlock salt would make stored ciphertext
+undecryptable). 44 C Unity (37 engine + 7 crypto); `make all` -Werror clean. (Prior:
+VAULT DEFER `165a1de`; slice 1 `655f183`; Anomaly-Tripwire 3D `37c3371`.)
 
 **Skeleton scope check (MANIFESTO §4 — honest accounting):**
 
@@ -221,11 +224,16 @@ No scaffold remains — all 8 core modules implemented.
   → DENY; ERROR never projected. `vault_eval` stays the instantaneous ALLOW/DENY
   (slice-1 contract intact, no test-fit). 1h resolution (day_of_month/boot-second =
   tail). relock_after parsed (min×60/hour×3600), not scheduled.
-  37 C Unity (6 lexer + 6 parser + 9 evaluator + 6 fail_closed + 3 relock + 7
-  decide), `make all` -Werror clean. PURE C — no libsodium/Keychain/mount/IPC/cJSON
-  (sidesteps all 3 design-pass catches). GATED/deferred: crypto (libsodium),
-  Keychain/Secure-Enclave master secret, mount_tmpfs, kqueue relock, IPC/daemon.
-  vault.lock (§6) is the TETHER L2 escalation target. — slice 1 `655f183` + DEFER `165a1de`
+  CRYPTO (`e82f69b`, libsodium — first VAULT external dep, pure-C phase ends): Argon2id
+  MODERATE derive (password = master_secret‖policy_hash, secure-mem + immediate wipe),
+  XChaCha20-Poly1305 seal/open (192-bit random nonce, fail-closed verify+wipe), sodium
+  secure memory (guard+canary+mlock). catch 1 RESOLVED (libsodium; §6 amended). Spec
+  amended: XChaCha20 over AES-GCM (catch B) + stable key_salt (catch A).
+  44 C Unity (6 lexer + 6 parser + 9 evaluator + 6 fail_closed + 3 relock + 7 decide
+  + 7 crypto), `make all` -Werror clean. GATED/deferred: Keychain/Secure-Enclave
+  master secret (entitlements), mount_tmpfs (catch 2 — root), kqueue relock, IPC/daemon
+  (catch 3 — jsonrpc). vault.lock (§6) is the TETHER L2 escalation target.
+  — slice 1 `655f183` + DEFER `165a1de` + crypto `e82f69b`
 - ECHO, PULSE, PURGE — pending (specs in docs/modules/)
 
 **Idea #3 — Anomaly-Tripwire (ORACLE anomaly → core relay → TETHER react) — COMPLETE:**
@@ -276,7 +284,7 @@ core, as authority, turns the event into a command.) Slices:
 
 `chimera/proto/` — still empty (`.gitkeep`).
 
-**Tooling:** `pyproject.toml` + `uv.lock` + `.venv` (Python 3.13.9); ruff + mypy (strict) + pytest configured. Direct deps: cryptography, pydantic(-settings), **ollama==0.6.2** (§6-allowed; httpx + anyio/certifi transitive). pytest markers: `integration`, `ollama`.
+**Tooling:** `pyproject.toml` + `uv.lock` + `.venv` (Python 3.13.9); ruff + mypy (strict) + pytest configured. Direct deps: cryptography, pydantic(-settings), **ollama==0.6.2** (§6-allowed; httpx + anyio/certifi transitive). pytest markers: `integration`, `ollama`. Native C deps (Homebrew, fail-fast in each Makefile, §6 allowlist): openssl@3 + sqlite3 (CHAFF), **libsodium (VAULT crypto — XChaCha20-Poly1305/Argon2id/secure-mem)**.
 
 **Tests:**
 - Python (pytest, default): 446 passing (31 errors + 41 envelope + 36 config + 35 tokens + 36 broker + 63 lifecycle + 60 registry + 86 server [81 + 5 anomaly-relay 3B] + 12 oracle observe-first + 17 oracle Mode B + 10 oracle explainability + 8 oracle time-machine + 8 oracle NL-ask [7 ask + 1 advisory] + 3 oracle anomaly-emit [3C client-unit])
@@ -286,8 +294,8 @@ core, as authority, turns the event into a command.) Slices:
 - Native (MIRROR Unity): 42 passing (6 perturb + 6 profile + 5 exclude + 5 stats + 4 rng + 10 jsonrpc + 6 commands)
 - Native (shim Unity): 23 passing (11 ops + 6 peercred + 2 server + 4 protocol) — separate C trust-plane suite, NOT in pytest
 - Native (TETHER C++ Unity): 48 passing (4 ewma + 6 presence + 4 classify + 8 escalation + 6 emit + 10 commands + 10 monitor) — separate C++ suite, NOT in pytest
-- Native (VAULT C Unity): 37 passing (6 lexer + 6 parser + 9 evaluator + 6 fail_closed + 3 relock + 7 decide) — separate C suite, NOT in pytest
-- Total: 671 passing (446 default + 29 integration + 46 CHAFF + 42 MIRROR + 23 shim + 48 TETHER + 37 VAULT Unity; ollama subset not double-counted)
+- Native (VAULT C Unity): 44 passing (6 lexer + 6 parser + 9 evaluator + 6 fail_closed + 3 relock + 7 decide + 7 crypto) — separate C suite, NOT in pytest
+- Total: 678 passing (446 default + 29 integration + 46 CHAFF + 42 MIRROR + 23 shim + 48 TETHER + 44 VAULT Unity; ollama subset not double-counted)
 
 **Open tails (honest tracking, MANIFESTO §4):**
 - Fernet at-rest: CHAFF (C/OpenSSL) and ORACLE (Python `cryptography.Fernet`) share the format but interop is NOT cross-tested (B1 deferred; format-faithful).
@@ -309,12 +317,15 @@ core, as authority, turns the event into a command.) Slices:
 - AF_UNIX path-too-long (env, NOT code) — real-socket integration (server `TestRealSocket*`, MIRROR, TETHER) binds UNIX sockets under pytest tmp_path; on macOS the default `TMPDIR` (`/var/folders/.../T`, ~48 chars) + pytest dirs + long test names exceeds the ~104-char `AF_UNIX` limit → 18 default `test_server.py` failures + integration breakage. Fix is ENV: `TMPDIR=/tmp/t` for default, `--basetemp=/tmp/tt` for `-m integration`. Confirmed artifact (438 default + 5 TETHER integration green with short paths). Future: a conftest could pin a short socket dir.
 - Packet-plane root is a SEPARATE track, NOT the §8.8 shim: CHAFF Phase A (pf/dtrace) and ECHO (pfctl/BPF/raw socket) need packet-level root, which §8.8 forbids — future §8 amendment or a dedicated packet-helper. CHAFF code returns required_capability='privileged_shim' for profile.*, but §8.8 grants no such capability — spec gap to resolve before that path unblocks.
 - ⚠️ VAULT has TWO blockers (CORRECTED — the design-pass caught that the earlier "blocker = entitlements, NOT root" claim was wrong): (1) **entitlements** — Keychain / Secure-Enclave + TCC + code-signing — for the per-vault master secret (the §8.8 shim does not grant this; it only evicts Keychain for PURGE); AND (2) **root** — `mount_tmpfs` exists on this macOS (`/sbin/mount_tmpfs`, Darwin 25) but `mount(2)` needs root, so VAULT's tmpfs mount is privileged. Resolve at the mount-slice: a shim op, an hdiutil `ram://` alternative, or a dedicated helper. The earlier single-blocker claim is retracted.
-- VAULT slice 1 (policy DSL engine, `655f183`) + DEFER (`165a1de`) DONE — the evaluator is now the full ALLOW/DENY/DEFER, hermetic, fail-closed. `vault_eval` stays the instantaneous ALLOW/DENY (slice-1 contract, 30 tests intact); `vault_decide` + `VaultDecision{verdict, defer_seconds}` is the NEW DEFER entrypoint (no test-fit — avoids the hour>=20→DEFER breakage). Next slices: crypto (libsodium — catch 1), Keychain/Enclave master secret, mount (catch 2 — root), kqueue relock, IPC/daemon (catch 3 — jsonrpc). ⚠️ the crypto slice is the FIRST to break "pure C, no deps" (the libsodium decision lands there).
+- VAULT slice 1 (policy DSL engine, `655f183`) + DEFER (`165a1de`) + crypto (`e82f69b`) DONE — evaluator (full ALLOW/DENY/DEFER, fail-closed) + crypto engine (XChaCha20-Poly1305 + Argon2id + secure-mem). `vault_eval` stays the instantaneous ALLOW/DENY (slice-1 contract, 30 tests intact); `vault_decide` is the DEFER entrypoint (no test-fit). The crypto slice ended the pure-C phase (libsodium, deliberately). Remaining slices, ALL gated/platform: Keychain/Enclave master secret (entitlements), mount (catch 2 — root), kqueue relock, IPC/daemon (catch 3 — jsonrpc extract). The crypto engine is the foundation; the gated pieces sit on top.
 - VAULT DEFER precision is 1h (the context's finest clock field is `hour`) → defer_seconds is always a multiple of 3600; day_of_month rolls naively (no month calendar) and boot-second projection is coarse, both bounded by the 7-day cap (DEFER_CAP_STEPS=168). Finer resolution would need a minute/second field in the context — a documented tail.
-- ⚠️ VAULT catch 1 — libsodium vs the C dependency allowlist: the spec (§5) mandates libsodium (AES-256-GCM + Argon2id); it is installed (`/opt/homebrew/lib/libsodium`) BUT CLAUDE.md §6 limits C deps to "system libs + libcurl only". At the crypto-slice, decide: amend CLAUDE.md to allow libsodium (lean — Argon2id is needed; CommonCrypto has no Argon2id) vs CommonCrypto + PBKDF2 (a KDF downgrade). Deferred — slice 1 has no crypto.
+- ✅ VAULT catch 1 — RESOLVED (`a038979` + `e82f69b`): libsodium chosen (Argon2id + XChaCha20-Poly1305 + first-class secure memory); CLAUDE.md §6 amended to a per-module C allowlist (the old "libcurl only" was already false — CHAFF links openssl@3+sqlite3). CommonCrypto rejected (PBKDF2-only = KDF downgrade); openssl@3 was a viable zero-new-dep runner-up but libsodium's secure-memory + spec intent won. No longer open.
+- ✅ VAULT spec corrections — RESOLVED in spec (`a038979`, not just code): catch A (key_salt was "rotated per unlock" → STABLE, stored in metadata, rotated only on re-encrypt — a per-unlock salt makes stored ciphertext undecryptable) and catch B (nonce was unspecified → 192-bit random per seal, stored). AEAD changed AES-256-GCM → XChaCha20-Poly1305 with the rationale recorded in-spec. The spec is now truthful.
+- VAULT crypto fail-closed + no-leak (`e82f69b`): the raw master secret lives only in sodium_malloc secure memory during derive and is wiped immediately (no swap / core-dump leak — VAULT's thesis, in code). open verifies the Poly1305 tag before releasing plaintext and actively sodium_memzero's pt_out on any failure (wrong key / tamper).
+- ⭐ VAULT tamper-test assertion corrected (`e82f69b`) — NOT test-fitting (same class as TETHER's test_present_from_fringe: impl design-correct, the test encoded the wrong post-condition). The RED test asserted a specific sentinel byte survived after a failed open (out[0]==0xAA), but the agreed defensive active-wipe (design-pass nuance 3) zeroes pt_out on failure. The real invariant is "no plaintext leak", not a sentinel — corrected to `memcmp(out, pt, ptlen) != 0` (impl-agnostic: holds whether wiped to 0 or left untouched).
 - ⚠️ VAULT catch 3 — jsonrpc 5th copy: VAULT (C) will be the 5th jsonrpc consumer (chaff/mirror/shim/tether are 4; `modules/common` does not exist). Slice 1 has NO IPC, so no copy yet. The VAULT daemon-slice is the trigger to finally extract `modules/common/jsonrpc` (D1=C) instead of copying a 5th time.
 - vault.lock (§6) is the TETHER L2 escalation target — when VAULT's daemon + vault.lock land, core can enforce TETHER L2 (tether.escalation → vault.lock), giving #3's L2 a live consumer (currently L2/L3 escalation events have none). Nuance: vault.lock takes {vault_id}; routing an escalation to it means "lock the currently-open vault" — a downstream wiring detail for that slice.
-- 3 of 8 native modules pending (ECHO, PULSE, PURGE) — CHAFF + MIRROR + ORACLE done; TETHER started (engine + daemon-wiring + Slice 3A); VAULT started (slice 1 policy engine).
+- 3 of 8 native modules pending (ECHO, PULSE, PURGE) — CHAFF + MIRROR + ORACLE done; TETHER started (engine + daemon-wiring + Slice 3A); VAULT started (policy engine + DEFER + crypto; Keychain/mount/daemon gated).
 - MIRROR CGEventTap install — GATED on code-signing + Accessibility TCC (§6/§9); mirror.enable returns -31004 until then. The code-signing tail is now shared across MIRROR (tap), shim Slice 2 (secret in hardened-runtime memory), and TETHER (CoreBluetooth TCC + IRK in Keychain).
 - MIRROR no event producer yet — daemon wiring done, but drain_events is only a forward-compat seam (queue empty); events ship when the tap lands.
 - MIRROR → PULSE aggregate-event gap (D8) — PULSE expects a periodic aggregate event MIRROR doesn't yet define; address at PULSE time.
