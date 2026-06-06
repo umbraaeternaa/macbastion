@@ -73,24 +73,24 @@ shim (trust-plane, NOT an organ): Slice 1 NO-OP skeleton (RED→GREEN) done. TET
 (native module, §5.7): Slice 1 engine (RED→GREEN) + daemon-wiring (RED→GREEN) +
 Slice 3A react-entrypoint (RED→GREEN) done. CORE: idea #3 Slice 3B anomaly-relay
 (RED→GREEN) done — a NEW core capability. ORACLE: idea #3 Slice 3C anomaly-emit
-(RED→GREEN) done — the real producer.
-Last completed: **ORACLE anomaly-emit — Slice 3C** (commit `ee794ba`) — idea #3
-(Anomaly-Tripwire), the real producer for the 3B relay (it had run on a synthetic
-event). `_handle_classify`: after `detector.classify`, when `result["score"] >=
-detector.get_threshold()` (baseline_meta, default 0.7), ADDITIONALLY emit a
-Notification `oracle.anomaly.detected` with the advisory payload {score, threshold,
-source, type, reasoning}. The emit lives in the CLIENT, never the detector — the
-detector stays advisory-pure (D4), so Mode B 17 + advisory 3 + observe-first 12 are
-untouched; classify's return is unchanged (contract 1:1). `EVENTS` += the topic so
-core.register advertises it. ⚠️ advisory boundary EVOLVED (announce ≠ act): ORACLE
-now emits an advisory event on a threshold breach but still never ACTS — it cannot
-invoke another module (D7 module guard); core (3B) routes the event to
-tether.heighten. Consistent with the existing oracle.baseline.updated emit. MVP =
-emit-on-classify (operator-triggered); auto-classify-per-event is a later tail.
-Hermetic — FakeDetector score + FakeWriter, no Ollama, no sockets (first
-client-unit file, test_oracle_client.py, +3). e2e is 3D. 58 oracle unit + 446
-default; ruff + mypy clean. (Prior: CORE anomaly-relay 3B `666794d`; TETHER Slice 3A
-`994a5c4`; shim Slice 1, `e60e8ae`.)
+(RED→GREEN) done — the real producer. **Idea #3 (Anomaly-Tripwire) COMPLETE** —
+3A+3B+3C wired + e2e-confirmed by 3D.
+Last completed: **Anomaly-Tripwire e2e — Slice 3D** (commit `37c3371`) — the e2e
+confirmation that CLOSES idea #3, CHIMERA's first cross-module reflex: ORACLE
+notices an anomaly → core routes it → TETHER tightens. Not a RED→GREEN slice — all
+three links were done + proven separately (3A TETHER tether.heighten/Monitor,
+3B core relay, 3C ORACLE emit); 3D proves they are WIRED over real sockets end to
+end (pass-on-write; pure test, 0 production code). The test: a high-score
+oracle.classify roundtrip → ORACLE emits oracle.anomaly.detected → core broker →
+relay issues tether.heighten on core authority → the TETHER binary flips; observable
+proof = tether.status heightened false→true. FULL spin (core + ORACLE in-process +
+the TETHER C++ binary subprocess), the only seam = FakeDetector score (no Ollama,
+deterministic). ⚠️ Honest scope: the tripwire is WIRE-closed, NOT autonomous — the
+emit is still operator-triggered (oracle.classify); auto-classify-per-event (LLM per
+observed event) is the tail that makes it autonomous. Ollama is not in the e2e loop;
+TETHER L1/L2/L3 stay gated (heighten = sensitivity only, EMIT-ONLY). 2 e2e tests
+(test_anomaly_tripwire_integration.py). (Prior: ORACLE 3C `ee794ba`; CORE 3B
+`666794d`; TETHER 3A `994a5c4`.)
 
 **Skeleton scope check (MANIFESTO §4 — honest accounting):**
 
@@ -203,7 +203,11 @@ No scaffold remains — all 8 core modules implemented.
   VAULT / PURGE exist). — Slice 3A heighten/relax GREEN (`994a5c4`)
 - ECHO, PULSE, VAULT, PURGE — pending (specs in docs/modules/)
 
-**Idea #3 — Anomaly-Tripwire (ORACLE anomaly → core relay → TETHER react):**
+**Idea #3 — Anomaly-Tripwire (ORACLE anomaly → core relay → TETHER react) — COMPLETE:**
+
+✅ COMPLETE (`37c3371`) — CHIMERA's first cross-module reflex, all four slices done
+and e2e-confirmed. ⚠️ WIRE-closed, NOT autonomous: the emit is operator-triggered
+(oracle.classify); auto-classify-per-event is the tail that makes it fire on its own.
 
 A cross-module wiring: when ORACLE flags an anomaly, core relays it into a TETHER
 reaction (tighten the dead-man grace). Path decision = **B (core-relay)**, NOT a
@@ -224,9 +228,12 @@ core, as authority, turns the event into a command.) Slices:
   oracle.anomaly.detected when score >= threshold (advisory Notification; emit in
   the client, detector untouched). MVP = emit-on-classify; auto-classify-per-event
   = later tail. Hermetic client-unit (no Ollama/sockets).
-- **3D — e2e integration** — NEXT: all three links exist (3A+3B+3C) — prove the
-  full chain in one test: ORACLE classify (high score) → broker → core relay →
-  tether.heighten actually invoked, over real sockets.
+- **3D — e2e integration** — DONE (`37c3371`): the full chain proven in one e2e
+  test (real sockets) — ORACLE classify (high score) → oracle.anomaly.detected →
+  broker → core relay → tether.heighten invoked; observable via tether.status
+  heightened false→true. FULL spin (core + ORACLE in-process + TETHER binary), only
+  seam = FakeDetector score (no Ollama). Confirmation test, not RED→GREEN
+  (pass-on-write; 0 production code). 2 tests (happy + threshold-gate negative).
 
 **Privileged shim (`chimera/shim/`) — trust-plane, NOT one of the 8 organs:**
 - Top-level `chimera/shim/` (§8.8 / §7.10) — a root LaunchDaemon doing EXACTLY 4
@@ -248,13 +255,13 @@ core, as authority, turns the event into a command.) Slices:
 
 **Tests:**
 - Python (pytest, default): 446 passing (31 errors + 41 envelope + 36 config + 35 tokens + 36 broker + 63 lifecycle + 60 registry + 86 server [81 + 5 anomaly-relay 3B] + 12 oracle observe-first + 17 oracle Mode B + 10 oracle explainability + 8 oracle time-machine + 8 oracle NL-ask [7 ask + 1 advisory] + 3 oracle anomaly-emit [3C client-unit])
-- Python (integration, marked — `pytest -m integration`): 27 passing (4 CHAFF + 4 MIRROR + 5 TETHER + 14 ORACLE: 4 observe-first + 3 Mode B hermetic + 2 Time-Machine query + 2 NL-ask + 3 real-Ollama); the 3 real-Ollama skip when Ollama is down. NOTE: real-socket integration needs a short `--basetemp` (AF_UNIX path-too-long, see Open tails)
+- Python (integration, marked — `pytest -m integration`): 29 passing (4 CHAFF + 4 MIRROR + 5 TETHER + 2 anomaly-tripwire e2e [#3 3D: ORACLE+core+TETHER full spin] + 14 ORACLE: 4 observe-first + 3 Mode B hermetic + 2 Time-Machine query + 2 NL-ask + 3 real-Ollama); the 3 real-Ollama skip when Ollama is down. NOTE: real-socket integration needs a short `--basetemp` (AF_UNIX path-too-long, see Open tails)
 - Python (ollama, marked — `pytest -m ollama`): 3 passing (subset of integration; real llama3.2:1b)
 - Native (CHAFF Unity): 46 passing (7 endpoints + 6 schedule + 6 crypto + 6 db + 10 jsonrpc + 6 commands + 5 generation)
 - Native (MIRROR Unity): 42 passing (6 perturb + 6 profile + 5 exclude + 5 stats + 4 rng + 10 jsonrpc + 6 commands)
 - Native (shim Unity): 23 passing (11 ops + 6 peercred + 2 server + 4 protocol) — separate C trust-plane suite, NOT in pytest
 - Native (TETHER C++ Unity): 48 passing (4 ewma + 6 presence + 4 classify + 8 escalation + 6 emit + 10 commands + 10 monitor) — separate C++ suite, NOT in pytest
-- Total: 632 passing (446 default + 27 integration + 46 CHAFF + 42 MIRROR + 23 shim + 48 TETHER Unity; ollama subset not double-counted)
+- Total: 634 passing (446 default + 29 integration + 46 CHAFF + 42 MIRROR + 23 shim + 48 TETHER Unity; ollama subset not double-counted)
 
 **Open tails (honest tracking, MANIFESTO §4):**
 - Fernet at-rest: CHAFF (C/OpenSSL) and ORACLE (Python `cryptography.Fernet`) share the format but interop is NOT cross-tested (B1 deferred; format-faithful).
@@ -265,7 +272,8 @@ core, as authority, turns the event into a command.) Slices:
 - Shim real ops (lock/evict/reboot/killall) = Slice 3+ — landed one at a time, destructive (evict/reboot) LAST and only behind the Slice 2 secret; reboot never in autotests (SH-11).
 - TETHER (§5.7) — Slice 1 ENGINE (`7269080`) + daemon-wiring (`c2c0882`) + Slice 3A react-entrypoint (`994a5c4`) all done: connect→register→serve via 4A router + TICK→Monitor.step→emit + heartbeat (staged like MIRROR) + tether.heighten/relax. Monitor.step composes the engine units (EMIT-ONLY, never acts). TE-1…TE-10 decisions live in commit history; no separate design-record yet (a docs/TETHER_DESIGN.md is warranted only if it grows).
 - TETHER Slice 3A react-entrypoint (`994a5c4`) — tether.heighten/relax flip a `heightened` flag; effective_grace_ms(base, heightened) applies HEIGHTEN_FACTOR=2 (grace halved → escalation requested sooner), shared by commands + Monitor; relax is an exact idempotent restore (base grace_ms never mutated); Monitor.set_heightened re-arms the ladder with the effective grace (real sync — test_heightened_escalates_sooner proves it, not a flag-only stub). Engine class untouched. EMIT-ONLY: more sensitive, never more active. This is idea #3's TETHER leaf — see the Idea #3 section. 3A = grace-only.
-- TETHER escalation is EMIT-ONLY (spec §5) — engine evaluate() / Monitor.step() return a decision; CORE enforces L1→shim.lock, L2→VAULT vault.lock, L3→PURGE purge.trigger. TETHER never locks/evicts/reboots itself. Idea #3 (ORACLE anomaly → TETHER react): Slice 3A (TETHER react-entrypoint) + 3B (CORE relay) + 3C (ORACLE emit) DONE; 3D (e2e) NEXT — all three links exist (ORACLE emits oracle.anomaly.detected → core relays → tether.heighten), NOT a TETHER subscribe (keeps the star topology clean). Path B locked; see the Idea #3 section for the full slice plan.
+- TETHER escalation is EMIT-ONLY (spec §5) — engine evaluate() / Monitor.step() return a decision; CORE enforces L1→shim.lock, L2→VAULT vault.lock, L3→PURGE purge.trigger. TETHER never locks/evicts/reboots itself. Idea #3 (ORACLE anomaly → TETHER react) COMPLETE (`37c3371`): 3A (TETHER react-entrypoint) + 3B (CORE relay) + 3C (ORACLE emit) + 3D (e2e confirmation) all DONE — ORACLE emits oracle.anomaly.detected → core relays → tether.heighten, proven wire-end-to-end, NOT a TETHER subscribe (star topology clean). Path B. ⚠️ WIRE-closed, NOT autonomous — emit is operator-triggered (oracle.classify); auto-classify-per-event is the tail for autonomy. CHIMERA's first cross-module reflex.
+- Anomaly-Tripwire e2e test (test_anomaly_tripwire_integration.py, #3 3D) — FULL spin (core + ORACLE in-process + the TETHER C++ binary subprocess) over real sockets; proves the chain by observing tether.status heightened false→true after a high-score oracle.classify. The only seam is FakeDetector score (no Ollama, deterministic). A confirmation test (pass-on-write), NOT RED→GREEN — pure test, 0 production code (all links were already done). Negative test covers the threshold gate (low score → no heighten).
 - CORE-initiated command is a NEW capability (idea #3 3B, `666794d`): before, core only forwarded operator commands via `_route`; now `_dispatch_internal` lets core issue a command to a module on its OWN authority. ⚠️ D7 is preserved — `_dispatch_internal` is in-process only, NOT wire-reachable (no JSON-RPC method maps to it), so a module-over-the-wire invoking another module still gets -31007 (NOT_AUTHORIZED). The relay loop is the only caller; resilient (try/except → log, never crashes the consume loop).
 - RELAY_RULES is declarative {event_topic → module.method}, a Server ClassVar (METHOD_TIMEOUTS precedent). One rule now: oracle.anomaly.detected → tether.heighten. Adding a tripwire = adding a row, not code. Param-mapping deferred — v1 issues the command with NO params (tether.heighten needs none); a payload→params mapper lands only when a future rule requires it.
 - ⚠️ config.set → Monitor grace-sync gap (PRE-EXISTING, not introduced by 3A): tether.config.set mutates rt.escalation.grace_ms (+ presence.near_threshold), but the Monitor holds its OWN ec_ — only l3_armed is mirrored to the live Monitor (set_l3_armed). So a grace change via config.set does NOT reach the running ladder. Slice 3A heighten DOES its part correctly (set_heightened is mirrored after dispatch, beside the l3 sync); config.set's grace/near_threshold sync is a separate tail to fix (mirror config.set → Monitor too, or have Monitor read live config).
