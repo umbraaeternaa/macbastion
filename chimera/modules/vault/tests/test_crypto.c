@@ -80,7 +80,10 @@ static void test_crypto_tamper_detected(void) {
     memset(out, 0xAA, sizeof out); /* sentinel */
     size_t outlen = 0;
     TEST_ASSERT_FALSE(vault_crypto_open(KEY, nonce, ct, ctlen, out, &outlen));
-    TEST_ASSERT_EQUAL_UINT8(0xAA, out[0]); /* fail-closed: no plaintext written */
+    /* tamper -> open() returns false AND wipes pt_out (defensive, design-pass nuance 3).
+     * The invariant is "no plaintext leak", not a specific sentinel byte — assert the
+     * buffer does NOT contain the plaintext (holds whether wiped to 0 or left untouched). */
+    TEST_ASSERT_TRUE(memcmp(out, pt, ptlen) != 0);
 }
 
 /* A wrong key makes open fail (AEAD authentication). */
