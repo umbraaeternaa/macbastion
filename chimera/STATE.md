@@ -75,22 +75,22 @@ Slice 3A react-entrypoint (RED→GREEN) done. CORE: idea #3 Slice 3B anomaly-rel
 (RED→GREEN) done — a NEW core capability. ORACLE: idea #3 Slice 3C anomaly-emit
 (RED→GREEN) done — the real producer. **Idea #3 (Anomaly-Tripwire) COMPLETE** —
 3A+3B+3C wired + e2e-confirmed by 3D.
-Last completed: **Anomaly-Tripwire e2e — Slice 3D** (commit `37c3371`) — the e2e
-confirmation that CLOSES idea #3, CHIMERA's first cross-module reflex: ORACLE
-notices an anomaly → core routes it → TETHER tightens. Not a RED→GREEN slice — all
-three links were done + proven separately (3A TETHER tether.heighten/Monitor,
-3B core relay, 3C ORACLE emit); 3D proves they are WIRED over real sockets end to
-end (pass-on-write; pure test, 0 production code). The test: a high-score
-oracle.classify roundtrip → ORACLE emits oracle.anomaly.detected → core broker →
-relay issues tether.heighten on core authority → the TETHER binary flips; observable
-proof = tether.status heightened false→true. FULL spin (core + ORACLE in-process +
-the TETHER C++ binary subprocess), the only seam = FakeDetector score (no Ollama,
-deterministic). ⚠️ Honest scope: the tripwire is WIRE-closed, NOT autonomous — the
-emit is still operator-triggered (oracle.classify); auto-classify-per-event (LLM per
-observed event) is the tail that makes it autonomous. Ollama is not in the e2e loop;
-TETHER L1/L2/L3 stay gated (heighten = sensitivity only, EMIT-ONLY). 2 e2e tests
-(test_anomaly_tripwire_integration.py). (Prior: ORACLE 3C `ee794ba`; CORE 3B
-`666794d`; TETHER 3A `994a5c4`.)
+Last completed: **VAULT Slice 1 — policy-DSL engine** (commit `655f183`) — the
+FIFTH native module (§5.6) started: state-gated encrypted storage whose key
+materializes only when an operator policy ALLOWs (not key-gated). Slice 1 is the
+PURE policy engine — lexer + recursive-descent parser + typed evaluator for the
+DSL (§4): 8 variables × 3 value types (numeric/enum/string), all 8 operators,
+and/or/not/parens, in-lists, between-ranges. ⚠️ SECURITY HEART — fail-closed via a
+tri-state predicate {TRUE, FALSE, ERROR}: a NULL policy, unknown variable, type
+mismatch, or a value from a not-running module (without an explicit `unknown`
+opt-out) yields ERROR, which propagates through not/and/or and is NEVER laundered
+into ALLOW — anything not TRUE is DENY. Verdict is ALLOW/DENY (DEFER is declared in
+the enum but the evaluator never returns it — the temporal projection is a later
+slice). relock_after is parsed (min×60 / hour×3600), not scheduled. 30 C Unity;
+`make all` -Werror clean. PURE C — no libsodium / Keychain / mount / IPC / cJSON
+(slice 1 sidesteps all three design-pass catches). C17, joining the CHAFF/MIRROR C
+lineage. ast.h/ast.c added (shared AST). (Prior: Anomaly-Tripwire e2e 3D
+`37c3371`; ORACLE 3C `ee794ba`; CORE 3B `666794d`.)
 
 **Skeleton scope check (MANIFESTO §4 — honest accounting):**
 
@@ -201,7 +201,24 @@ No scaffold remains — all 8 core modules implemented.
   pending: CoreBluetooth .mm source (prod empty), IRK/Keychain pairing (= VAULT
   entitlement blocker), real L1/L2/L3 effects (no live consumer until shim ops /
   VAULT / PURGE exist). — Slice 3A heighten/relax GREEN (`994a5c4`)
-- ECHO, PULSE, VAULT, PURGE — pending (specs in docs/modules/)
+- `vault` (§5.6) — FIFTH native module, C17 (joins the CHAFF/MIRROR C lineage; not
+  Python/C++). State-gated encrypted storage: the decryption key materializes only
+  when an operator-authored policy evaluates ALLOW against the current context (time
+  / presence / module-state) — not key-gated (§2). Slice 1 = the PURE policy DSL
+  engine: lexer (idents/numbers/"strings"/operators/punct) + recursive-descent
+  parser (or>and>not>primary → AST: allow_when expression + optional relock_after)
+  + typed evaluator (numeric < <= > >= == != between; enum/string == != in;
+  and/or/not/parens). ⚠️ fail-closed tri-state {TRUE,FALSE,ERROR}: NULL policy /
+  unknown variable / type mismatch / not-running-module value (no explicit `unknown`
+  opt-out) → ERROR, propagates through not/and/or, NEVER → ALLOW; not-TRUE = DENY
+  (the security heart, §4). Verdict ALLOW/DENY (DEFER declared, not implemented —
+  temporal projection later). relock_after parsed (min×60/hour×3600), not scheduled.
+  30 C Unity (6 lexer + 6 parser + 9 evaluator + 6 fail_closed + 3 relock), `make
+  all` -Werror clean. PURE C — no libsodium/Keychain/mount/IPC/cJSON (slice 1
+  sidesteps all 3 design-pass catches). GATED/deferred: DEFER, crypto (libsodium),
+  Keychain/Secure-Enclave master secret, mount_tmpfs, kqueue relock, IPC/daemon.
+  vault.lock (§6) is the TETHER L2 escalation target. — slice 1 GREEN (`655f183`)
+- ECHO, PULSE, PURGE — pending (specs in docs/modules/)
 
 **Idea #3 — Anomaly-Tripwire (ORACLE anomaly → core relay → TETHER react) — COMPLETE:**
 
@@ -261,7 +278,8 @@ core, as authority, turns the event into a command.) Slices:
 - Native (MIRROR Unity): 42 passing (6 perturb + 6 profile + 5 exclude + 5 stats + 4 rng + 10 jsonrpc + 6 commands)
 - Native (shim Unity): 23 passing (11 ops + 6 peercred + 2 server + 4 protocol) — separate C trust-plane suite, NOT in pytest
 - Native (TETHER C++ Unity): 48 passing (4 ewma + 6 presence + 4 classify + 8 escalation + 6 emit + 10 commands + 10 monitor) — separate C++ suite, NOT in pytest
-- Total: 634 passing (446 default + 29 integration + 46 CHAFF + 42 MIRROR + 23 shim + 48 TETHER Unity; ollama subset not double-counted)
+- Native (VAULT C Unity): 30 passing (6 lexer + 6 parser + 9 evaluator + 6 fail_closed + 3 relock) — separate C suite, NOT in pytest
+- Total: 664 passing (446 default + 29 integration + 46 CHAFF + 42 MIRROR + 23 shim + 48 TETHER + 30 VAULT Unity; ollama subset not double-counted)
 
 **Open tails (honest tracking, MANIFESTO §4):**
 - Fernet at-rest: CHAFF (C/OpenSSL) and ORACLE (Python `cryptography.Fernet`) share the format but interop is NOT cross-tested (B1 deferred; format-faithful).
@@ -282,8 +300,12 @@ core, as authority, turns the event into a command.) Slices:
 - 4th jsonrpc copy (chaff→mirror→shim→tether) — TE-7b DELIBERATE debt; a shared `modules/common/` extract is a future slice. TETHER's jsonrpc/ipc are fresh C++ but jsonrpc.c is still the 4th copy of the lineage. The duplication is growing (now 4 copies); revisit before a 5th consumer. TETHER (C++) links the C copy via the header's extern "C".
 - AF_UNIX path-too-long (env, NOT code) — real-socket integration (server `TestRealSocket*`, MIRROR, TETHER) binds UNIX sockets under pytest tmp_path; on macOS the default `TMPDIR` (`/var/folders/.../T`, ~48 chars) + pytest dirs + long test names exceeds the ~104-char `AF_UNIX` limit → 18 default `test_server.py` failures + integration breakage. Fix is ENV: `TMPDIR=/tmp/t` for default, `--basetemp=/tmp/tt` for `-m integration`. Confirmed artifact (438 default + 5 TETHER integration green with short paths). Future: a conftest could pin a short socket dir.
 - Packet-plane root is a SEPARATE track, NOT the §8.8 shim: CHAFF Phase A (pf/dtrace) and ECHO (pfctl/BPF/raw socket) need packet-level root, which §8.8 forbids — future §8 amendment or a dedicated packet-helper. CHAFF code returns required_capability='privileged_shim' for profile.*, but §8.8 grants no such capability — spec gap to resolve before that path unblocks.
-- VAULT's blocker is Keychain / Secure-Enclave entitlements (code-signing + TCC), not root — the §8.8 shim does not unblock VAULT (it evicts Keychain for PURGE, it does not grant access).
-- 4 of 8 native modules pending (ECHO, PULSE, VAULT, PURGE) — CHAFF + MIRROR + ORACLE done; TETHER started (engine + daemon-wiring + Slice 3A react-entrypoint done).
+- ⚠️ VAULT has TWO blockers (CORRECTED — the design-pass caught that the earlier "blocker = entitlements, NOT root" claim was wrong): (1) **entitlements** — Keychain / Secure-Enclave + TCC + code-signing — for the per-vault master secret (the §8.8 shim does not grant this; it only evicts Keychain for PURGE); AND (2) **root** — `mount_tmpfs` exists on this macOS (`/sbin/mount_tmpfs`, Darwin 25) but `mount(2)` needs root, so VAULT's tmpfs mount is privileged. Resolve at the mount-slice: a shim op, an hdiutil `ram://` alternative, or a dedicated helper. The earlier single-blocker claim is retracted.
+- VAULT slice 1 (policy DSL engine) DONE (`655f183`) — fail-closed evaluator, hermetic. Next slices: DEFER (temporal projection), crypto (libsodium), Keychain/Enclave master secret, mount, kqueue relock, IPC/daemon.
+- ⚠️ VAULT catch 1 — libsodium vs the C dependency allowlist: the spec (§5) mandates libsodium (AES-256-GCM + Argon2id); it is installed (`/opt/homebrew/lib/libsodium`) BUT CLAUDE.md §6 limits C deps to "system libs + libcurl only". At the crypto-slice, decide: amend CLAUDE.md to allow libsodium (lean — Argon2id is needed; CommonCrypto has no Argon2id) vs CommonCrypto + PBKDF2 (a KDF downgrade). Deferred — slice 1 has no crypto.
+- ⚠️ VAULT catch 3 — jsonrpc 5th copy: VAULT (C) will be the 5th jsonrpc consumer (chaff/mirror/shim/tether are 4; `modules/common` does not exist). Slice 1 has NO IPC, so no copy yet. The VAULT daemon-slice is the trigger to finally extract `modules/common/jsonrpc` (D1=C) instead of copying a 5th time.
+- vault.lock (§6) is the TETHER L2 escalation target — when VAULT's daemon + vault.lock land, core can enforce TETHER L2 (tether.escalation → vault.lock), giving #3's L2 a live consumer (currently L2/L3 escalation events have none). Nuance: vault.lock takes {vault_id}; routing an escalation to it means "lock the currently-open vault" — a downstream wiring detail for that slice.
+- 3 of 8 native modules pending (ECHO, PULSE, PURGE) — CHAFF + MIRROR + ORACLE done; TETHER started (engine + daemon-wiring + Slice 3A); VAULT started (slice 1 policy engine).
 - MIRROR CGEventTap install — GATED on code-signing + Accessibility TCC (§6/§9); mirror.enable returns -31004 until then. The code-signing tail is now shared across MIRROR (tap), shim Slice 2 (secret in hardened-runtime memory), and TETHER (CoreBluetooth TCC + IRK in Keychain).
 - MIRROR no event producer yet — daemon wiring done, but drain_events is only a forward-compat seam (queue empty); events ship when the tap lands.
 - MIRROR → PULSE aggregate-event gap (D8) — PULSE expects a periodic aggregate event MIRROR doesn't yet define; address at PULSE time.
