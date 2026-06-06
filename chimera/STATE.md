@@ -1,6 +1,6 @@
 # CHIMERA — Project State Snapshot
 
-> Updated: 2026-06-05
+> Updated: 2026-06-06
 > Version: 0.1.0-alpha (genesis)
 
 ---
@@ -70,18 +70,24 @@ Step 0 (CHAFF spec align), Step 1A (config request_timeout_s), Step 1B
 MIRROR (bootstrap, RED, engine GREEN, daemon wiring), ORACLE (RED, observe-first
 GREEN, Mode B GREEN, explainability GREEN, time-machine GREEN) done. Privileged
 shim (trust-plane, NOT an organ): Slice 1 NO-OP skeleton (RED→GREEN) done. TETHER
-(native module, §5.7): Slice 1 engine (RED→GREEN) done — daemon-wiring pending.
-Last completed: **TETHER Slice 1 engine** (commit `7269080`) — the proximity
-dead-man switch's pure-logic engine, the FIRST and only C++17 module (spec §4,
-ObjC++ for CoreBluetooth). EWMA smoothing (α=0.3) + presence FSM (PRESENT/FRINGE/
-ABSENT) + disappearance classify (FADE / CLEAN_DROP / INSTANT_DROP) + escalation
-ladder (grace→L1→L2→L3). Escalation is EMIT-ONLY — evaluate() returns a decision;
-core enforces L1 (shim) / L2 (VAULT) / L3 (PURGE) (spec §5). L3 default DISABLED;
-INSTANT_DROP shifts the schedule later (anti-weaponization — jamming slows, never
-speeds). BLE source + clock behind seams (hermetic, like MIRROR's gated tap).
-tether.test = dry-run (§8). §6 codes (-31002 unknown, -31004 gated pairing),
-tether.* namespace. 35 C++ Unity, clang++ -std=c++17 -Werror clean. (Prior: shim
-Slice 1 NO-OP skeleton, `e60e8ae`.)
+(native module, §5.7): Slice 1 engine (RED→GREEN) + daemon-wiring (RED→GREEN) done.
+Last completed: **TETHER daemon-wiring** (commit `c2c0882`) — the proximity
+dead-man switch's daemon, the FIRST and only C++17 module (spec §4, ObjC++ for
+CoreBluetooth). Built bottom-up on the untouched engine (35 Unity): Monitor.step
+composes EWMA smoothing (α=0.3) → presence FSM (PRESENT/FRINGE/ABSENT) →
+disappearance classify (FADE / CLEAN_DROP / INSTANT_DROP) → escalation ladder
+(grace→L1→L2→L3), emitting transition events (present/fringe/absent+class/recovered/
+suspicious) + escalation-on-stage-change while absent. Monitor is EMIT-ONLY — step()
+returns descriptors, never acts; core enforces L1 (shim) / L2 (VAULT) / L3 (PURGE)
+(spec §5). daemon_run: core.register (tether.* methods + the 6 real events,
+depends_on=[]) → inline poll loop (serve tether.* via 4A, TICK pulls a sample →
+Monitor.step → emit, 10s heartbeat). make_source: TETHER_SYNTHETIC_RSSI →
+SyntheticSource (tests/dev); else CoreBluetoothSource (gated, empty — production
+never fabricates presence, §4). L3 default DISABLED; INSTANT_DROP shifts the schedule
+later (anti-weaponization — jamming slows, never speeds). tether.test = dry-run (§8).
+§6 codes (-31002 unknown, -31004 gated pairing), tether.* namespace. 44 C++ Unity
+(35 engine + 9 monitor), clang++ -std=c++17 -Werror clean. (Prior: TETHER engine
+`7269080`; shim Slice 1 NO-OP skeleton, `e60e8ae`.)
 
 **Skeleton scope check (MANIFESTO §4 — honest accounting):**
 
@@ -156,20 +162,28 @@ No scaffold remains — all 8 core modules implemented.
   -m ollama). ruff + mypy --strict clean. ORACLE fully done (Mode A + Mode B +
   explainability + time-machine L1+L2). — NL-ask GREEN (`2feaf67`)
 - `tether` (§5.7) — fourth native module, the FIRST and only C++17 module (spec
-  §4: ObjC++ bridges CoreBluetooth). Slice 1 = the pure-logic ENGINE (daemon-wiring
-  pending, like MIRROR's engine→daemon staging): EWMA smoothing (α=0.3),
+  §4: ObjC++ bridges CoreBluetooth). Slice 1 = pure-logic ENGINE + daemon-wiring,
+  both done (engine→daemon staged like MIRROR). Engine: EWMA smoothing (α=0.3),
   presence FSM (PRESENT/FRINGE/ABSENT, missed/recover tick counting),
   disappearance classify (FADE / CLEAN_DROP benign / INSTANT_DROP suspicious),
-  escalation ladder (grace→L1→L2→L3). Escalation is EMIT-ONLY — evaluate() returns
-  a decision, never acts; core enforces L1 (shim) / L2 (VAULT) / L3 (PURGE) per
-  spec §5. L3 opt-in, default DISABLED; INSTANT_DROP shifts the schedule later
-  (anti-weaponization). BLE source (CoreBluetooth) + clock behind seams →
-  hermetic; the real source is GATED (Bluetooth HW + TCC). tether.test = dry-run
-  (§8, no action/emit). §6 codes (-31002 unknown, -31004 gated pairing), tether.*
-  namespace. 35 C++ Unity (extern "C" setUp/tearDown), binary -Werror clean. cJSON
-  vendored; jsonrpc.c is the 4th copy (TE-7b deliberate debt). GATED/pending:
-  CoreBluetooth .mm source, IRK/Keychain pairing (= VAULT entitlement blocker),
-  daemon serve-loop, real L1/L2/L3 effects. — engine GREEN (`7269080`)
+  escalation ladder (grace→L1→L2→L3). Daemon: Monitor.step composes the engine
+  units (EWMA→FSM→classify→escalation), emits transition events (present/fringe/
+  absent+class/recovered/suspicious) + escalation-on-stage-change while absent;
+  daemon_run does core.register (tether.* + 6 real events, depends_on=[]) → inline
+  poll loop (serve via 4A, TICK→Monitor.step→emit, 10s heartbeat); make_source
+  env-gated (TETHER_SYNTHETIC_RSSI→SyntheticSource else CoreBluetoothSource, gated/
+  empty — §4 never fabricates presence). Escalation is EMIT-ONLY — engine evaluate()
+  / Monitor.step() return descriptors, never act; core enforces L1 (shim) / L2
+  (VAULT) / L3 (PURGE) per spec §5. L3 opt-in, default DISABLED; INSTANT_DROP shifts
+  the schedule later (anti-weaponization). BLE source (CoreBluetooth) + clock behind
+  seams → hermetic; the real source is GATED (Bluetooth HW + TCC). tether.test =
+  dry-run (§8, no action/emit). §6 codes (-31002 unknown, -31004 gated pairing),
+  tether.* namespace. 44 C++ Unity (35 engine + 9 monitor; extern "C" setUp/tearDown)
+  + 5 integration, binary -Werror clean. cJSON vendored; jsonrpc/ipc are fresh C++
+  but jsonrpc.c remains the 4th copy (TE-7b deliberate debt). GATED/pending:
+  CoreBluetooth .mm source (prod empty), IRK/Keychain pairing (= VAULT entitlement
+  blocker), real L1/L2/L3 effects (no live consumer until shim ops / VAULT / PURGE
+  exist). — daemon-wiring GREEN (`c2c0882`)
 - ECHO, PULSE, VAULT, PURGE — pending (specs in docs/modules/)
 
 **Privileged shim (`chimera/shim/`) — trust-plane, NOT one of the 8 organs:**
@@ -192,13 +206,13 @@ No scaffold remains — all 8 core modules implemented.
 
 **Tests:**
 - Python (pytest, default): 438 passing (31 errors + 41 envelope + 36 config + 35 tokens + 36 broker + 63 lifecycle + 60 registry + 81 server + 12 oracle observe-first + 17 oracle Mode B + 10 oracle explainability + 8 oracle time-machine + 8 oracle NL-ask [7 ask + 1 advisory])
-- Python (integration, marked — `pytest -m integration`): 22 passing (4 CHAFF + 4 MIRROR + 14 ORACLE: 4 observe-first + 3 Mode B hermetic + 2 Time-Machine query + 2 NL-ask + 3 real-Ollama); the 3 real-Ollama skip when Ollama is down
+- Python (integration, marked — `pytest -m integration`): 27 passing (4 CHAFF + 4 MIRROR + 5 TETHER + 14 ORACLE: 4 observe-first + 3 Mode B hermetic + 2 Time-Machine query + 2 NL-ask + 3 real-Ollama); the 3 real-Ollama skip when Ollama is down. NOTE: real-socket integration needs a short `--basetemp` (AF_UNIX path-too-long, see Open tails)
 - Python (ollama, marked — `pytest -m ollama`): 3 passing (subset of integration; real llama3.2:1b)
 - Native (CHAFF Unity): 46 passing (7 endpoints + 6 schedule + 6 crypto + 6 db + 10 jsonrpc + 6 commands + 5 generation)
 - Native (MIRROR Unity): 42 passing (6 perturb + 6 profile + 5 exclude + 5 stats + 4 rng + 10 jsonrpc + 6 commands)
 - Native (shim Unity): 23 passing (11 ops + 6 peercred + 2 server + 4 protocol) — separate C trust-plane suite, NOT in pytest
-- Native (TETHER C++ Unity): 35 passing (4 ewma + 6 presence + 4 classify + 8 escalation + 6 emit + 7 commands) — separate C++ suite, NOT in pytest
-- Total: 606 passing (571 + 35 TETHER Unity; ollama subset not double-counted)
+- Native (TETHER C++ Unity): 44 passing (4 ewma + 6 presence + 4 classify + 8 escalation + 6 emit + 7 commands + 9 monitor) — separate C++ suite, NOT in pytest
+- Total: 620 passing (438 default + 27 integration + 46 CHAFF + 42 MIRROR + 23 shim + 44 TETHER Unity; ollama subset not double-counted)
 
 **Open tails (honest tracking, MANIFESTO §4):**
 - Fernet at-rest: CHAFF (C/OpenSSL) and ORACLE (Python `cryptography.Fernet`) share the format but interop is NOT cross-tested (B1 deferred; format-faithful).
@@ -207,13 +221,14 @@ No scaffold remains — all 8 core modules implemented.
 - Shim Slice 2 (per-boot secret handshake) — gated on code-signing (§5.5 / Finding F2): the in-memory secret only beats a same-uid attacker once core's memory is hardened-runtime-protected. SAME code-signing tail that gates the MIRROR CGEventTap.
 - Shim `ownership_apply` (SS-0(b): chmod 0660 + chown root:operatorgroup) = documented-stub — real chmod/chown is a `-m privileged`-tier follow-up (not hermetically testable, SS-7; non-root skeleton binds at umask default).
 - Shim real ops (lock/evict/reboot/killall) = Slice 3+ — landed one at a time, destructive (evict/reboot) LAST and only behind the Slice 2 secret; reboot never in autotests (SH-11).
-- TETHER (§5.7) — Slice 1 ENGINE done (`7269080`); daemon-wiring PENDING (connect→register→serve via 4A router), staged after the engine like MIRROR. TE-1…TE-10 decisions live in commit history; no separate design-record yet (a docs/TETHER_DESIGN.md is warranted only if it grows).
-- TETHER escalation is EMIT-ONLY (spec §5) — evaluate() returns a decision; CORE enforces L1→shim.lock, L2→VAULT vault.lock, L3→PURGE purge.trigger. TETHER never locks/evicts/reboots itself. Idea #3 (ORACLE anomaly → TETHER react) is a FUTURE core-routing wiring (core relays oracle.anomaly → tether), NOT a TETHER subscribe (keeps the star topology clean).
-- TETHER GATED / out of slice: CoreBluetooth .mm BLE source (Bluetooth HW + TCC), IRK/companion pairing in Keychain/Secure Enclave (the SAME entitlement blocker as VAULT), real L1/L2/L3 effects (core-enforced downstream — L2 needs VAULT, L3 needs PURGE, neither built). The escalation L2/L3 events have no live consumer until VAULT/PURGE exist.
-- 4th jsonrpc copy (chaff→mirror→shim→tether) — TE-7b DELIBERATE debt; a shared `modules/common/` extract is a future slice. The duplication is growing (now 4 copies); revisit before a 5th consumer. TETHER (C++) links the C copy via the header's extern "C".
+- TETHER (§5.7) — Slice 1 ENGINE (`7269080`) + daemon-wiring (`c2c0882`) BOTH done: connect→register→serve via 4A router + TICK→Monitor.step→emit + heartbeat, staged after the engine like MIRROR. Monitor.step composes the engine units (EMIT-ONLY, never acts). TE-1…TE-10 decisions live in commit history; no separate design-record yet (a docs/TETHER_DESIGN.md is warranted only if it grows).
+- TETHER escalation is EMIT-ONLY (spec §5) — engine evaluate() / Monitor.step() return a decision; CORE enforces L1→shim.lock, L2→VAULT vault.lock, L3→PURGE purge.trigger. TETHER never locks/evicts/reboots itself. Idea #3 (ORACLE anomaly → TETHER react) is the NEXT step — a FUTURE core-routing wiring (core relays oracle.anomaly → tether), NOT a TETHER subscribe (keeps the star topology clean).
+- TETHER GATED / out of slice: CoreBluetooth .mm BLE source (Bluetooth HW + TCC) — make_source returns an EMPTY gated CoreBluetoothSource in production (no synthetic fallback off TETHER_SYNTHETIC_RSSI — §4 never fabricates presence); IRK/companion pairing in Keychain/Secure Enclave (the SAME entitlement blocker as VAULT); real L1/L2/L3 effects (core-enforced downstream — L2 needs VAULT, L3 needs PURGE, neither built). The escalation L1/L2/L3 events have no live consumer until shim ops / VAULT / PURGE exist.
+- 4th jsonrpc copy (chaff→mirror→shim→tether) — TE-7b DELIBERATE debt; a shared `modules/common/` extract is a future slice. TETHER's jsonrpc/ipc are fresh C++ but jsonrpc.c is still the 4th copy of the lineage. The duplication is growing (now 4 copies); revisit before a 5th consumer. TETHER (C++) links the C copy via the header's extern "C".
+- AF_UNIX path-too-long (env, NOT code) — real-socket integration (server `TestRealSocket*`, MIRROR, TETHER) binds UNIX sockets under pytest tmp_path; on macOS the default `TMPDIR` (`/var/folders/.../T`, ~48 chars) + pytest dirs + long test names exceeds the ~104-char `AF_UNIX` limit → 18 default `test_server.py` failures + integration breakage. Fix is ENV: `TMPDIR=/tmp/t` for default, `--basetemp=/tmp/tt` for `-m integration`. Confirmed artifact (438 default + 5 TETHER integration green with short paths). Future: a conftest could pin a short socket dir.
 - Packet-plane root is a SEPARATE track, NOT the §8.8 shim: CHAFF Phase A (pf/dtrace) and ECHO (pfctl/BPF/raw socket) need packet-level root, which §8.8 forbids — future §8 amendment or a dedicated packet-helper. CHAFF code returns required_capability='privileged_shim' for profile.*, but §8.8 grants no such capability — spec gap to resolve before that path unblocks.
 - VAULT's blocker is Keychain / Secure-Enclave entitlements (code-signing + TCC), not root — the §8.8 shim does not unblock VAULT (it evicts Keychain for PURGE, it does not grant access).
-- 4 of 8 native modules pending (ECHO, PULSE, VAULT, PURGE) — CHAFF + MIRROR + ORACLE done; TETHER started (engine done, daemon-wiring pending).
+- 4 of 8 native modules pending (ECHO, PULSE, VAULT, PURGE) — CHAFF + MIRROR + ORACLE done; TETHER started (engine + daemon-wiring done).
 - MIRROR CGEventTap install — GATED on code-signing + Accessibility TCC (§6/§9); mirror.enable returns -31004 until then. The code-signing tail is now shared across MIRROR (tap), shim Slice 2 (secret in hardened-runtime memory), and TETHER (CoreBluetooth TCC + IRK in Keychain).
 - MIRROR no event producer yet — daemon wiring done, but drain_events is only a forward-compat seam (queue empty); events ship when the tap lands.
 - MIRROR → PULSE aggregate-event gap (D8) — PULSE expects a periodic aggregate event MIRROR doesn't yet define; address at PULSE time.
