@@ -205,12 +205,55 @@ VaultVerdict vault_eval(const VaultPolicy *p, const VaultContext *ctx) {
     return (eval_expr(allow, ctx) == PRED_TRUE) ? VAULT_ALLOW : VAULT_DENY;
 }
 
+/* Forward projection horizon: 7 days at 1-hour resolution (the context's finest
+ * clock field is `hour`, so a finer step cannot be represented). */
+#define DEFER_CAP_STEPS 168
+
+/* Advance a context copy by one wall-clock hour: hour wraps 0..23, and on the wrap
+ * the day rolls (weekday mod 7, day_of_month++ — naive, bounded by the cap; a real
+ * month calendar is a documented tail). seconds_since_boot grows with elapsed time.
+ * Non-time variables (pulse_mode, tether, network_ssid, oracle_score) are NOT
+ * touched — held constant, so a block time cannot lift stays blocked. */
+static void advance_hour(VaultContext *c) {
+    c->hour += 1;
+    if (c->hour >= 24) {
+        c->hour = 0;
+        c->weekday = (VaultWeekday)(((int)c->weekday + 1) % 7);
+        c->day_of_month += 1;
+    }
+    c->seconds_since_boot += 3600;
+}
+
 VaultDecision vault_decide(const VaultPolicy *p, const VaultContext *ctx) {
-    (void)p;
-    (void)ctx;
-    /* RED stub: always {DENY, 0}. GREEN evaluates now (TRUE->ALLOW, ERROR->DENY)
-     * and, when FALSE, projects wall-clock time forward up to the cap to find the
-     * first ALLOW (DEFER seconds) or gives up (DENY). */
     VaultDecision d = {VAULT_DENY, 0};
-    return d;
+    if (p == NULL || ctx == NULL) {
+        return d;
+    }
+    const VaultExpr *allow = vault_policy_allow_expr(p);
+
+    PredResult now = eval_expr(allow, ctx);
+    if (now == PRED_TRUE) {
+        d.verdict = VAULT_ALLOW;
+        return d;
+    }
+    if (now == PRED_ERROR) {
+        return d; /* fail-closed: never project an errored policy into DEFER */
+    }
+
+    /* now == FALSE: project the clock forward (non-time vars frozen) up to the cap;
+     * the first hour that evaluates TRUE is the DEFER wait. */
+    VaultContext future = *ctx;
+    for (long step = 1; step <= DEFER_CAP_STEPS; step++) {
+        advance_hour(&future);
+        PredResult r = eval_expr(allow, &future);
+        if (r == PRED_ERROR) {
+            return d; /* defensive fail-closed: a projected error -> DENY */
+        }
+        if (r == PRED_TRUE) {
+            d.verdict = VAULT_DEFER;
+            d.defer_seconds = step * 3600;
+            return d;
+        }
+    }
+    return d; /* no eligible time within the cap -> DENY */
 }
