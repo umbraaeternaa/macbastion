@@ -1,0 +1,7 @@
+# build artifacts
+*.o
+/run_tests
+
+# runtime state (later slices)
+*.db
+*.key
