@@ -71,25 +71,30 @@ MIRROR (bootstrap, RED, engine GREEN, daemon wiring), ORACLE (RED, observe-first
 GREEN, Mode B GREEN, explainability GREEN, time-machine GREEN) done. Privileged
 shim (trust-plane, NOT an organ): Slice 1 NO-OP skeleton (RED→GREEN) done. TETHER
 (native module, §5.7): Slice 1 engine (RED→GREEN) + daemon-wiring (RED→GREEN) +
-Slice 3A react-entrypoint (RED→GREEN) done.
-Last completed: **TETHER Slice 3A — heighten/relax** (commit `994a5c4`) — the
-react-entrypoint for idea #3 (Anomaly-Tripwire): the leaf TETHER reacts on when
-core relays an upstream anomaly. `tether.heighten` / `tether.relax` flip a
-`heightened` flag; `effective_grace_ms(base, heightened)` (tether.hpp) applies
-HEIGHTEN_FACTOR=2 (grace halved → escalation REQUESTED sooner), shared by the
-command layer (status + dry-run) AND the Monitor so timings agree. The base
-grace_ms is NEVER mutated → relax is an exact, idempotent restore. Monitor.set_
-heightened stores the flag; at the ABSENT re-arm the ladder is built from an
-effective config (real sync — test_heightened_escalates_sooner proves escalation
-fires sooner, not a flag-only stub, §4). The EscalationLadder ENGINE class is
-UNTOUCHED — only its input grace differs. EMIT-ONLY preserved: heighten makes
-TETHER more SENSITIVE, never more ACTIVE — the ladder still returns a decision,
-core enforces L1/L2/L3. daemon.cpp registers tether.heighten/relax + mirrors
-rt.heightened → Monitor.set_heightened beside the l3 sync. 3A = grace-only
-(near_threshold-heighten deferred — PresenceMachine is not re-armed per absence).
-48 C++ Unity (35 engine + 10 commands + 10 monitor) + 5 integration, clang++
--std=c++17 -Wall -Wextra -Werror clean. (Prior: TETHER daemon-wiring `c2c0882`;
-engine `7269080`; shim Slice 1 NO-OP skeleton, `e60e8ae`.)
+Slice 3A react-entrypoint (RED→GREEN) done. CORE: idea #3 Slice 3B anomaly-relay
+(RED→GREEN) done — a NEW core capability.
+Last completed: **CORE anomaly-relay — Slice 3B** (commit `666794d`) — idea #3
+(Anomaly-Tripwire), path B: core relays a broker event to a module command on its
+OWN authority, in-process. This is a NEW capability — previously core only
+forwarded operator commands (`_route`); now it can initiate one. Pieces:
+`_issue_to_module` (extracted from `_route` — shared plumbing: registry/writer
+checks + internal-id correlation + write + bounded await + timeout; `_route` =
+D7 guard → `_issue_to_module` → caller-id rewrite, behaviour 1:1, all 81 routing
+tests green); `_dispatch_internal` (the single core-initiated path — reuses
+`_issue_to_module`, returns the raw reply, NO caller-id rewrite since core has no
+external caller); `_relay_handle` (looks up `RELAY_RULES[topic]`; unmapped →
+nothing; else `_dispatch_internal` inside try/except → logger.warning, NEVER
+raises); `_relay_loop` + start()/stop() wiring (core subscribes itself to the
+relay-rule topics via broker.subscribe, consumes in a dedicated task mirroring the
+sweep task — bare create_task + per-event isolation, NOT a TaskGroup; stop()
+cancels + closes). `RELAY_RULES` ClassVar = declarative {topic→command} (one rule:
+oracle.anomaly.detected → tether.heighten; METHOD_TIMEOUTS precedent). ⚠️ D7 is
+UNCHANGED: `_dispatch_internal` is in-process authority, never wire-reachable (no
+JSON-RPC method maps to it), so a module over the wire still gets -31007 (test C
+proves it). Hermetic — synthetic anomaly event drives `_relay_handle` directly; the
+real producer is 3C (ORACLE emit) behind the same broker seam. 86 server (81 +
+5 relay) + 443 default + 27 integration; ruff + mypy clean. (Prior: TETHER Slice 3A
+`994a5c4`; daemon-wiring `c2c0882`; shim Slice 1, `e60e8ae`.)
 
 **Skeleton scope check (MANIFESTO §4 — honest accounting):**
 
@@ -113,7 +118,7 @@ secret (Slice 2) gated on code-signing (§5.5) and real ops deferred to Slice 3+
 - `broker` (§6.6 + §6.8) — EventBroker: async pub/sub, wildcard topics, drop-oldest backpressure — DONE (`b63916c`)
 - `lifecycle` (§7.2 + §7.4 + §7.5) — Lifecycle: 9-state FSM, 16-edge allow-list, heartbeat sweep, restart policy — DONE (`57a99fd`)
 - `registry` (§6.7 + §7.2) — Registry: capability store, composes+drives Lifecycle, prefix-split matching, register/deregister events — DONE (`e4a10ba`)
-- `server` (§6.3 + §6.2 + §6.9) — Server: two UNIX sockets, core.* dispatch + 4A module routing (internal-id correlation, per-method timeouts, fail-closed), 3B token reissue, event push, graceful shutdown — DONE (`33f2d38`; 4A routing `06bf7cb`)
+- `server` (§6.3 + §6.2 + §6.9) — Server: two UNIX sockets, core.* dispatch + 4A module routing (internal-id correlation, per-method timeouts, fail-closed), 3B token reissue, event push, graceful shutdown — DONE (`33f2d38`; 4A routing `06bf7cb`). + idea #3 Slice 3B anomaly-relay (`666794d`): `_issue_to_module` (extracted from `_route`, 1:1), `_dispatch_internal` (core-initiated command, in-process authority — NEW; D7 unchanged, not wire-reachable), `_relay_handle`/`_relay_loop` + `RELAY_RULES` ClassVar ({topic→command}); core subscribes itself to the relay topics in a dedicated task (mirrors the sweep task, per-event isolation).
 
 No scaffold remains — all 8 core modules implemented.
 
@@ -207,12 +212,13 @@ it couples TETHER to ORACLE's topic. The D7 command-plane guard is preserved: on
 core, as authority, turns the event into a command.) Slices:
 - **3A — TETHER react-entrypoint** — DONE (`994a5c4`): tether.heighten/relax +
   Monitor sync, EMIT-ONLY (sensitivity, not actuation), engine untouched.
-- **3B — CORE relay** — NEXT: core-internal broker-subscription on
-  oracle.anomaly.detected + declarative relay-rules {topic→command} +
-  `_dispatch_internal(method, params)` (core issues the command as authority, no
-  caller-id rewrite, D7 unchanged); resilient (await-timeout, MODULE_OFFLINE if
-  TETHER absent, never crashes the consume loop).
-- **3C — ORACLE emit** — pending: emit oracle.anomaly.detected (MVP =
+- **3B — CORE relay** — DONE (`666794d`): core-internal broker-subscription on
+  oracle.anomaly.detected + declarative `RELAY_RULES` {topic→command} +
+  `_dispatch_internal` (core issues the command as authority, in-process, no
+  caller-id rewrite, D7 unchanged — not wire-reachable); resilient (await-timeout,
+  MODULE_OFFLINE if TETHER absent, never crashes the consume loop). `_issue_to_module`
+  extracted from `_route` (1:1). Hermetic (synthetic anomaly).
+- **3C — ORACLE emit** — NEXT: emit oracle.anomaly.detected (MVP =
   emit-on-classify when score>threshold; auto-classify-per-event = later tail).
 - **3D — e2e integration** — pending: ORACLE emit → core relay → TETHER heighten.
 
@@ -235,14 +241,14 @@ core, as authority, turns the event into a command.) Slices:
 **Tooling:** `pyproject.toml` + `uv.lock` + `.venv` (Python 3.13.9); ruff + mypy (strict) + pytest configured. Direct deps: cryptography, pydantic(-settings), **ollama==0.6.2** (§6-allowed; httpx + anyio/certifi transitive). pytest markers: `integration`, `ollama`.
 
 **Tests:**
-- Python (pytest, default): 438 passing (31 errors + 41 envelope + 36 config + 35 tokens + 36 broker + 63 lifecycle + 60 registry + 81 server + 12 oracle observe-first + 17 oracle Mode B + 10 oracle explainability + 8 oracle time-machine + 8 oracle NL-ask [7 ask + 1 advisory])
+- Python (pytest, default): 443 passing (31 errors + 41 envelope + 36 config + 35 tokens + 36 broker + 63 lifecycle + 60 registry + 86 server [81 + 5 anomaly-relay 3B] + 12 oracle observe-first + 17 oracle Mode B + 10 oracle explainability + 8 oracle time-machine + 8 oracle NL-ask [7 ask + 1 advisory])
 - Python (integration, marked — `pytest -m integration`): 27 passing (4 CHAFF + 4 MIRROR + 5 TETHER + 14 ORACLE: 4 observe-first + 3 Mode B hermetic + 2 Time-Machine query + 2 NL-ask + 3 real-Ollama); the 3 real-Ollama skip when Ollama is down. NOTE: real-socket integration needs a short `--basetemp` (AF_UNIX path-too-long, see Open tails)
 - Python (ollama, marked — `pytest -m ollama`): 3 passing (subset of integration; real llama3.2:1b)
 - Native (CHAFF Unity): 46 passing (7 endpoints + 6 schedule + 6 crypto + 6 db + 10 jsonrpc + 6 commands + 5 generation)
 - Native (MIRROR Unity): 42 passing (6 perturb + 6 profile + 5 exclude + 5 stats + 4 rng + 10 jsonrpc + 6 commands)
 - Native (shim Unity): 23 passing (11 ops + 6 peercred + 2 server + 4 protocol) — separate C trust-plane suite, NOT in pytest
 - Native (TETHER C++ Unity): 48 passing (4 ewma + 6 presence + 4 classify + 8 escalation + 6 emit + 10 commands + 10 monitor) — separate C++ suite, NOT in pytest
-- Total: 624 passing (438 default + 27 integration + 46 CHAFF + 42 MIRROR + 23 shim + 48 TETHER Unity; ollama subset not double-counted)
+- Total: 629 passing (443 default + 27 integration + 46 CHAFF + 42 MIRROR + 23 shim + 48 TETHER Unity; ollama subset not double-counted)
 
 **Open tails (honest tracking, MANIFESTO §4):**
 - Fernet at-rest: CHAFF (C/OpenSSL) and ORACLE (Python `cryptography.Fernet`) share the format but interop is NOT cross-tested (B1 deferred; format-faithful).
@@ -253,7 +259,9 @@ core, as authority, turns the event into a command.) Slices:
 - Shim real ops (lock/evict/reboot/killall) = Slice 3+ — landed one at a time, destructive (evict/reboot) LAST and only behind the Slice 2 secret; reboot never in autotests (SH-11).
 - TETHER (§5.7) — Slice 1 ENGINE (`7269080`) + daemon-wiring (`c2c0882`) + Slice 3A react-entrypoint (`994a5c4`) all done: connect→register→serve via 4A router + TICK→Monitor.step→emit + heartbeat (staged like MIRROR) + tether.heighten/relax. Monitor.step composes the engine units (EMIT-ONLY, never acts). TE-1…TE-10 decisions live in commit history; no separate design-record yet (a docs/TETHER_DESIGN.md is warranted only if it grows).
 - TETHER Slice 3A react-entrypoint (`994a5c4`) — tether.heighten/relax flip a `heightened` flag; effective_grace_ms(base, heightened) applies HEIGHTEN_FACTOR=2 (grace halved → escalation requested sooner), shared by commands + Monitor; relax is an exact idempotent restore (base grace_ms never mutated); Monitor.set_heightened re-arms the ladder with the effective grace (real sync — test_heightened_escalates_sooner proves it, not a flag-only stub). Engine class untouched. EMIT-ONLY: more sensitive, never more active. This is idea #3's TETHER leaf — see the Idea #3 section. 3A = grace-only.
-- TETHER escalation is EMIT-ONLY (spec §5) — engine evaluate() / Monitor.step() return a decision; CORE enforces L1→shim.lock, L2→VAULT vault.lock, L3→PURGE purge.trigger. TETHER never locks/evicts/reboots itself. Idea #3 (ORACLE anomaly → TETHER react): Slice 3A (TETHER react-entrypoint) DONE; 3B core-relay NEXT — core relays oracle.anomaly → tether.heighten, NOT a TETHER subscribe (keeps the star topology clean). Path B locked; see the Idea #3 section for the full slice plan.
+- TETHER escalation is EMIT-ONLY (spec §5) — engine evaluate() / Monitor.step() return a decision; CORE enforces L1→shim.lock, L2→VAULT vault.lock, L3→PURGE purge.trigger. TETHER never locks/evicts/reboots itself. Idea #3 (ORACLE anomaly → TETHER react): Slice 3A (TETHER react-entrypoint) + 3B (CORE relay) DONE; 3C (ORACLE emit) NEXT, 3D (e2e) pending — core relays oracle.anomaly → tether.heighten, NOT a TETHER subscribe (keeps the star topology clean). Path B locked; see the Idea #3 section for the full slice plan.
+- CORE-initiated command is a NEW capability (idea #3 3B, `666794d`): before, core only forwarded operator commands via `_route`; now `_dispatch_internal` lets core issue a command to a module on its OWN authority. ⚠️ D7 is preserved — `_dispatch_internal` is in-process only, NOT wire-reachable (no JSON-RPC method maps to it), so a module-over-the-wire invoking another module still gets -31007 (NOT_AUTHORIZED). The relay loop is the only caller; resilient (try/except → log, never crashes the consume loop).
+- RELAY_RULES is declarative {event_topic → module.method}, a Server ClassVar (METHOD_TIMEOUTS precedent). One rule now: oracle.anomaly.detected → tether.heighten. Adding a tripwire = adding a row, not code. Param-mapping deferred — v1 issues the command with NO params (tether.heighten needs none); a payload→params mapper lands only when a future rule requires it.
 - ⚠️ config.set → Monitor grace-sync gap (PRE-EXISTING, not introduced by 3A): tether.config.set mutates rt.escalation.grace_ms (+ presence.near_threshold), but the Monitor holds its OWN ec_ — only l3_armed is mirrored to the live Monitor (set_l3_armed). So a grace change via config.set does NOT reach the running ladder. Slice 3A heighten DOES its part correctly (set_heightened is mirrored after dispatch, beside the l3 sync); config.set's grace/near_threshold sync is a separate tail to fix (mirror config.set → Monitor too, or have Monitor read live config).
 - TETHER near_threshold-heighten deferred — Slice 3A is grace-only (the escalation ladder is re-armed per ABSENT, so an effective grace applies naturally). Heightening near_threshold would need the PresenceMachine (constructed once, NOT re-armed) to read live config or be reconstructed — a later tail if anomaly-reaction should also detect absence sooner.
 - TETHER GATED / out of slice: CoreBluetooth .mm BLE source (Bluetooth HW + TCC) — make_source returns an EMPTY gated CoreBluetoothSource in production (no synthetic fallback off TETHER_SYNTHETIC_RSSI — §4 never fabricates presence); IRK/companion pairing in Keychain/Secure Enclave (the SAME entitlement blocker as VAULT); real L1/L2/L3 effects (core-enforced downstream — L2 needs VAULT, L3 needs PURGE, neither built). The escalation L1/L2/L3 events have no live consumer until shim ops / VAULT / PURGE exist.
