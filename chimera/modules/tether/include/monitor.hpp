@@ -65,6 +65,7 @@ class Monitor {
     EscalationConfig ec_;       /* live config; set_l3_armed mutates l3_armed */
     EscalationLadder ladder_;   /* re-armed from ec_ at each ABSENT transition */
     Presence last_state_;
+    bool heightened_;           /* set_heightened: re-arm with a tighter grace */
 };
 
 } // namespace tether

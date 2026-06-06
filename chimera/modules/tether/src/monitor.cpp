@@ -10,7 +10,7 @@ namespace tether {
 
 Monitor::Monitor(PresenceConfig pc, EscalationConfig ec, double ewma_alpha)
     : ewma_(ewma_alpha), presence_(pc), classifier_(), ec_(ec), ladder_(ec),
-      last_state_(Presence::PRESENT) {}
+      last_state_(Presence::PRESENT), heightened_(false) {}
 
 std::vector<MonitorEvent> Monitor::step(const Sample &sample, long now_ms) {
     std::vector<MonitorEvent> events;
@@ -47,8 +47,13 @@ std::vector<MonitorEvent> Monitor::step(const Sample &sample, long now_ms) {
                 s.delayed_by_sec = ec_.suspicious_delay_ms / 1000;
                 events.push_back(s);
             }
-            /* Arm a fresh ladder from the current config (picks up l3_armed). */
-            ladder_ = EscalationLadder(ec_);
+            /* Arm a fresh ladder from the current config (picks up l3_armed). When
+             * heightened, feed a tighter effective grace so escalation is requested
+             * sooner — the EscalationLadder class is unchanged; only its input grace
+             * differs (EMIT-ONLY: still a decision, never an action). */
+            EscalationConfig eff = ec_;
+            eff.grace_ms = effective_grace_ms(ec_.grace_ms, heightened_);
+            ladder_ = EscalationLadder(eff);
             ladder_.on_absent(now_ms, how);
         } else { /* now == PRESENT */
             if (prev == Presence::ABSENT) {
@@ -84,9 +89,10 @@ std::vector<MonitorEvent> Monitor::step(const Sample &sample, long now_ms) {
 
 void Monitor::set_l3_armed(bool armed) { ec_.l3_armed = armed; }
 
-/* RED: no-op — the monitor-behaviour test links but fails (heightened has no
- * effect yet). GREEN stores the flag and re-arms the ladder with effective_grace_ms. */
-void Monitor::set_heightened(bool) {}
+/* Stored now; applied at the NEXT ladder re-arm (the ABSENT transition), mirroring
+ * set_l3_armed. A tighter effective grace makes the ladder request escalation
+ * sooner — sensitivity, not actuation (EMIT-ONLY holds). */
+void Monitor::set_heightened(bool heightened) { heightened_ = heightened; }
 
 Presence Monitor::state() const { return last_state_; }
 double Monitor::rssi_smoothed() const { return ewma_.value(); }

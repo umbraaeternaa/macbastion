@@ -45,6 +45,7 @@ char *build_register() {
     static const char *const METHODS[] = {
         "tether.status",   "tether.config.set",       "tether.l3.arm",
         "tether.l3.disarm", "tether.escalation.cancel", "tether.test",
+        "tether.heighten", "tether.relax",
         "tether.pair.start", "tether.pair.confirm",     "tether.unpair",
     };
     /* Only events the daemon actually emits this slice (Monitor transitions). */
@@ -151,8 +152,10 @@ void handle_inbound(int fd, TetherRuntime &rt, Monitor &mon, const char *line) {
         return;
     }
     char *resp = commands_dispatch(&rt, req->method, req->params, req->id);
-    /* Keep the Monitor's L3 gate in sync with l3.arm/disarm. */
+    /* Keep the Monitor in sync with the runtime: L3 gate (l3.arm/disarm) and the
+     * heightened flag (heighten/relax) — the live ladder re-arms accordingly. */
     mon.set_l3_armed(rt.escalation.l3_armed);
+    mon.set_heightened(rt.heightened);
     if (resp) {
         send_frame(fd, resp);
         std::free(resp);

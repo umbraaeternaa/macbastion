@@ -49,11 +49,11 @@ struct EscalationConfig {
 inline constexpr int HEIGHTEN_FACTOR = 2;
 
 /* Effective grace given the base and the heightened flag. Pure — used by both the
- * command layer (status/dry-run) and the Monitor (ladder re-arm) so they agree.
- * RED: ignores `heightened` and returns the base; GREEN applies HEIGHTEN_FACTOR. */
+ * command layer (status/dry-run) and the Monitor (ladder re-arm) so they agree on
+ * timing. Divides the base by HEIGHTEN_FACTOR when heightened; the base is never
+ * mutated, so relax restores it exactly (idempotent). */
 inline constexpr long effective_grace_ms(long base_grace_ms, bool heightened) {
-    (void)heightened;
-    return base_grace_ms;
+    return heightened ? base_grace_ms / HEIGHTEN_FACTOR : base_grace_ms;
 }
 
 } // namespace tether

@@ -27,6 +27,7 @@ char *commands_dispatch(TetherRuntime *rt, const char *method, const cJSON *para
         cJSON_AddBoolToObject(r, "companion_paired", rt->companion_paired);
         cJSON_AddStringToObject(r, "escalation_stage", stage_name(rt->escalation_stage));
         cJSON_AddBoolToObject(r, "l3_armed", rt->escalation.l3_armed);
+        cJSON_AddBoolToObject(r, "heightened", rt->heightened);
         return jsonrpc_serialize_response(id, r);
     }
 
@@ -81,21 +82,41 @@ char *commands_dispatch(TetherRuntime *rt, const char *method, const cJSON *para
         return jsonrpc_serialize_response(id, r);
     }
 
+    if (std::strcmp(method, "tether.heighten") == 0 ||
+        std::strcmp(method, "tether.relax") == 0) {
+        /* idea #3 react-entrypoint: heighten tightens the grace so escalation is
+         * REQUESTED sooner; relax restores the base. EMIT-ONLY is unchanged — only
+         * the timing shifts, never the action. Base grace_ms is never overwritten
+         * (relax is an exact, idempotent restore); the daemon mirrors the flag to
+         * the live Monitor (Monitor::set_heightened) so the running ladder re-arms. */
+        rt->heightened = std::strcmp(method, "tether.heighten") == 0;
+        cJSON *r = cJSON_CreateObject();
+        cJSON_AddBoolToObject(r, "ok", 1);
+        cJSON_AddBoolToObject(r, "heightened", rt->heightened);
+        cJSON_AddNumberToObject(
+            r, "effective_grace_ms",
+            static_cast<double>(effective_grace_ms(rt->escalation.grace_ms, rt->heightened)));
+        return jsonrpc_serialize_response(id, r);
+    }
+
     if (std::strcmp(method, "tether.test") == 0) {
         /* DRY RUN: report when each stage WOULD fire, relative to absence. NO real
-         * action, NO escalation emitted (§8 safety — test the ladder, not the effect). */
+         * action, NO escalation emitted (§8 safety — test the ladder, not the effect).
+         * Honors the heightened flag so the dry-run reflects the live timing. */
         const EscalationConfig &ec = rt->escalation;
+        const long grace = effective_grace_ms(ec.grace_ms, rt->heightened);
         cJSON *report = cJSON_CreateObject();
         cJSON_AddBoolToObject(report, "dry_run", 1);
-        cJSON_AddNumberToObject(report, "l1_at_ms", static_cast<double>(ec.grace_ms));
+        cJSON_AddNumberToObject(report, "l1_at_ms", static_cast<double>(grace));
         cJSON_AddNumberToObject(report, "l2_at_ms",
-                                static_cast<double>(ec.grace_ms + ec.l1_to_l2_ms));
+                                static_cast<double>(grace + ec.l1_to_l2_ms));
         if (ec.l3_armed) {
             cJSON_AddNumberToObject(
                 report, "l3_at_ms",
-                static_cast<double>(ec.grace_ms + ec.l1_to_l2_ms + ec.l2_to_l3_ms));
+                static_cast<double>(grace + ec.l1_to_l2_ms + ec.l2_to_l3_ms));
         }
         cJSON_AddBoolToObject(report, "l3_armed", ec.l3_armed);
+        cJSON_AddBoolToObject(report, "heightened", rt->heightened);
         cJSON_AddStringToObject(report, "note", "dry-run: no escalation emitted, no action taken");
         cJSON *r = cJSON_CreateObject();
         cJSON_AddItemToObject(r, "dry_run_report", report);
