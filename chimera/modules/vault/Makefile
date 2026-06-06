@@ -1,30 +1,38 @@
 # CHIMERA VAULT — Time-Locked Storage (§5.6).
-#   make         compile the policy-engine objects (strict — the -Werror gate)
+#   make         compile the engine objects (strict — the -Werror gate)
 #   make test    build + run the Unity test suite
 #   make format  clang-format our sources (vendored excluded)
 #   make clean   remove build artifacts
 #
-# Slice 1 = the PURE policy DSL engine (lexer + recursive-descent parser +
-# evaluator). NO libsodium, NO Keychain, NO mount, NO IPC, NO cJSON — those are
-# later, gated slices. So this Makefile links NO external libraries and builds NO
-# daemon binary yet; `make` compiles the engine objects under strict flags as the
-# -Werror gate, `make test` runs the hermetic Unity suite.
+# Slices done: the PURE policy DSL engine (lexer + parser + evaluator, incl. DEFER).
+# The crypto slice adds libsodium (XChaCha20-Poly1305 + Argon2id + secure memory).
+# Still NO Keychain / mount / IPC / daemon (later, gated slices); no daemon binary.
 CC := clang
 
-INCLUDES := -Iinclude
+# libsodium is Homebrew-provided (CLAUDE.md §6 allowlist); fail fast with an
+# actionable message, mirroring CHAFF's openssl@3 pattern.
+SODIUM := $(shell brew --prefix libsodium 2>/dev/null)
+ifeq ($(SODIUM),)
+$(error libsodium not found. Install: brew install libsodium)
+endif
+
+INCLUDES := -Iinclude -I$(SODIUM)/include
 STRICT   := -std=c17 -Wall -Wextra -Werror -O2 $(INCLUDES)
 TESTCFL  := -std=c17 -Wall -Wextra -O2 $(INCLUDES) -Itests/vendor/unity
+LDFLAGS  := -L$(SODIUM)/lib -lsodium
 
 OUR_OBJS := $(patsubst %.c,%.o,$(wildcard src/*.c))
 
+# Compile the engine objects under strict flags — the -Werror gate (no daemon yet).
 all: $(OUR_OBJS)
 
 src/%.o: src/%.c
 	$(CC) $(STRICT) -c $< -o $@
 
+# Tests link the engine sources + Unity + libsodium (no -Werror — vendored macros).
 test:
 	$(CC) $(TESTCFL) $(wildcard tests/*.c) tests/vendor/unity/unity.c \
-	  $(wildcard src/*.c) -o run_tests
+	  $(wildcard src/*.c) $(LDFLAGS) -o run_tests
 	./run_tests
 
 format:

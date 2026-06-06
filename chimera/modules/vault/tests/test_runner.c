@@ -15,5 +15,6 @@ int main(void) {
     run_fail_closed_tests();
     run_relock_tests();
     run_decide_tests();
+    run_crypto_tests();
     return UNITY_END();
 }
