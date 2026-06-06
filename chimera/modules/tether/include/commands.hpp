@@ -22,6 +22,7 @@ struct TetherRuntime {
     Presence state = Presence::PRESENT;
     Stage escalation_stage = Stage::NONE;
     double rssi_smoothed = 0.0;
+    bool heightened = false; /* idea #3: react sooner; base config preserved */
 };
 
 /* Dispatch one tether.* method to a malloc'd JSON-RPC response (caller frees).

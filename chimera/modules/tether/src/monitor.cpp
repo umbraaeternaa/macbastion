@@ -84,6 +84,10 @@ std::vector<MonitorEvent> Monitor::step(const Sample &sample, long now_ms) {
 
 void Monitor::set_l3_armed(bool armed) { ec_.l3_armed = armed; }
 
+/* RED: no-op — the monitor-behaviour test links but fails (heightened has no
+ * effect yet). GREEN stores the flag and re-arms the ladder with effective_grace_ms. */
+void Monitor::set_heightened(bool) {}
+
 Presence Monitor::state() const { return last_state_; }
 double Monitor::rssi_smoothed() const { return ewma_.value(); }
 Stage Monitor::stage() const { return ladder_.current_stage(); }

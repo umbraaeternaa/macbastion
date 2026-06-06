@@ -48,6 +48,11 @@ class Monitor {
     /* Live link to tether.l3.arm/disarm — gates whether the ladder reaches L3. */
     void set_l3_armed(bool armed);
 
+    /* Live link to tether.heighten/relax — when set, the ladder re-arms with a
+     * tighter (effective) grace so escalation is REQUESTED sooner. EMIT-ONLY is
+     * unchanged; this only shifts timing, never adds an action. */
+    void set_heightened(bool heightened);
+
     /* Snapshots for tether.status. */
     Presence state() const;
     double rssi_smoothed() const;

@@ -42,6 +42,20 @@ struct EscalationConfig {
     bool l3_armed = false;           /* L3 opt-in, default DISABLED (§8 safety) */
 };
 
+/* Heightened-sensitivity divisor (idea #3): on an upstream anomaly TETHER may be
+ * asked to react sooner; heighten divides the grace, never the base config — so a
+ * later relax restores it exactly. EMIT-ONLY is unchanged: a tighter grace only
+ * makes the ladder REQUEST escalation earlier; core still enforces the action. */
+inline constexpr int HEIGHTEN_FACTOR = 2;
+
+/* Effective grace given the base and the heightened flag. Pure — used by both the
+ * command layer (status/dry-run) and the Monitor (ladder re-arm) so they agree.
+ * RED: ignores `heightened` and returns the base; GREEN applies HEIGHTEN_FACTOR. */
+inline constexpr long effective_grace_ms(long base_grace_ms, bool heightened) {
+    (void)heightened;
+    return base_grace_ms;
+}
+
 } // namespace tether
 
 #endif /* TETHER_HPP */

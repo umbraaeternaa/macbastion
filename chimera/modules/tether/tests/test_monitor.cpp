@@ -141,6 +141,31 @@ static void test_no_event_when_stable(void) {
     TEST_ASSERT_EQUAL_INT(0, static_cast<int>(ev.size()));
 }
 
+/* heighten brings escalation SOONER (grace halved): same absence input for both
+ * monitors, only set_heightened differs. At half-grace the heightened ladder is
+ * due (L1) while the base ladder is not. EMIT-ONLY holds — the result is still an
+ * ESCALATION descriptor (a request), never an action. Engine units are untouched;
+ * heighten feeds the ladder a tighter grace at re-arm. */
+static void test_heightened_escalates_sooner(void) {
+    Monitor base = make_monitor();
+    for (int i = 0; i < 5; i++) {
+        base.step(missed(), 0); /* -> ABSENT, ladder armed at t0=0 (how=NONE, no delay) */
+    }
+    auto base_ev = base.step(missed(), 15000); /* half grace — base (30000) NOT yet due */
+
+    Monitor hot = make_monitor();
+    hot.set_heightened(true);
+    for (int i = 0; i < 5; i++) {
+        hot.step(missed(), 0);
+    }
+    auto hot_ev = hot.step(missed(), 15000); /* heightened grace 15000 — L1 due */
+
+    TEST_ASSERT_FALSE(has_kind(base_ev, EventKind::ESCALATION)); /* base waits full grace */
+    MonitorEvent e{};
+    TEST_ASSERT_TRUE(find_kind(hot_ev, EventKind::ESCALATION, e)); /* heightened sooner */
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(Stage::L1), static_cast<int>(e.stage)); /* still a descriptor */
+}
+
 void run_monitor_tests(void) {
     RUN_TEST(test_fringe_on_weak_signal);
     RUN_TEST(test_absent_after_five_missed);
@@ -151,4 +176,5 @@ void run_monitor_tests(void) {
     RUN_TEST(test_recovered_after_return);
     RUN_TEST(test_present_from_fringe);
     RUN_TEST(test_no_event_when_stable);
+    RUN_TEST(test_heightened_escalates_sooner);
 }
