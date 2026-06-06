@@ -45,9 +45,9 @@ This is the first time/state-policy locked storage on macOS, open-source or othe
 Each vault is a self-contained directory under `~/.config/chimera/vault/`:
 
   <vault_id>/
-    metadata.json       — vault_id (uuid), name, created_at, policy_hash
+    metadata.json       — vault_id (uuid), name, created_at, policy_hash, key_salt, nonce
     policy.dsl          — operator-authored policy (plaintext, hashed into key)
-    ciphertext.bin      — AES-256-GCM encrypted blob (the actual files)
+    ciphertext.bin      — XChaCha20-Poly1305 encrypted blob (the actual files)
     audit.log           — append-only log of unlock attempts
 
 The master encryption key is NEVER stored. It is derived at unlock time from:
@@ -55,8 +55,24 @@ The master encryption key is NEVER stored. It is derived at unlock time from:
   derived_key = Argon2id(
       keychain_master_secret +     # from Secure Enclave, per-vault
       sha256(policy.dsl) +         # binds key to current policy
-      context_salt                 # rotated per unlock
+      key_salt                     # per-vault, STORED in metadata, rotated on RE-ENCRYPT only
   )
+
+> **Crypto design-pass corrections (2026-06-06):**
+> - **AEAD = XChaCha20-Poly1305** (libsodium), NOT AES-256-GCM. The original spec
+>   named AES-256-GCM but never specified nonce management; AES-GCM's 96-bit nonce
+>   risks catastrophic (key, nonce)-reuse (forgery + keystream recovery) for a blob
+>   that is re-encrypted over its lifetime. XChaCha20-Poly1305 has a **192-bit nonce**,
+>   so a random nonce per seal makes collision negligible (nonce-misuse-resistant in
+>   practice) and avoids any AES-NI cache-timing dependency. Speed is irrelevant
+>   (small, infrequently-sealed blob); nonce safety is not.
+> - **nonce: 192 random bits generated per seal, STORED in metadata** alongside the
+>   ciphertext (a nonce is public; only the key is secret).
+> - **key_salt is STABLE** — stored in metadata, used identically on every read.
+>   It rotates ONLY on re-encryption (vault.create / vault.policy.update /
+>   vault.add_file). The original "context_salt rotated per unlock" was an ERROR: a
+>   per-unlock salt changes derived_key every unlock, making the stored ciphertext
+>   undecryptable. Corrected here.
 
 Editing `policy.dsl` externally changes its hash, which invalidates the key. Policy must be modified via `vault.policy.update`, which re-encrypts under the new hash.
 
@@ -178,7 +194,7 @@ If a policy references a variable from a module that is not currently running (e
 | Component       | Tech                                       | Reason                                            |
 |-----------------|--------------------------------------------|---------------------------------------------------|
 | Core daemon     | C17 (vaultd)                               | Crypto and memory hygiene need precise control    |
-| Crypto          | libsodium                                  | AES-256-GCM, Argon2id, secure memory, audited     |
+| Crypto          | libsodium                                  | XChaCha20-Poly1305, Argon2id, secure memory, audited |
 | Master key      | macOS Keychain + Secure Enclave            | Hardware-backed, never exposed to userspace       |
 | Policy parser   | Hand-written recursive-descent in C        | ~200 lines, no Lua/Python deps, fully auditable   |
 | Mount           | mount_tmpfs (macOS-native)                 | RAM-backed, zeroes on unmount, no FUSE            |
@@ -186,7 +202,7 @@ If a policy references a variable from a module that is not currently running (e
 | IPC with core   | UNIX socket + JSON-RPC 2.0                 | Same protocol as previous modules                 |
 | Watches/timers  | kqueue (EVFILT_TIMER, EVFILT_VNODE)        | Event-driven relock, no polling                   |
 
-**Why libsodium, not OpenSSL/BoringSSL:** smaller surface area, opinionated defaults, well-audited primitives. AES-256-GCM and Argon2id are the only primitives we need; libsodium gives both safely.
+**Why libsodium, not OpenSSL/BoringSSL:** smaller surface area, opinionated defaults, well-audited primitives, and first-class secure-memory (sodium_malloc with guard pages + canary + auto-mlock, sodium_memzero that resists compiler elision) — directly serving VAULT's "the key never leaks to swap or a core dump" thesis. XChaCha20-Poly1305 + Argon2id are the primitives we need; libsodium gives both safely. (openssl@3 — already a CHAFF dependency — also offers both via EVP/EVP_KDF, but with a larger surface and hand-rolled secure memory; libsodium is the deliberate choice. CommonCrypto was rejected: it has no Argon2id, only PBKDF2 — a memory-hardness downgrade.)
 
 **Why custom DSL parser, not Lua:** policies must be readable and auditable by humans who do not know Lua. A whitelisted grammar makes it impossible to accidentally write `allow_when: true` or smuggle a backdoor through a clever lambda.
 
@@ -218,7 +234,7 @@ If a policy references a variable from a module that is not currently running (e
 | `vault.locked`              | `{vault_id, reason: timer|policy_break|external_access|shutdown|manual}` |
 | `vault.denied`              | `{vault_id, reason, defer_seconds: number or null}`                      |
 | `vault.condition.change`    | `{vault_id, variable_changed, new_value}` (only while unlocked)          |
-| `vault.tamper`              | `{vault_id, evidence}` if ciphertext integrity (GCM tag) fails           |
+| `vault.tamper`              | `{vault_id, evidence}` if ciphertext integrity (Poly1305 tag) fails      |
 | `vault.error`               | `{code, message, recoverable: bool}`                                     |
 
 ---
@@ -258,7 +274,7 @@ Network: VAULT makes NO outbound network calls. Pure local module.
 - 3am cascade disclosures: policies can require `pulse_mode == normal`
 - Coercion: reboot-required policies impose physical wait; tether-required policies impose locational constraint
 - Cloud sync leakage: vault files explicitly excluded from iCloud, Time Machine, Dropbox
-- Tampering: AES-256-GCM AEAD; any modification produces `vault.tamper` event on next unlock attempt
+- Tampering: XChaCha20-Poly1305 AEAD; any modification produces `vault.tamper` event on next unlock attempt
 
 ### Does NOT protect against
 - A deliberately permissive policy authored by the operator
@@ -269,7 +285,7 @@ Network: VAULT makes NO outbound network calls. Pure local module.
 - Adversary with full machine root + Secure Enclave bypass (assumes nation-state actor or hardware extraction)
 
 ### Cryptographic invariants
-- AES-256-GCM provides confidentiality + integrity
+- XChaCha20-Poly1305 provides confidentiality + integrity (AEAD); a 192-bit random nonce per seal is stored with the ciphertext (nonce-misuse-resistant)
 - Argon2id provides key derivation (memory-hard, brute-force resistant)
 - Policy hash is bound into the key derivation — modifying policy.dsl externally invalidates all existing ciphertext for that vault
 - Per-vault master secret in Secure Enclave is non-extractable

@@ -137,8 +137,15 @@ Commit messages:
 - Do NOT create stub functions that "look like they work"
 - Do NOT make outbound network calls from any CHIMERA module
   EXCEPT CHAFF (its job is to generate traffic)
-- Do NOT add dependencies without discussion (Python: stdlib + ollama + cryptography only;
-  C: system libs + libcurl only; no Go, Rust, JavaScript)
+- Do NOT add dependencies without discussion. Allowlist (each justified, per-module):
+  - Python: stdlib + ollama + cryptography only
+  - C: SDK system libs + libcurl + sqlite3; openssl@3 (CHAFF — Homebrew, fail-fast);
+    libsodium (VAULT — AES/Argon2id/secure-memory, Homebrew, fail-fast)
+  - No Go, Rust, JavaScript
+  - Any NEW C dependency requires explicit discussion first.
+  (§6 corrected 2026-06-06: it previously read "C: system libs + libcurl only", but
+  CHAFF already links Homebrew openssl@3 + sqlite3 with discussion; this reflects
+  actual practice and adds libsodium for VAULT crypto. Documented, not silent.)
 - Do NOT bypass SIP or recommend disabling it
 - Do NOT touch macbastion/ files outside chimera/ without explicit request
   (macbastion has its own modules: stealth, native/mac_spoof, swiftbar)
