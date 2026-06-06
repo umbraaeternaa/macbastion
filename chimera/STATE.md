@@ -70,24 +70,26 @@ Step 0 (CHAFF spec align), Step 1A (config request_timeout_s), Step 1B
 MIRROR (bootstrap, RED, engine GREEN, daemon wiring), ORACLE (RED, observe-first
 GREEN, Mode B GREEN, explainability GREEN, time-machine GREEN) done. Privileged
 shim (trust-plane, NOT an organ): Slice 1 NO-OP skeleton (RED→GREEN) done. TETHER
-(native module, §5.7): Slice 1 engine (RED→GREEN) + daemon-wiring (RED→GREEN) done.
-Last completed: **TETHER daemon-wiring** (commit `c2c0882`) — the proximity
-dead-man switch's daemon, the FIRST and only C++17 module (spec §4, ObjC++ for
-CoreBluetooth). Built bottom-up on the untouched engine (35 Unity): Monitor.step
-composes EWMA smoothing (α=0.3) → presence FSM (PRESENT/FRINGE/ABSENT) →
-disappearance classify (FADE / CLEAN_DROP / INSTANT_DROP) → escalation ladder
-(grace→L1→L2→L3), emitting transition events (present/fringe/absent+class/recovered/
-suspicious) + escalation-on-stage-change while absent. Monitor is EMIT-ONLY — step()
-returns descriptors, never acts; core enforces L1 (shim) / L2 (VAULT) / L3 (PURGE)
-(spec §5). daemon_run: core.register (tether.* methods + the 6 real events,
-depends_on=[]) → inline poll loop (serve tether.* via 4A, TICK pulls a sample →
-Monitor.step → emit, 10s heartbeat). make_source: TETHER_SYNTHETIC_RSSI →
-SyntheticSource (tests/dev); else CoreBluetoothSource (gated, empty — production
-never fabricates presence, §4). L3 default DISABLED; INSTANT_DROP shifts the schedule
-later (anti-weaponization — jamming slows, never speeds). tether.test = dry-run (§8).
-§6 codes (-31002 unknown, -31004 gated pairing), tether.* namespace. 44 C++ Unity
-(35 engine + 9 monitor), clang++ -std=c++17 -Werror clean. (Prior: TETHER engine
-`7269080`; shim Slice 1 NO-OP skeleton, `e60e8ae`.)
+(native module, §5.7): Slice 1 engine (RED→GREEN) + daemon-wiring (RED→GREEN) +
+Slice 3A react-entrypoint (RED→GREEN) done.
+Last completed: **TETHER Slice 3A — heighten/relax** (commit `994a5c4`) — the
+react-entrypoint for idea #3 (Anomaly-Tripwire): the leaf TETHER reacts on when
+core relays an upstream anomaly. `tether.heighten` / `tether.relax` flip a
+`heightened` flag; `effective_grace_ms(base, heightened)` (tether.hpp) applies
+HEIGHTEN_FACTOR=2 (grace halved → escalation REQUESTED sooner), shared by the
+command layer (status + dry-run) AND the Monitor so timings agree. The base
+grace_ms is NEVER mutated → relax is an exact, idempotent restore. Monitor.set_
+heightened stores the flag; at the ABSENT re-arm the ladder is built from an
+effective config (real sync — test_heightened_escalates_sooner proves escalation
+fires sooner, not a flag-only stub, §4). The EscalationLadder ENGINE class is
+UNTOUCHED — only its input grace differs. EMIT-ONLY preserved: heighten makes
+TETHER more SENSITIVE, never more ACTIVE — the ladder still returns a decision,
+core enforces L1/L2/L3. daemon.cpp registers tether.heighten/relax + mirrors
+rt.heightened → Monitor.set_heightened beside the l3 sync. 3A = grace-only
+(near_threshold-heighten deferred — PresenceMachine is not re-armed per absence).
+48 C++ Unity (35 engine + 10 commands + 10 monitor) + 5 integration, clang++
+-std=c++17 -Wall -Wextra -Werror clean. (Prior: TETHER daemon-wiring `c2c0882`;
+engine `7269080`; shim Slice 1 NO-OP skeleton, `e60e8ae`.)
 
 **Skeleton scope check (MANIFESTO §4 — honest accounting):**
 
@@ -162,8 +164,9 @@ No scaffold remains — all 8 core modules implemented.
   -m ollama). ruff + mypy --strict clean. ORACLE fully done (Mode A + Mode B +
   explainability + time-machine L1+L2). — NL-ask GREEN (`2feaf67`)
 - `tether` (§5.7) — fourth native module, the FIRST and only C++17 module (spec
-  §4: ObjC++ bridges CoreBluetooth). Slice 1 = pure-logic ENGINE + daemon-wiring,
-  both done (engine→daemon staged like MIRROR). Engine: EWMA smoothing (α=0.3),
+  §4: ObjC++ bridges CoreBluetooth). Slice 1 = pure-logic ENGINE + daemon-wiring +
+  Slice 3A react-entrypoint, all done (engine→daemon staged like MIRROR). Engine:
+  EWMA smoothing (α=0.3),
   presence FSM (PRESENT/FRINGE/ABSENT, missed/recover tick counting),
   disappearance classify (FADE / CLEAN_DROP benign / INSTANT_DROP suspicious),
   escalation ladder (grace→L1→L2→L3). Daemon: Monitor.step composes the engine
@@ -175,16 +178,43 @@ No scaffold remains — all 8 core modules implemented.
   empty — §4 never fabricates presence). Escalation is EMIT-ONLY — engine evaluate()
   / Monitor.step() return descriptors, never act; core enforces L1 (shim) / L2
   (VAULT) / L3 (PURGE) per spec §5. L3 opt-in, default DISABLED; INSTANT_DROP shifts
-  the schedule later (anti-weaponization). BLE source (CoreBluetooth) + clock behind
+  the schedule later (anti-weaponization). Slice 3A react-entrypoint (idea #3):
+  tether.heighten/relax + effective_grace_ms(base, heightened) with HEIGHTEN_FACTOR=2
+  (grace halved → escalation REQUESTED sooner), shared by commands (status/dry-run)
+  + Monitor; relax is an exact idempotent restore (base grace_ms never mutated);
+  Monitor.set_heightened re-arms the ladder with the effective grace (real sync,
+  engine class untouched). EMIT-ONLY holds — more sensitive, never more active.
+  3A = grace-only (near_threshold-heighten deferred — PresenceMachine not re-armed).
+  BLE source (CoreBluetooth) + clock behind
   seams → hermetic; the real source is GATED (Bluetooth HW + TCC). tether.test =
   dry-run (§8, no action/emit). §6 codes (-31002 unknown, -31004 gated pairing),
-  tether.* namespace. 44 C++ Unity (35 engine + 9 monitor; extern "C" setUp/tearDown)
-  + 5 integration, binary -Werror clean. cJSON vendored; jsonrpc/ipc are fresh C++
-  but jsonrpc.c remains the 4th copy (TE-7b deliberate debt). GATED/pending:
-  CoreBluetooth .mm source (prod empty), IRK/Keychain pairing (= VAULT entitlement
-  blocker), real L1/L2/L3 effects (no live consumer until shim ops / VAULT / PURGE
-  exist). — daemon-wiring GREEN (`c2c0882`)
+  tether.* namespace. 48 C++ Unity (35 engine + 10 commands + 10 monitor; extern "C"
+  setUp/tearDown) + 5 integration, binary -Werror clean. cJSON vendored; jsonrpc/ipc
+  are fresh C++ but jsonrpc.c remains the 4th copy (TE-7b deliberate debt). GATED/
+  pending: CoreBluetooth .mm source (prod empty), IRK/Keychain pairing (= VAULT
+  entitlement blocker), real L1/L2/L3 effects (no live consumer until shim ops /
+  VAULT / PURGE exist). — Slice 3A heighten/relax GREEN (`994a5c4`)
 - ECHO, PULSE, VAULT, PURGE — pending (specs in docs/modules/)
+
+**Idea #3 — Anomaly-Tripwire (ORACLE anomaly → core relay → TETHER react):**
+
+A cross-module wiring: when ORACLE flags an anomaly, core relays it into a TETHER
+reaction (tighten the dead-man grace). Path decision = **B (core-relay)**, NOT a
+TETHER subscribe — core mediates so TETHER stays ignorant of ORACLE and the star
+topology stays clean. (A — TETHER subscribing oracle.anomaly.detected — was
+rejected despite the existing ORACLE←chaff.* event-subscription precedent, because
+it couples TETHER to ORACLE's topic. The D7 command-plane guard is preserved: only
+core, as authority, turns the event into a command.) Slices:
+- **3A — TETHER react-entrypoint** — DONE (`994a5c4`): tether.heighten/relax +
+  Monitor sync, EMIT-ONLY (sensitivity, not actuation), engine untouched.
+- **3B — CORE relay** — NEXT: core-internal broker-subscription on
+  oracle.anomaly.detected + declarative relay-rules {topic→command} +
+  `_dispatch_internal(method, params)` (core issues the command as authority, no
+  caller-id rewrite, D7 unchanged); resilient (await-timeout, MODULE_OFFLINE if
+  TETHER absent, never crashes the consume loop).
+- **3C — ORACLE emit** — pending: emit oracle.anomaly.detected (MVP =
+  emit-on-classify when score>threshold; auto-classify-per-event = later tail).
+- **3D — e2e integration** — pending: ORACLE emit → core relay → TETHER heighten.
 
 **Privileged shim (`chimera/shim/`) — trust-plane, NOT one of the 8 organs:**
 - Top-level `chimera/shim/` (§8.8 / §7.10) — a root LaunchDaemon doing EXACTLY 4
@@ -211,8 +241,8 @@ No scaffold remains — all 8 core modules implemented.
 - Native (CHAFF Unity): 46 passing (7 endpoints + 6 schedule + 6 crypto + 6 db + 10 jsonrpc + 6 commands + 5 generation)
 - Native (MIRROR Unity): 42 passing (6 perturb + 6 profile + 5 exclude + 5 stats + 4 rng + 10 jsonrpc + 6 commands)
 - Native (shim Unity): 23 passing (11 ops + 6 peercred + 2 server + 4 protocol) — separate C trust-plane suite, NOT in pytest
-- Native (TETHER C++ Unity): 44 passing (4 ewma + 6 presence + 4 classify + 8 escalation + 6 emit + 7 commands + 9 monitor) — separate C++ suite, NOT in pytest
-- Total: 620 passing (438 default + 27 integration + 46 CHAFF + 42 MIRROR + 23 shim + 44 TETHER Unity; ollama subset not double-counted)
+- Native (TETHER C++ Unity): 48 passing (4 ewma + 6 presence + 4 classify + 8 escalation + 6 emit + 10 commands + 10 monitor) — separate C++ suite, NOT in pytest
+- Total: 624 passing (438 default + 27 integration + 46 CHAFF + 42 MIRROR + 23 shim + 48 TETHER Unity; ollama subset not double-counted)
 
 **Open tails (honest tracking, MANIFESTO §4):**
 - Fernet at-rest: CHAFF (C/OpenSSL) and ORACLE (Python `cryptography.Fernet`) share the format but interop is NOT cross-tested (B1 deferred; format-faithful).
@@ -221,14 +251,17 @@ No scaffold remains — all 8 core modules implemented.
 - Shim Slice 2 (per-boot secret handshake) — gated on code-signing (§5.5 / Finding F2): the in-memory secret only beats a same-uid attacker once core's memory is hardened-runtime-protected. SAME code-signing tail that gates the MIRROR CGEventTap.
 - Shim `ownership_apply` (SS-0(b): chmod 0660 + chown root:operatorgroup) = documented-stub — real chmod/chown is a `-m privileged`-tier follow-up (not hermetically testable, SS-7; non-root skeleton binds at umask default).
 - Shim real ops (lock/evict/reboot/killall) = Slice 3+ — landed one at a time, destructive (evict/reboot) LAST and only behind the Slice 2 secret; reboot never in autotests (SH-11).
-- TETHER (§5.7) — Slice 1 ENGINE (`7269080`) + daemon-wiring (`c2c0882`) BOTH done: connect→register→serve via 4A router + TICK→Monitor.step→emit + heartbeat, staged after the engine like MIRROR. Monitor.step composes the engine units (EMIT-ONLY, never acts). TE-1…TE-10 decisions live in commit history; no separate design-record yet (a docs/TETHER_DESIGN.md is warranted only if it grows).
-- TETHER escalation is EMIT-ONLY (spec §5) — engine evaluate() / Monitor.step() return a decision; CORE enforces L1→shim.lock, L2→VAULT vault.lock, L3→PURGE purge.trigger. TETHER never locks/evicts/reboots itself. Idea #3 (ORACLE anomaly → TETHER react) is the NEXT step — a FUTURE core-routing wiring (core relays oracle.anomaly → tether), NOT a TETHER subscribe (keeps the star topology clean).
+- TETHER (§5.7) — Slice 1 ENGINE (`7269080`) + daemon-wiring (`c2c0882`) + Slice 3A react-entrypoint (`994a5c4`) all done: connect→register→serve via 4A router + TICK→Monitor.step→emit + heartbeat (staged like MIRROR) + tether.heighten/relax. Monitor.step composes the engine units (EMIT-ONLY, never acts). TE-1…TE-10 decisions live in commit history; no separate design-record yet (a docs/TETHER_DESIGN.md is warranted only if it grows).
+- TETHER Slice 3A react-entrypoint (`994a5c4`) — tether.heighten/relax flip a `heightened` flag; effective_grace_ms(base, heightened) applies HEIGHTEN_FACTOR=2 (grace halved → escalation requested sooner), shared by commands + Monitor; relax is an exact idempotent restore (base grace_ms never mutated); Monitor.set_heightened re-arms the ladder with the effective grace (real sync — test_heightened_escalates_sooner proves it, not a flag-only stub). Engine class untouched. EMIT-ONLY: more sensitive, never more active. This is idea #3's TETHER leaf — see the Idea #3 section. 3A = grace-only.
+- TETHER escalation is EMIT-ONLY (spec §5) — engine evaluate() / Monitor.step() return a decision; CORE enforces L1→shim.lock, L2→VAULT vault.lock, L3→PURGE purge.trigger. TETHER never locks/evicts/reboots itself. Idea #3 (ORACLE anomaly → TETHER react): Slice 3A (TETHER react-entrypoint) DONE; 3B core-relay NEXT — core relays oracle.anomaly → tether.heighten, NOT a TETHER subscribe (keeps the star topology clean). Path B locked; see the Idea #3 section for the full slice plan.
+- ⚠️ config.set → Monitor grace-sync gap (PRE-EXISTING, not introduced by 3A): tether.config.set mutates rt.escalation.grace_ms (+ presence.near_threshold), but the Monitor holds its OWN ec_ — only l3_armed is mirrored to the live Monitor (set_l3_armed). So a grace change via config.set does NOT reach the running ladder. Slice 3A heighten DOES its part correctly (set_heightened is mirrored after dispatch, beside the l3 sync); config.set's grace/near_threshold sync is a separate tail to fix (mirror config.set → Monitor too, or have Monitor read live config).
+- TETHER near_threshold-heighten deferred — Slice 3A is grace-only (the escalation ladder is re-armed per ABSENT, so an effective grace applies naturally). Heightening near_threshold would need the PresenceMachine (constructed once, NOT re-armed) to read live config or be reconstructed — a later tail if anomaly-reaction should also detect absence sooner.
 - TETHER GATED / out of slice: CoreBluetooth .mm BLE source (Bluetooth HW + TCC) — make_source returns an EMPTY gated CoreBluetoothSource in production (no synthetic fallback off TETHER_SYNTHETIC_RSSI — §4 never fabricates presence); IRK/companion pairing in Keychain/Secure Enclave (the SAME entitlement blocker as VAULT); real L1/L2/L3 effects (core-enforced downstream — L2 needs VAULT, L3 needs PURGE, neither built). The escalation L1/L2/L3 events have no live consumer until shim ops / VAULT / PURGE exist.
 - 4th jsonrpc copy (chaff→mirror→shim→tether) — TE-7b DELIBERATE debt; a shared `modules/common/` extract is a future slice. TETHER's jsonrpc/ipc are fresh C++ but jsonrpc.c is still the 4th copy of the lineage. The duplication is growing (now 4 copies); revisit before a 5th consumer. TETHER (C++) links the C copy via the header's extern "C".
 - AF_UNIX path-too-long (env, NOT code) — real-socket integration (server `TestRealSocket*`, MIRROR, TETHER) binds UNIX sockets under pytest tmp_path; on macOS the default `TMPDIR` (`/var/folders/.../T`, ~48 chars) + pytest dirs + long test names exceeds the ~104-char `AF_UNIX` limit → 18 default `test_server.py` failures + integration breakage. Fix is ENV: `TMPDIR=/tmp/t` for default, `--basetemp=/tmp/tt` for `-m integration`. Confirmed artifact (438 default + 5 TETHER integration green with short paths). Future: a conftest could pin a short socket dir.
 - Packet-plane root is a SEPARATE track, NOT the §8.8 shim: CHAFF Phase A (pf/dtrace) and ECHO (pfctl/BPF/raw socket) need packet-level root, which §8.8 forbids — future §8 amendment or a dedicated packet-helper. CHAFF code returns required_capability='privileged_shim' for profile.*, but §8.8 grants no such capability — spec gap to resolve before that path unblocks.
 - VAULT's blocker is Keychain / Secure-Enclave entitlements (code-signing + TCC), not root — the §8.8 shim does not unblock VAULT (it evicts Keychain for PURGE, it does not grant access).
-- 4 of 8 native modules pending (ECHO, PULSE, VAULT, PURGE) — CHAFF + MIRROR + ORACLE done; TETHER started (engine + daemon-wiring done).
+- 4 of 8 native modules pending (ECHO, PULSE, VAULT, PURGE) — CHAFF + MIRROR + ORACLE done; TETHER started (engine + daemon-wiring + Slice 3A react-entrypoint done).
 - MIRROR CGEventTap install — GATED on code-signing + Accessibility TCC (§6/§9); mirror.enable returns -31004 until then. The code-signing tail is now shared across MIRROR (tap), shim Slice 2 (secret in hardened-runtime memory), and TETHER (CoreBluetooth TCC + IRK in Keychain).
 - MIRROR no event producer yet — daemon wiring done, but drain_events is only a forward-compat seam (queue empty); events ship when the tap lands.
 - MIRROR → PULSE aggregate-event gap (D8) — PULSE expects a periodic aggregate event MIRROR doesn't yet define; address at PULSE time.
