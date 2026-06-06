@@ -9,6 +9,19 @@
 
 ---
 
+## Session start (read before any work)
+
+Before starting work in a new session, ALWAYS read in this order:
+1. `chimera/STATE.md` — current project state (modules, tests, open tails)
+2. The most recent journal in `/Users/macbook/Downloads/#1/MD/` — the previous
+   session's handoff (latest `SESSION_*.md` by date). Path contains '#' — always
+   double-quote it in bash: `ls "/Users/macbook/Downloads/#1/MD/"`
+
+This restores full context (where we ended, what's next) without the operator
+re-explaining.
+
+---
+
 ## 1. Project identity
 
 You are working on **CHIMERA** — a unified privacy/security organism for macOS.
