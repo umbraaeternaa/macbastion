@@ -249,15 +249,34 @@ class OracleClient:
     ) -> dict[str, Any]:
         """Mode B (§5 oracle.classify): one-shot LLM classify (advisory).
 
-        Gated (D6): no detector / Ollama down -> -31004. Returns {score,
-        reasoning} only — no anomaly emission this slice (MD-B-7b).
+        Gated (D6): no detector / Ollama down -> -31004. Returns {score, reasoning,
+        ...} (contract unchanged). Idea #3 3C: when the score reaches the threshold,
+        ADDITIONALLY emit oracle.anomaly.detected — an ADVISORY notification (announce,
+        not act): ORACLE never calls another module; core (3B relay) routes it. The
+        emit lives here, in the client, so the detector stays advisory-pure (D4).
         """
         if self._detector is None:
             raise RpcError(code=ChimeraError.PRECONDITION_FAILED)
         if not isinstance(params, dict) or not isinstance(params.get("event"), dict):
             raise RpcError(code=JSONRPC_INVALID_PARAMS, message="event object required")
-        result = await self._detector.classify(params["event"])
+        event = params["event"]
+        result = await self._detector.classify(event)
         self._classifications_today += 1
+        threshold = self._detector.get_threshold()
+        if result["score"] >= threshold:
+            await self._send_cmd(
+                Notification(
+                    jsonrpc="2.0",
+                    method="oracle.anomaly.detected",
+                    params={
+                        "score": result["score"],
+                        "threshold": threshold,
+                        "source": event.get("source"),
+                        "type": event.get("type"),
+                        "reasoning": result["reasoning"],
+                    },
+                )
+            )
         return result
 
     async def _handle_threshold_set(
