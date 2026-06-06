@@ -95,6 +95,13 @@ class Server:
         # 5s default is too tight (NL-12a). 15s absorbs cold-load + IPC overhead.
         "oracle.ask": 15.0,
     }
+    # Declarative anomaly-tripwire relay (idea #3, path B): when one of these event
+    # topics is published, core — as authority, NOT a module — issues the mapped
+    # command to the target module. Data, not logic; the D7 wire guard is untouched
+    # (this path never originates from a connection). topic -> module.method.
+    RELAY_RULES: ClassVar[dict[str, str]] = {
+        "oracle.anomaly.detected": "tether.heighten",
+    }
 
     def __init__(
         self,
@@ -297,6 +304,20 @@ class Server:
         if reply.error is not None:
             return Response(jsonrpc="2.0", id=request.id, error=reply.error)
         return Response(jsonrpc="2.0", id=request.id, result=reply.result)
+
+    # -- anomaly-tripwire relay (idea #3, path B) -------------------------
+
+    async def _relay_handle(self, event: Event) -> None:
+        """Relay one broker event to its mapped module command (RELAY_RULES).
+
+        Core acts as authority here — it issues the command in-process, never via
+        a connection, so the D7 wire guard is untouched. Resilient: a missing
+        target or a timeout is logged, never raised, so the consume loop survives.
+
+        RED: no-op stub — GREEN looks up RELAY_RULES and dispatches via
+        _dispatch_internal (which reuses the extracted _issue_to_module plumbing).
+        """
+        return None
 
     # -- param helpers ----------------------------------------------------
 

@@ -33,13 +33,15 @@ is validated only for core.* methods; a module method short-circuits to
 """
 
 import asyncio
+import logging
 import os
 import stat
 from typing import Any
 
-from core.broker import EventBroker
+from core.broker import Event, EventBroker
 from core.config import CoreConfig
 from core.envelope import Request, Response, parse, serialize_frame
+from core.errors import ChimeraError
 from core.lifecycle import Lifecycle
 from core.registry import Registry
 from core.server import Connection, Server
@@ -1193,3 +1195,81 @@ class TestRealSocketRouting:
             assert resp.error is not None and resp.error["code"] == -31000
         finally:
             await server.stop()
+
+
+class TestAnomalyRelay:
+    """Idea #3 (path B): core relays a broker event to a module command.
+
+    RED: Server._relay_handle is a no-op, so the dispatch tests (A/D) and the
+    offline-log test (B) fail; the D7 wire-guard test (C) passes (proves the new
+    capability does NOT open a wire hole — must stay green through GREEN); the
+    unmapped-topic test (E) passes coincidentally (a no-op issues nothing) and
+    gains real meaning in GREEN. _relay_handle is driven directly — hermetic, no
+    sockets, no ORACLE (synthetic Event), so 3B lands before 3C.
+    """
+
+    _ANOMALY = "oracle.anomaly.detected"
+
+    # A — happy path: a mapped event issues the target command and the relay
+    # awaits the module's reply (core acts as authority, in-process).
+    async def test_relay_issues_mapped_command(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        _modconn, fake = await _attach_registered_module(
+            server, "tether", ["tether.heighten"]
+        )
+        task = asyncio.create_task(
+            server._relay_handle(Event(topic=self._ANOMALY, payload={"score": 0.9}))
+        )
+        await asyncio.sleep(0)  # let the relay forward + register the pending future
+        assert fake.frames(), "relay should have forwarded a command"
+        forwarded = fake.last_request()
+        assert forwarded.method == "tether.heighten"
+        # Simulate tether's reply so the awaiting relay completes (no rewrite — the
+        # relay has no external caller).
+        server._resolve_pending(
+            Response(jsonrpc="2.0", id=forwarded.id, result={"ok": True})
+        )
+        await task  # completes without raising
+
+    # B — resilience: an offline target is logged, never raised; the relay returns.
+    async def test_relay_offline_target_logged_not_raised(
+        self, tmp_path: Any, caplog: Any
+    ) -> None:
+        server = _make_server(tmp_path)  # tether NOT registered/attached
+        with caplog.at_level(logging.WARNING):
+            await server._relay_handle(Event(topic=self._ANOMALY, payload={}))
+        assert any(
+            "tether" in r.getMessage().lower() or "offline" in r.getMessage().lower()
+            for r in caplog.records
+        ), "an offline relay target should be logged"
+
+    # C — D7 invariant (regression-guard): a module may NOT invoke the relay target
+    # over the wire. The new core authority path must not open a wire hole.
+    async def test_d7_module_cannot_invoke_relay_target(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        await _attach_registered_module(server, "tether", ["tether.heighten"])
+        module_conn = await _module_caller(server, "oracle")
+        resp = await server.handle_command(_req("tether.heighten", 1), module_conn)
+        assert resp.error is not None
+        assert resp.error["code"] == ChimeraError.NOT_AUTHORIZED
+
+    # D — timeout isolation: the target never replies; the relay forwards, times
+    # out, logs, and does NOT raise (the consume loop must survive).
+    async def test_relay_timeout_isolated(self, tmp_path: Any, caplog: Any) -> None:
+        server = _make_server(tmp_path, request_timeout_s=0.05)
+        _modconn, fake = await _attach_registered_module(
+            server, "tether", ["tether.heighten"]
+        )
+        with caplog.at_level(logging.WARNING):
+            await server._relay_handle(Event(topic=self._ANOMALY, payload={}))
+        assert fake.frames(), "relay should forward before timing out"
+        assert fake.last_request().method == "tether.heighten"
+
+    # E — declarative: a topic with no RELAY_RULES entry issues nothing.
+    async def test_relay_ignores_unmapped_topic(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        _modconn, fake = await _attach_registered_module(
+            server, "tether", ["tether.heighten"]
+        )
+        await server._relay_handle(Event(topic="chaff.decoy.sent", payload={}))
+        assert fake.frames() == []
