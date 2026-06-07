@@ -58,6 +58,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["ANN", "S101", "S105", "S603", "S607"]  # tests: skip strict typing; subprocess + fake secrets are trusted
 "modules/oracle/tests/*" = ["ANN", "S101", "S105", "S603", "S607"]  # oracle unit tests, same policy as tests/*
+"modules/pulse/tests/*" = ["ANN", "S101", "S105", "S603", "S607"]  # pulse unit tests, same policy as tests/*
 
 [tool.ruff.format]
 quote-style = "double"
@@ -84,8 +85,8 @@ disallow_untyped_defs = false
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-testpaths = ["tests", "modules/oracle/tests"]
-pythonpath = ["modules/oracle"]
+testpaths = ["tests", "modules/oracle/tests", "modules/pulse/tests"]
+pythonpath = ["modules/oracle", "modules/pulse"]
 python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
