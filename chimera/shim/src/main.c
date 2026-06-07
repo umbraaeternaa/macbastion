@@ -63,7 +63,7 @@ static void serve_one(int conn, uid_t operator_uid) {
     }
 
     jsonrpc_request_t *req = NULL;
-    if (jsonrpc_parse_request(line, &req) != SHIM_OK) {
+    if (jsonrpc_parse_request(line, &req) != JSONRPC_OK) {
         return;
     }
     char *resp = protocol_dispatch(req->method, req->params, req->id, authorized);
