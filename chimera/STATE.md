@@ -1,6 +1,6 @@
 # CHIMERA — Project State Snapshot
 
-> Updated: 2026-06-06
+> Updated: 2026-06-07
 > Version: 0.1.0-alpha (genesis)
 
 ---
@@ -75,7 +75,20 @@ Slice 3A react-entrypoint (RED→GREEN) done. CORE: idea #3 Slice 3B anomaly-rel
 (RED→GREEN) done — a NEW core capability. ORACLE: idea #3 Slice 3C anomaly-emit
 (RED→GREEN) done — the real producer. **Idea #3 (Anomaly-Tripwire) COMPLETE** —
 3A+3B+3C wired + e2e-confirmed by 3D.
-Last completed: **VAULT crypto engine** (commit `e82f69b`) — the FIFTH native
+Last completed: **jsonrpc extract to `modules/common/` — JE-1 done** (4 native
+modules migrated to one canonical shared unit: chaff `24cf41f` pilot, mirror
+`611c16c`, shim `c25dfec`, tether `2245f09`). The four byte-identical (modulo
+namespace) per-module jsonrpc copies collapse into `modules/common/{jsonrpc.h,
+jsonrpc.c}` with a canonical `jsonrpc_result_t {OK=0, ERR=-1, ERR_PARSE=-2}` and an
+`extern "C"` guard (front-loaded in the pilot for the C++ tether link). Each
+migration proven behaviour-preserving: a formal normalized-diff = only the one-line
+top comment, 0 difference in function bodies, + the module's suite green. C++ tether
+verified at link too (common compiled as C via `clang -std=c17`, linked by clang++,
+0 undefined symbols — extern "C" holds). TE-7b debt paid, before a 5th copy (VAULT).
+678 baseline UNCHANGED (move+rename, 0 new tests). Each native suite re-verified:
+chaff 46, mirror 42, shim 23, tether 48, vault 44.
+
+Prior milestone: **VAULT crypto engine** (commit `e82f69b`) — the FIFTH native
 module gets real cryptography via libsodium (the first VAULT external dependency;
 the pure-C phase ends here, deliberately). Three primitives:
 - `vault_crypto_derive` — Argon2id MODERATE (crypto_pwhash, OPSLIMIT/MEMLIMIT_MODERATE,
@@ -234,6 +247,12 @@ No scaffold remains — all 8 core modules implemented.
   master secret (entitlements), mount_tmpfs (catch 2 — root), kqueue relock, IPC/daemon
   (catch 3 — jsonrpc). vault.lock (§6) is the TETHER L2 escalation target.
   — slice 1 `655f183` + DEFER `165a1de` + crypto `e82f69b`
+- `common` (`modules/common/`) — NOT an organ: the SHARED jsonrpc unit (JE-1
+  extract). `jsonrpc.{h,c}` + `.gitignore`; canonical `jsonrpc_result_t {OK=0,
+  ERR=-1, ERR_PARSE=-2}`, `extern "C"` guard. All 4 native consumers
+  (chaff/mirror/shim/tether) link it, compiled per-consumer with that module's
+  STRICT flags (cJSON-agnostic — the consumer's -I supplies cJSON). VAULT daemon =
+  next (first NEW) consumer. — JE-1 done (24cf41f/611c16c/c25dfec/2245f09)
 - ECHO, PULSE, PURGE — pending (specs in docs/modules/)
 
 **Idea #3 — Anomaly-Tripwire (ORACLE anomaly → core relay → TETHER react) — COMPLETE:**
@@ -313,23 +332,23 @@ core, as authority, turns the event into a command.) Slices:
 - ⚠️ config.set → Monitor grace-sync gap (PRE-EXISTING, not introduced by 3A): tether.config.set mutates rt.escalation.grace_ms (+ presence.near_threshold), but the Monitor holds its OWN ec_ — only l3_armed is mirrored to the live Monitor (set_l3_armed). So a grace change via config.set does NOT reach the running ladder. Slice 3A heighten DOES its part correctly (set_heightened is mirrored after dispatch, beside the l3 sync); config.set's grace/near_threshold sync is a separate tail to fix (mirror config.set → Monitor too, or have Monitor read live config).
 - TETHER near_threshold-heighten deferred — Slice 3A is grace-only (the escalation ladder is re-armed per ABSENT, so an effective grace applies naturally). Heightening near_threshold would need the PresenceMachine (constructed once, NOT re-armed) to read live config or be reconstructed — a later tail if anomaly-reaction should also detect absence sooner.
 - TETHER GATED / out of slice: CoreBluetooth .mm BLE source (Bluetooth HW + TCC) — make_source returns an EMPTY gated CoreBluetoothSource in production (no synthetic fallback off TETHER_SYNTHETIC_RSSI — §4 never fabricates presence); IRK/companion pairing in Keychain/Secure Enclave (the SAME entitlement blocker as VAULT); real L1/L2/L3 effects (core-enforced downstream — L2 needs VAULT, L3 needs PURGE, neither built). The escalation L1/L2/L3 events have no live consumer until shim ops / VAULT / PURGE exist.
-- 4th jsonrpc copy (chaff→mirror→shim→tether) — TE-7b DELIBERATE debt; a shared `modules/common/` extract is a future slice. TETHER's jsonrpc/ipc are fresh C++ but jsonrpc.c is still the 4th copy of the lineage. The duplication is growing (now 4 copies); revisit before a 5th consumer. TETHER (C++) links the C copy via the header's extern "C".
+- ✅ TE-7b (4 jsonrpc copies, chaff→mirror→shim→tether) — RESOLVED by the JE-1 extract (chaff `24cf41f` pilot + mirror `611c16c` + shim `c25dfec` + tether `2245f09`). The 4 copies are now ONE canonical `modules/common/jsonrpc.{h,c}`; drift eliminated (each was byte-identical modulo its `<MOD>_result_t` namespace — proven per migration by normalized-diff = only the top comment). C++ tether links the C unit via the common header's `extern "C"` (compiled C `clang -std=c17`, linked clang++). No longer a debt.
 - AF_UNIX path-too-long (env, NOT code) — real-socket integration (server `TestRealSocket*`, MIRROR, TETHER) binds UNIX sockets under pytest tmp_path; on macOS the default `TMPDIR` (`/var/folders/.../T`, ~48 chars) + pytest dirs + long test names exceeds the ~104-char `AF_UNIX` limit → 18 default `test_server.py` failures + integration breakage. Fix is ENV: `TMPDIR=/tmp/t` for default, `--basetemp=/tmp/tt` for `-m integration`. Confirmed artifact (438 default + 5 TETHER integration green with short paths). Future: a conftest could pin a short socket dir.
 - Packet-plane root is a SEPARATE track, NOT the §8.8 shim: CHAFF Phase A (pf/dtrace) and ECHO (pfctl/BPF/raw socket) need packet-level root, which §8.8 forbids — future §8 amendment or a dedicated packet-helper. CHAFF code returns required_capability='privileged_shim' for profile.*, but §8.8 grants no such capability — spec gap to resolve before that path unblocks.
 - ⚠️ VAULT has TWO blockers (CORRECTED — the design-pass caught that the earlier "blocker = entitlements, NOT root" claim was wrong): (1) **entitlements** — Keychain / Secure-Enclave + TCC + code-signing — for the per-vault master secret (the §8.8 shim does not grant this; it only evicts Keychain for PURGE); AND (2) **root** — `mount_tmpfs` exists on this macOS (`/sbin/mount_tmpfs`, Darwin 25) but `mount(2)` needs root, so VAULT's tmpfs mount is privileged. Resolve at the mount-slice: a shim op, an hdiutil `ram://` alternative, or a dedicated helper. The earlier single-blocker claim is retracted.
-- VAULT slice 1 (policy DSL engine, `655f183`) + DEFER (`165a1de`) + crypto (`e82f69b`) DONE — evaluator (full ALLOW/DENY/DEFER, fail-closed) + crypto engine (XChaCha20-Poly1305 + Argon2id + secure-mem). `vault_eval` stays the instantaneous ALLOW/DENY (slice-1 contract, 30 tests intact); `vault_decide` is the DEFER entrypoint (no test-fit). The crypto slice ended the pure-C phase (libsodium, deliberately). Remaining slices, ALL gated/platform: Keychain/Enclave master secret (entitlements), mount (catch 2 — root), kqueue relock, IPC/daemon (catch 3 — jsonrpc extract). The crypto engine is the foundation; the gated pieces sit on top.
+- VAULT slice 1 (policy DSL engine, `655f183`) + DEFER (`165a1de`) + crypto (`e82f69b`) DONE — evaluator (full ALLOW/DENY/DEFER, fail-closed) + crypto engine (XChaCha20-Poly1305 + Argon2id + secure-mem). `vault_eval` stays the instantaneous ALLOW/DENY (slice-1 contract, 30 tests intact); `vault_decide` is the DEFER entrypoint (no test-fit). The crypto slice ended the pure-C phase (libsodium, deliberately). Remaining slices, ALL gated/platform: Keychain/Enclave master secret (entitlements), mount (catch 2 — root), kqueue relock, IPC/daemon (catch 3 RESOLVED — `modules/common/jsonrpc` extracted (JE-1); the daemon-slice now just LINKS common, no copy). The crypto engine is the foundation; the gated pieces sit on top. ⚠️ daemon-slice UNBLOCKED on jsonrpc, but still gated on Keychain/Enclave master secret + mount (catch 2 — root) — NOT closed.
 - VAULT DEFER precision is 1h (the context's finest clock field is `hour`) → defer_seconds is always a multiple of 3600; day_of_month rolls naively (no month calendar) and boot-second projection is coarse, both bounded by the 7-day cap (DEFER_CAP_STEPS=168). Finer resolution would need a minute/second field in the context — a documented tail.
 - ✅ VAULT catch 1 — RESOLVED (`a038979` + `e82f69b`): libsodium chosen (Argon2id + XChaCha20-Poly1305 + first-class secure memory); CLAUDE.md §6 amended to a per-module C allowlist (the old "libcurl only" was already false — CHAFF links openssl@3+sqlite3). CommonCrypto rejected (PBKDF2-only = KDF downgrade); openssl@3 was a viable zero-new-dep runner-up but libsodium's secure-memory + spec intent won. No longer open.
 - ✅ VAULT spec corrections — RESOLVED in spec (`a038979`, not just code): catch A (key_salt was "rotated per unlock" → STABLE, stored in metadata, rotated only on re-encrypt — a per-unlock salt makes stored ciphertext undecryptable) and catch B (nonce was unspecified → 192-bit random per seal, stored). AEAD changed AES-256-GCM → XChaCha20-Poly1305 with the rationale recorded in-spec. The spec is now truthful.
 - VAULT crypto fail-closed + no-leak (`e82f69b`): the raw master secret lives only in sodium_malloc secure memory during derive and is wiped immediately (no swap / core-dump leak — VAULT's thesis, in code). open verifies the Poly1305 tag before releasing plaintext and actively sodium_memzero's pt_out on any failure (wrong key / tamper).
 - ⭐ VAULT tamper-test assertion corrected (`e82f69b`) — NOT test-fitting (same class as TETHER's test_present_from_fringe: impl design-correct, the test encoded the wrong post-condition). The RED test asserted a specific sentinel byte survived after a failed open (out[0]==0xAA), but the agreed defensive active-wipe (design-pass nuance 3) zeroes pt_out on failure. The real invariant is "no plaintext leak", not a sentinel — corrected to `memcmp(out, pt, ptlen) != 0` (impl-agnostic: holds whether wiped to 0 or left untouched).
-- ⚠️ VAULT catch 3 — jsonrpc 5th copy: VAULT (C) will be the 5th jsonrpc consumer (chaff/mirror/shim/tether are 4; `modules/common` does not exist). Slice 1 has NO IPC, so no copy yet. The VAULT daemon-slice is the trigger to finally extract `modules/common/jsonrpc` (D1=C) instead of copying a 5th time.
+- ✅ VAULT catch 3 — jsonrpc 5th copy — RESOLVED: `modules/common/jsonrpc` now EXISTS (JE-1 extract). VAULT's daemon-slice will LINK common as the FIRST new consumer (D1=C done), never a 5th copy. The trigger fired ahead of VAULT — the extract was done proactively across the existing 4 modules.
 - vault.lock (§6) is the TETHER L2 escalation target — when VAULT's daemon + vault.lock land, core can enforce TETHER L2 (tether.escalation → vault.lock), giving #3's L2 a live consumer (currently L2/L3 escalation events have none). Nuance: vault.lock takes {vault_id}; routing an escalation to it means "lock the currently-open vault" — a downstream wiring detail for that slice.
 - 3 of 8 native modules pending (ECHO, PULSE, PURGE) — CHAFF + MIRROR + ORACLE done; TETHER started (engine + daemon-wiring + Slice 3A); VAULT started (policy engine + DEFER + crypto; Keychain/mount/daemon gated).
 - MIRROR CGEventTap install — GATED on code-signing + Accessibility TCC (§6/§9); mirror.enable returns -31004 until then. The code-signing tail is now shared across MIRROR (tap), shim Slice 2 (secret in hardened-runtime memory), and TETHER (CoreBluetooth TCC + IRK in Keychain).
 - MIRROR no event producer yet — daemon wiring done, but drain_events is only a forward-compat seam (queue empty); events ship when the tap lands.
 - MIRROR → PULSE aggregate-event gap (D8) — PULSE expects a periodic aggregate event MIRROR doesn't yet define; address at PULSE time.
-- ipc/jsonrpc duplicated chaff ↔ mirror, and jsonrpc.c also copied into shim + tether (now 4 jsonrpc copies; TE-7b deliberate debt). D1=C extract to modules/common/ deferred to a future slice — see the dedicated 4th-copy tail above.
+- jsonrpc — ✅ EXTRACTED to `modules/common/` (JE-1; see the resolved TE-7b tail). ipc is NOT extracted: it diverges by role/language — chaff/mirror have a C client `ipc.c`, tether a C++ `ipc.cpp`, shim has no ipc (inline socket server). ipc stays per-module; only jsonrpc was the clean shared target.
 - ORACLE classify is baseline-aware and explainable: returns {score, reasoning, context_factors[], similar_events[]}; advisory — ⚠️ boundary EVOLVED at 3C (`ee794ba`): classify now ANNOUNCES an advisory event (oracle.anomaly.detected) on a threshold breach (score >= get_threshold()), but still never ACTS (announce ≠ act). ORACLE cannot invoke another module (D7); core (3B) routes the event to tether.heighten. Consistent with the pre-existing oracle.baseline.updated emit. The emit lives in the client (_handle_classify), so the detector stays advisory-pure (returns data, mutates nothing — test_oracle_advisory still holds).
 - ORACLE classifications_today is in-memory and approximate (no day-rollover).
 - ORACLE mid-call Ollama death surfaces as a generic error, not -31004 (startup probe + per-ConnectionError catch cover the typical down cases).
