@@ -9,12 +9,13 @@
 # pairing (Keychain/Secure Enclave) are GATED. Escalation is EMIT-ONLY — core
 # enforces L1/L2/L3 (spec §5). No real lock/evict/reboot here.
 #
-# Mixed toolchain: our logic is C++17 (clang++); vendored cJSON + the copied
-# jsonrpc.c are C (clang); Unity is C. Link with clang++.
+# Mixed toolchain: our logic is C++17 (clang++); vendored cJSON + the shared
+# modules/common jsonrpc.c are C (clang); Unity is C. Link with clang++.
 CXX := clang++
 CC  := clang
 
-INCLUDES  := -Iinclude -Isrc/vendor/cjson
+# -I../common: the shared jsonrpc (JE-1 extract; no longer a per-module copy).
+INCLUDES  := -Iinclude -Isrc/vendor/cjson -I../common
 CXXSTRICT := -std=c++17 -Wall -Wextra -Werror -O2 $(INCLUDES)
 CSTRICT   := -std=c17 -Wall -Wextra -Werror -O2 $(INCLUDES)
 CRELAXED  := -std=c17 -O2 $(INCLUDES)
@@ -23,7 +24,7 @@ TESTCXX   := -std=c++17 -Wall -Wextra -O2 $(INCLUDES) $(TESTINC)
 
 BIN       := tether
 CPP_OBJS  := $(patsubst %.cpp,%.o,$(filter-out src/main.cpp,$(wildcard src/*.cpp)))
-C_OBJS    := src/jsonrpc.o                 # the 4th jsonrpc copy (TE-7b deliberate debt)
+C_OBJS    := ../common/jsonrpc.o           # shared jsonrpc (JE-1 extract; ends TE-7b, was the 4th copy)
 VEND_OBJS := src/vendor/cjson/cJSON.o
 UNITY_OBJ := tests/vendor/unity/unity.o
 TEST_OBJS := $(patsubst %.cpp,%.o,$(wildcard tests/*.cpp))
@@ -35,8 +36,10 @@ $(BIN): src/main.o $(CPP_OBJS) $(C_OBJS) $(VEND_OBJS)
 src/%.o: src/%.cpp
 	$(CXX) $(CXXSTRICT) -c $< -o $@
 
-# Our copied C jsonrpc — strict C (explicit rule beats the .cpp pattern).
-src/jsonrpc.o: src/jsonrpc.c
+# Shared C jsonrpc (modules/common, JE-1) — compiled as C (clang $(CSTRICT)), NOT
+# clang++, so its extern "C" symbols link cleanly into this C++ module. Explicit
+# rule beats the .cpp pattern; common stays cJSON-agnostic (JE-4, our -I supplies it).
+../common/jsonrpc.o: ../common/jsonrpc.c
 	$(CC) $(CSTRICT) -c $< -o $@
 
 # Vendored C — relaxed.

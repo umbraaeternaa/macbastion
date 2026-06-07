@@ -148,7 +148,7 @@ void handle_inbound(int fd, TetherRuntime &rt, Monitor &mon, const char *line) {
         return;
     }
     jsonrpc_request_t *req = nullptr;
-    if (jsonrpc_parse_request(line, &req) != TETHER_OK) {
+    if (jsonrpc_parse_request(line, &req) != JSONRPC_OK) {
         return;
     }
     char *resp = commands_dispatch(&rt, req->method, req->params, req->id);
