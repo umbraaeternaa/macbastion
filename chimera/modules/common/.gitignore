@@ -1,0 +1,4 @@
+# build artifacts
+# common is a shared library (jsonrpc, JE-1) compiled into each consuming module
+# with that module's flags; the .o lands here but is never committed.
+*.o

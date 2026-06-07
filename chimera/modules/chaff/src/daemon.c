@@ -106,7 +106,7 @@ static void handle_inbound(daemon_ctx_t *ctx, const char *line) {
         return;
     }
     jsonrpc_request_t *req = NULL;
-    if (jsonrpc_parse_request(line, &req) != CHAFF_OK) {
+    if (jsonrpc_parse_request(line, &req) != JSONRPC_OK) {
         return;
     }
     pthread_mutex_lock(&ctx->rt->mutex);

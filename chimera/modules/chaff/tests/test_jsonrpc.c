@@ -9,7 +9,7 @@
 static void test_parse_request_ok(void) {
     jsonrpc_request_t *req = NULL;
     const char *line = "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"chaff.status\"}";
-    TEST_ASSERT_EQUAL_INT(CHAFF_OK, jsonrpc_parse_request(line, &req));
+    TEST_ASSERT_EQUAL_INT(JSONRPC_OK, jsonrpc_parse_request(line, &req));
     TEST_ASSERT_NOT_NULL(req);
     TEST_ASSERT_EQUAL_STRING("chaff.status", req->method);
     jsonrpc_request_free(req);
@@ -28,7 +28,7 @@ static void test_parse_request_has_id(void) {
 static void test_parse_notification_no_id(void) {
     jsonrpc_request_t *req = NULL;
     const char *line = "{\"jsonrpc\":\"2.0\",\"method\":\"chaff.tick\"}";
-    TEST_ASSERT_EQUAL_INT(CHAFF_OK, jsonrpc_parse_request(line, &req));
+    TEST_ASSERT_EQUAL_INT(JSONRPC_OK, jsonrpc_parse_request(line, &req));
     TEST_ASSERT_NOT_NULL(req);
     TEST_ASSERT_TRUE(req->is_notification);
     jsonrpc_request_free(req);
@@ -36,13 +36,13 @@ static void test_parse_notification_no_id(void) {
 
 static void test_parse_non_json_errors(void) {
     jsonrpc_request_t *req = NULL;
-    TEST_ASSERT_EQUAL_INT(CHAFF_ERR_PARSE, jsonrpc_parse_request("not json", &req));
+    TEST_ASSERT_EQUAL_INT(JSONRPC_ERR_PARSE, jsonrpc_parse_request("not json", &req));
 }
 
 static void test_parse_missing_method_errors(void) {
     jsonrpc_request_t *req = NULL;
     const char *line = "{\"jsonrpc\":\"2.0\",\"id\":1}";
-    TEST_ASSERT_EQUAL_INT(CHAFF_ERR_PARSE, jsonrpc_parse_request(line, &req));
+    TEST_ASSERT_EQUAL_INT(JSONRPC_ERR_PARSE, jsonrpc_parse_request(line, &req));
 }
 
 static void test_serialize_response_round_trips(void) {

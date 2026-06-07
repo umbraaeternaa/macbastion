@@ -1,4 +1,4 @@
-/* jsonrpc — JSON-RPC 2.0 framing over cJSON (§6.4). */
+/* jsonrpc — JSON-RPC 2.0 framing over cJSON (§6.4). Shared CHIMERA copy (JE-1). */
 #include "jsonrpc.h"
 
 #include <stdlib.h>
@@ -42,30 +42,30 @@ jsonrpc_kind_t jsonrpc_classify(const char *line) {
     return kind;
 }
 
-chaff_result_t jsonrpc_parse_request(const char *line, jsonrpc_request_t **out) {
+jsonrpc_result_t jsonrpc_parse_request(const char *line, jsonrpc_request_t **out) {
     if (!line || !out) {
-        return CHAFF_ERR;
+        return JSONRPC_ERR;
     }
     *out = NULL;
     cJSON *root = cJSON_Parse(line);
     if (!root) {
-        return CHAFF_ERR_PARSE;
+        return JSONRPC_ERR_PARSE;
     }
     cJSON *method = cJSON_GetObjectItemCaseSensitive(root, "method");
     if (!cJSON_IsString(method)) {
         cJSON_Delete(root);
-        return CHAFF_ERR_PARSE;
+        return JSONRPC_ERR_PARSE;
     }
     jsonrpc_request_t *req = calloc(1, sizeof(*req));
     if (!req) {
         cJSON_Delete(root);
-        return CHAFF_ERR;
+        return JSONRPC_ERR;
     }
     req->method = dupstr(method->valuestring);
     if (!req->method) {
         free(req);
         cJSON_Delete(root);
-        return CHAFF_ERR;
+        return JSONRPC_ERR;
     }
     cJSON *id = cJSON_GetObjectItemCaseSensitive(root, "id");
     if (id) {
@@ -81,7 +81,7 @@ chaff_result_t jsonrpc_parse_request(const char *line, jsonrpc_request_t **out) 
     }
     cJSON_Delete(root);
     *out = req;
-    return CHAFF_OK;
+    return JSONRPC_OK;
 }
 
 void jsonrpc_request_free(jsonrpc_request_t *req) {
