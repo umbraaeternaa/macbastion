@@ -63,7 +63,7 @@ static void handle_inbound(int fd, mirror_runtime_t *rt, const char *line) {
         return;
     }
     jsonrpc_request_t *req = NULL;
-    if (jsonrpc_parse_request(line, &req) != MIRROR_OK) {
+    if (jsonrpc_parse_request(line, &req) != JSONRPC_OK) {
         return;
     }
     pthread_mutex_lock(&rt->mutex);
