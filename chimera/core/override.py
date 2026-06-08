@@ -4,13 +4,15 @@ PULSE's exhausted mode blocks danger actions; §8 guarantees the operator can AL
 proceed by typing a pre-set override phrase. The phrase is never stored in the clear —
 only a salted PBKDF2 hash (set once, typed in full each time, verified in constant time).
 If no phrase is set, verify() is False — override is simply unavailable until configured;
-the operator is never silently let through.
-
-RED stub: the public surface is fixed; methods raise NotImplementedError (MANIFESTO §4).
+the operator is never silently let through. File 0600 in a 0700 dir.
 """
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
+import os
 from pathlib import Path
 
 ITERATIONS = 200_000
@@ -24,12 +26,30 @@ class OverrideStore:
 
     def is_set(self) -> bool:
         """True if an override phrase has been configured."""
-        raise NotImplementedError
+        return self._path.exists()
 
     def set_phrase(self, phrase: str) -> None:
         """Store a salted PBKDF2 hash of the phrase (replaces any existing)."""
-        raise NotImplementedError
+        salt = os.urandom(16)
+        digest = hashlib.pbkdf2_hmac("sha256", phrase.encode("utf-8"), salt, ITERATIONS)
+        payload = {"salt": salt.hex(), "hash": digest.hex(), "iterations": ITERATIONS}
+        self._path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        self._path.touch(mode=0o600, exist_ok=True)
+        self._path.chmod(0o600)
+        self._path.write_text(json.dumps(payload))
 
     def verify(self, phrase: str) -> bool:
         """Constant-time check of phrase against the stored hash; False if unset."""
-        raise NotImplementedError
+        if not self._path.exists():
+            return False
+        try:
+            data = json.loads(self._path.read_text())
+            if not isinstance(data, dict):
+                return False
+            salt = bytes.fromhex(data["salt"])
+            stored = bytes.fromhex(data["hash"])
+            iterations = int(data["iterations"])
+        except (ValueError, KeyError, TypeError, OSError):
+            return False
+        candidate = hashlib.pbkdf2_hmac("sha256", phrase.encode("utf-8"), salt, iterations)
+        return hmac.compare_digest(candidate, stored)

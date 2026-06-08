@@ -18,6 +18,7 @@ from core.config import CoreConfig
 from core.envelope import Response
 from core.errors import ChimeraError, RpcError
 from core.lifecycle import Lifecycle
+from core.override import OverrideStore
 from core.registry import Registry
 from core.server import Server
 from core.tokens import TokenIssuer
@@ -59,7 +60,7 @@ async def test_gate_blocks_at_exhausted(tmp_path):
     server._danger_set = {"worker.act"}
     server._pulse_mode = "exhausted"
     with pytest.raises(RpcError) as ei:
-        await server._gate("worker.act")
+        await server._gate("worker.act", None)
     assert ei.value.code == ChimeraError.DENIED_BY_POLICY
 
 
@@ -73,7 +74,7 @@ async def test_gate_delays_at_tired(tmp_path, monkeypatch):
         slept.append(seconds)
 
     monkeypatch.setattr(asyncio, "sleep", fake_sleep)
-    await server._gate("worker.act")  # delays, does not raise
+    await server._gate("worker.act", None)  # delays, does not raise
     assert slept == [5.0]
 
 
@@ -87,7 +88,7 @@ async def test_gate_allows_non_danger(tmp_path, monkeypatch):
         slept.append(seconds)
 
     monkeypatch.setattr(asyncio, "sleep", fake_sleep)
-    await server._gate("safe.method")  # not in danger set -> no-op, no raise
+    await server._gate("safe.method", None)  # not in danger set -> no-op, no raise
     assert slept == []
 
 
@@ -101,8 +102,34 @@ async def test_gate_allows_danger_at_normal(tmp_path, monkeypatch):
         slept.append(seconds)
 
     monkeypatch.setattr(asyncio, "sleep", fake_sleep)
-    await server._gate("worker.act")  # normal -> allow, no delay, no raise
+    await server._gate("worker.act", None)  # normal -> allow, no delay, no raise
     assert slept == []
+
+
+async def test_gate_override_allows_at_exhausted(tmp_path):
+    server = _bare_server(tmp_path)
+    server._override_store = OverrideStore(tmp_path / "override.json")
+    server._override_store.set_phrase("let me in")
+    server._danger_set = {"worker.act"}
+    server._pulse_mode = "exhausted"
+    await server._gate("worker.act", {"_override": "let me in"})  # correct -> allowed
+
+
+async def test_gate_blocks_exhausted_wrong_override(tmp_path):
+    server = _bare_server(tmp_path)
+    server._override_store = OverrideStore(tmp_path / "override.json")
+    server._override_store.set_phrase("let me in")
+    server._danger_set = {"worker.act"}
+    server._pulse_mode = "exhausted"
+    with pytest.raises(RpcError) as ei:
+        await server._gate("worker.act", {"_override": "wrong"})
+    assert ei.value.code == ChimeraError.DENIED_BY_POLICY
+
+
+def test_strip_override_removes_secret(tmp_path):
+    server = _bare_server(tmp_path)
+    assert server._strip_override({"_override": "secret", "url": "x"}) == {"url": "x"}
+    assert server._strip_override({"a": 1}) == {"a": 1}  # untouched when absent
 
 
 async def test_refresh_danger_caches_registry(tmp_path, monkeypatch):

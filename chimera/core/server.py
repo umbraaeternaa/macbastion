@@ -56,6 +56,7 @@ from core.errors import (
 )
 from core.gate import BLOCK, DELAY, decide
 from core.lifecycle import InvalidTransitionError, Lifecycle
+from core.override import OverrideStore
 from core.registry import Registry
 from core.tokens import TokenIssuer
 
@@ -114,12 +115,14 @@ class Server:
         lifecycle: Lifecycle,
         broker: EventBroker,
         token_issuer: TokenIssuer,
+        override_store: OverrideStore | None = None,
     ) -> None:
         self._config = config
         self._registry = registry
         self._lifecycle = lifecycle
         self._broker = broker
         self._token_issuer = token_issuer
+        self._override_store = override_store
         self._core_path = config.socket_dir / "core.sock"
         self._events_path = config.socket_dir / "events.sock"
         self._core_server: asyncio.Server | None = None
@@ -324,8 +327,9 @@ class Server:
         # D7: only surfaces may invoke module methods; a module may not.
         if conn.is_module:
             raise RpcError(code=ChimeraError.NOT_AUTHORIZED)
-        await self._gate(request.method)  # GW-4: PULSE-driven friction (block/delay)
-        reply = await self._issue_to_module(request.method, request.params)
+        await self._gate(request.method, request.params)  # GW-4/OV-3: friction + override
+        forwarded = self._strip_override(request.params)
+        reply = await self._issue_to_module(request.method, forwarded)
         # Rewrite the module's reply id back to the original caller's id.
         if reply.error is not None:
             return Response(jsonrpc="2.0", id=request.id, error=reply.error)
@@ -389,21 +393,42 @@ class Server:
 
     # -- cognitive gate (PULSE-driven, GW-1…GW-6) -------------------------
 
-    async def _gate(self, method: str) -> None:
-        """Apply PULSE-driven friction before forwarding a danger action (GW-4).
+    async def _gate(
+        self, method: str, params: dict[str, Any] | list[Any] | None
+    ) -> None:
+        """Apply PULSE-driven friction before forwarding a danger action (GW-4 / OV-3).
 
         A non-danger method (or an allow/confirm decision) returns and the forward
-        proceeds; a tired mode delays; an exhausted mode without override raises
-        DENIED_BY_POLICY (-31003). override_ok is False this slice (salted-hash override
-        storage deferred). confirm is forwarded — its dialog is the surface's job.
+        proceeds; a tired mode delays; an exhausted mode raises DENIED_BY_POLICY (-31003)
+        UNLESS the request carries a correct `_override` phrase (§8 — the operator can
+        always proceed). confirm is forwarded — its dialog is the surface's job.
         """
         if method not in self._danger_set:
             return
-        decision = decide(method, self._pulse_mode, self._danger_set, override_ok=False)
+        decision = decide(
+            method, self._pulse_mode, self._danger_set,
+            override_ok=self._override_ok(params),
+        )
         if decision.decision == BLOCK:
             raise RpcError(code=ChimeraError.DENIED_BY_POLICY, message=decision.reason)
         if decision.decision == DELAY:
             await asyncio.sleep(decision.delay_seconds)
+
+    def _override_ok(self, params: dict[str, Any] | list[Any] | None) -> bool:
+        """True if the request carries a verified override phrase (OV-3)."""
+        if self._override_store is None or not isinstance(params, dict):
+            return False
+        phrase = params.get("_override")
+        return isinstance(phrase, str) and self._override_store.verify(phrase)
+
+    @staticmethod
+    def _strip_override(
+        params: dict[str, Any] | list[Any] | None,
+    ) -> dict[str, Any] | list[Any] | None:
+        """Drop the `_override` secret before forwarding — modules never see it (OV-3)."""
+        if isinstance(params, dict) and "_override" in params:
+            return {k: v for k, v in params.items() if k != "_override"}
+        return params
 
     async def _gate_loop(self) -> None:
         """Track PULSE's current mode from pulse.mode.changed events (GW-2)."""
