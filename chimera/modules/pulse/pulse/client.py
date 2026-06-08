@@ -73,6 +73,7 @@ class PulseClient:
         self._cmd_lock = asyncio.Lock()
         self._registered = asyncio.Event()
         self._req_id = 0
+        self._last_mode: str | None = None  # EM-2: emit pulse.mode.changed on transition
 
     @property
     def _core_sock(self) -> Path:
@@ -204,6 +205,15 @@ class PulseClient:
     def _handle_disable(self) -> dict[str, Any]:
         self._enabled = False
         return {"ok": True, "enabled": False}
+
+    async def _tick(self, now: str) -> None:
+        """Compute the current mode; emit pulse.mode.changed on a transition (EM-2).
+
+        RED stub — raises NotImplementedError until GREEN. The first tick establishes
+        _last_mode (no emit); later ticks emit {old_mode, new_mode, score, primary_signal}
+        only when the mode actually changes. advisory (announce, not act).
+        """
+        raise NotImplementedError
 
     async def _heartbeat_loop(self) -> None:
         await self._registered.wait()
