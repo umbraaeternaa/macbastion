@@ -78,7 +78,7 @@ If ORACLE is running, PULSE consumes `oracle.anomaly.detected` events. If ORACLE
   median of all signals, computed only over sessions where no `pulse.danger.gated`
   event fired (to avoid feedback loops).
 
-History is stored in encrypted SQLite (Fernet/AES-128) with a 7-day rolling window. Older buckets are purged automatically. **No raw input content is ever stored** — only aggregates and the resulting score.
+History is stored in encrypted SQLite (Fernet/AES-128) with a 14-day rolling window — retention must be ≥ the 14-day baseline-median window (above), or the median is uncomputable (a 7-day store cannot feed a 14-day median). Older buckets are purged automatically. **No raw input content is ever stored** — only aggregates and the resulting score.
 
 ---
 
@@ -119,7 +119,7 @@ The registry is intentionally short. The operator owns it.
 | Signal collector | C17 (small daemon)                    | Subscribes to MIRROR/ORACLE IPC, low overhead       |
 | Scoring engine   | Python 3.11+ asyncio                  | Rule logic, baseline math, easier to evolve         |
 | Idle detection   | kqueue (`EVFILT_TIMER` + IOKit idle)  | Event-driven, no polling                            |
-| History store    | SQLite + Fernet (AES-128)             | Encrypted at rest, 7-day rolling window             |
+| History store    | SQLite + Fernet (AES-128)             | Encrypted at rest, 14-day rolling window            |
 | IPC with core    | UNIX socket + JSON-RPC 2.0            | Same protocol as CHAFF/ECHO/ORACLE/MIRROR           |
 | Action gating    | Implemented in core, driven by PULSE  | PULSE only emits mode; core enforces gates          |
 | Build system     | clang + pip + venv                    | Hybrid like ORACLE                                  |
@@ -180,7 +180,7 @@ Python (in chimera's venv):
 - Standard library: `asyncio`, `sqlite3`, `json`, `statistics`, `time`
 
 Project-internal:
-- `~/.config/chimera/pulse/baseline.db` — encrypted SQLite, 7-day rolling
+- `~/.config/chimera/pulse/baseline.db` — encrypted SQLite, 14-day rolling
 - `~/.config/chimera/pulse/registry.json` — danger registry (operator-editable)
 - IPC socket via core (no direct sockets)
 
