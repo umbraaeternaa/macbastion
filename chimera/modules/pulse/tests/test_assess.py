@@ -1,8 +1,9 @@
 """PULSE assessment tests (§5.5, slice 3 / WS-1…WS-7).
 
 Hermetic: a real file-based BaselineStore under tmp_path seeded with synthetic
-buckets; `now` injected as an ISO string. RED — assess() raises NotImplementedError
-until GREEN. assess() is the only thing under test; the store is real (already GREEN).
+buckets; `now` injected as an ISO string. GREEN — assess() is implemented; the 10
+assertions are unchanged from RED. assess() is the only thing under test; the store
+is real (already GREEN).
 """
 
 from datetime import datetime, timedelta
