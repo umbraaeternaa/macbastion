@@ -195,8 +195,21 @@ class Server:
     def _handle_override_set(
         self, params: dict[str, Any] | list[Any] | None, conn: Connection
     ) -> dict[str, Any]:
-        """Operator sets the gate-override phrase (OS-2). RED stub."""
-        raise NotImplementedError
+        """Operator sets the gate-override phrase (OS-2).
+
+        Surface-only — a module connection (even with a valid core token) is refused: the
+        override phrase is the operator's, never a module's. Needs a configured store and a
+        non-empty phrase. set_phrase does a ~100ms PBKDF2 — acceptable for a rare action.
+        """
+        if conn.is_module:
+            raise RpcError(code=ChimeraError.NOT_AUTHORIZED)
+        if self._override_store is None:
+            raise RpcError(code=ChimeraError.PRECONDITION_FAILED)
+        phrase = self._require_str(params, "phrase")
+        if not phrase:
+            raise RpcError(code=JSONRPC_INVALID_PARAMS, message="phrase must be non-empty")
+        self._override_store.set_phrase(phrase)
+        return {"ok": True}
 
     def _handle_register(
         self, params: dict[str, Any] | list[Any] | None, conn: Connection

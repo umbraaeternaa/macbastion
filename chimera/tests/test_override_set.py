@@ -1,7 +1,7 @@
 """core.override.set — operator sets the gate-override phrase (OS-1…OS-4).
 
 Unit: drive handle_command on a bare Server (no sockets) with a surface / module
-Connection. RED — _handle_override_set raises NotImplementedError until GREEN. Pins:
+Connection. GREEN — _handle_override_set is implemented; assertions unchanged. Pins:
 surface-only (a module connection -> -31007), needs an override_store (-31004), needs a
 non-empty phrase (-32602), and a surface set makes the phrase verify.
 """
