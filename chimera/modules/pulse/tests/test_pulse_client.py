@@ -2,7 +2,7 @@
 
 Hermetic: a FakeWriter captures emitted frames; `now` is injected; the store is seeded
 for baseline_ready so the mode is the real score-mode (not forced normal). No sockets,
-no Ollama. RED — _tick raises NotImplementedError until GREEN.
+no Ollama. GREEN — _tick is implemented; the 3 assertions are unchanged from RED.
 
 Mode by injected now (session_start 2026-06-12T00:00, idle None, baseline_ready True):
   03:00 -> temporal 0.5*1.0 + 0.25*(3/12) = 0.5625 -> caution

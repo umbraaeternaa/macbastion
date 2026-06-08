@@ -21,7 +21,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from core.envelope import Request, Response, parse_frame, serialize_frame
+from core.envelope import Notification, Request, Response, parse_frame, serialize_frame
 from core.errors import (
     JSONRPC_INTERNAL_ERROR,
     JSONRPC_INVALID_PARAMS,
@@ -61,6 +61,7 @@ class PulseClient:
         chronotype: str = "typical",
         weights: Weights | None = None,
         heartbeat_interval: float = 2.0,
+        tick_interval: float = 60.0,
     ) -> None:
         self._socket_dir = Path(socket_dir)
         self._store = store
@@ -68,6 +69,7 @@ class PulseClient:
         self._chronotype = chronotype
         self._weights = weights if weights is not None else Weights()
         self._heartbeat_interval = heartbeat_interval
+        self._tick_interval = tick_interval
         self._enabled = True
         self._cmd_writer: asyncio.StreamWriter | None = None
         self._cmd_lock = asyncio.Lock()
@@ -89,6 +91,7 @@ class PulseClient:
             async with asyncio.TaskGroup() as tg:
                 tg.create_task(self._serve_command_conn())
                 tg.create_task(self._heartbeat_loop())
+                tg.create_task(self._tick_loop())
         except* _DisconnectError:
             pass  # core closed the socket — graceful exit
         except* (ConnectionError, OSError, asyncio.IncompleteReadError):
@@ -158,9 +161,12 @@ class PulseClient:
 
     # -- handlers ---------------------------------------------------------
 
-    async def _handle_status(self) -> dict[str, Any]:
-        """Advisory state (PD-3): temporal_signal -> assess over the store."""
-        now = datetime.now().isoformat()
+    async def _compute(self, now: str) -> tuple[float, str, str]:
+        """Advisory composition (EM-1): temporal_signal -> assess over the store.
+
+        Returns (score, mode, primary_signal). primary is 'temporal' — the only present
+        group this slice (group A/C gated).
+        """
         temporal = temporal_signal(
             now, session_start=self._session_start, last_idle_end=None,
             chronotype=self._chronotype,
@@ -169,6 +175,12 @@ class PulseClient:
             assess, self._store, now, group_a=None, temporal=temporal,
             drift=None, weights=self._weights,
         )
+        return score, mode, "temporal"
+
+    async def _handle_status(self) -> dict[str, Any]:
+        """Advisory state (PD-3): temporal_signal -> assess over the store."""
+        now = datetime.now().isoformat()
+        score, mode, _ = await self._compute(now)
         baseline_ready = await asyncio.to_thread(self._store.baseline_ready, now)
         return {
             "score": score,
@@ -209,11 +221,30 @@ class PulseClient:
     async def _tick(self, now: str) -> None:
         """Compute the current mode; emit pulse.mode.changed on a transition (EM-2).
 
-        RED stub — raises NotImplementedError until GREEN. The first tick establishes
-        _last_mode (no emit); later ticks emit {old_mode, new_mode, score, primary_signal}
-        only when the mode actually changes. advisory (announce, not act).
+        The first tick establishes _last_mode (no emit); later ticks emit only when the
+        mode actually changes — advisory (announce, not act); core relays (§5).
         """
-        raise NotImplementedError
+        score, mode, primary = await self._compute(now)
+        if self._last_mode is not None and mode != self._last_mode:
+            await self._send_cmd(
+                Notification(
+                    jsonrpc="2.0",
+                    method="pulse.mode.changed",
+                    params={
+                        "old_mode": self._last_mode,
+                        "new_mode": mode,
+                        "score": score,
+                        "primary_signal": primary,
+                    },
+                )
+            )
+        self._last_mode = mode
+
+    async def _tick_loop(self) -> None:
+        await self._registered.wait()
+        while True:
+            await asyncio.sleep(self._tick_interval)
+            await self._tick(datetime.now().isoformat())
 
     async def _heartbeat_loop(self) -> None:
         await self._registered.wait()
@@ -228,7 +259,7 @@ class PulseClient:
                 )
             )
 
-    async def _send_cmd(self, message: Request | Response) -> None:
+    async def _send_cmd(self, message: Request | Response | Notification) -> None:
         if self._cmd_writer is None:
             return
         async with self._cmd_lock:
