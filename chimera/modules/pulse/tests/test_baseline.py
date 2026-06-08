@@ -1,14 +1,13 @@
 """PULSE baseline store tests (§5.5, slice 2 / BS-1…BS-11).
 
 Hermetic: file-based SQLite under tmp_path, `now` injected as an ISO-8601 string
-(no datetime.now() inside the store). RED — the store raises NotImplementedError
-until GREEN.
+(no datetime.now() inside the store). GREEN — the store is implemented; the 24
+assertions are unchanged from RED.
 """
 
 from datetime import datetime, timedelta
 
 import pytest
-
 from pulse.baseline import BaselineStore
 
 # A fixed reference instant; tests build timestamps relative to it.
