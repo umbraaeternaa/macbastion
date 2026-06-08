@@ -8,8 +8,8 @@ cognitive sensor must not lock the operator out (the opposite of VAULT's fail-cl
 The override phrase is always a speed bump, never a cage: at `exhausted` a correct
 override still allows the action.
 
-RED stub: GateDecision + the §4 friction vocabulary are fixed; decide() raises
-NotImplementedError so the failing tests are real (MANIFESTO §4).
+GREEN: decide() implements the §4 friction levels + §8 fail-open + the override escape;
+pure (no I/O), so it is unit-tested directly.
 """
 
 from __future__ import annotations
@@ -42,5 +42,25 @@ def decide(
     *,
     override_ok: bool = False,
 ) -> GateDecision:
-    """Friction for one action given PULSE's current mode (§4 + §8). RED stub."""
-    raise NotImplementedError
+    """Friction for one action given PULSE's current mode (§4 + §8).
+
+    GE-2 levels, GE-3 fail-open, GE-4 override. Pure — the caller supplies the verified
+    override_ok flag (the salted-hash check of the phrase is a separate concern).
+    """
+    if action_signature not in danger:
+        return GateDecision(ALLOW, reason="not a registered danger action")
+    if mode == "caution":
+        return GateDecision(CONFIRM, reason="caution: confirm before proceeding")
+    if mode == "tired":
+        return GateDecision(
+            DELAY, delay_seconds=TIRED_DELAY_S, reason="tired: cool-off delay"
+        )
+    if mode == "exhausted":
+        if override_ok:
+            return GateDecision(ALLOW, reason="exhausted: override accepted")
+        return GateDecision(
+            BLOCK, requires_override=True, reason="exhausted: override required"
+        )
+    if mode == "normal":
+        return GateDecision(ALLOW, reason="normal: no friction")
+    return GateDecision(ALLOW, reason="fail-open: mode unknown")  # §8: never block

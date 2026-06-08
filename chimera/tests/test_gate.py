@@ -1,6 +1,7 @@
 """Cognitive gate decision unit tests (GE-1…GE-5).
 
-Pure, hermetic. RED — decide() raises NotImplementedError until GREEN. Pins §4 friction
+Pure, hermetic. GREEN — decide() is implemented; the 8 assertions are unchanged from RED.
+Pins §4 friction
 (normal->allow, caution->confirm, tired->delay, exhausted->block), §8 fail-OPEN
 (unknown/None mode -> allow), and the override escape (exhausted + override_ok -> allow).
 """
