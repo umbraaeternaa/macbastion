@@ -6,8 +6,8 @@ Two layers:
 - integration (marked): a live core.Server — a pulse.mode.changed event updates the cached
   mode, and a registering PULSE refreshes the danger set over the real socket.
 
-RED — _gate / _refresh_danger raise NotImplementedError and the wiring (mode subscription,
-refresh-on-register, the _route hook) is absent, so every assertion below fails.
+GREEN — _gate / _refresh_danger are implemented and the wiring (mode subscription,
+refresh-on-register, the _route hook) is in place; the assertions are unchanged from RED.
 """
 
 import asyncio

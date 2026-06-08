@@ -54,6 +54,7 @@ from core.errors import (
     ChimeraError,
     RpcError,
 )
+from core.gate import BLOCK, DELAY, decide
 from core.lifecycle import InvalidTransitionError, Lifecycle
 from core.registry import Registry
 from core.tokens import TokenIssuer
@@ -138,6 +139,7 @@ class Server:
         self._danger_set: set[str] = set()
         self._gate_sub: Subscription | None = None
         self._gate_task: asyncio.Task[None] | None = None
+        self._refresh_task: asyncio.Task[None] | None = None
 
     # -- connections ------------------------------------------------------
 
@@ -322,6 +324,7 @@ class Server:
         # D7: only surfaces may invoke module methods; a module may not.
         if conn.is_module:
             raise RpcError(code=ChimeraError.NOT_AUTHORIZED)
+        await self._gate(request.method)  # GW-4: PULSE-driven friction (block/delay)
         reply = await self._issue_to_module(request.method, request.params)
         # Rewrite the module's reply id back to the original caller's id.
         if reply.error is not None:
@@ -389,15 +392,48 @@ class Server:
     async def _gate(self, method: str) -> None:
         """Apply PULSE-driven friction before forwarding a danger action (GW-4).
 
-        RED stub — raises NotImplementedError until GREEN. In GREEN: a non-danger
-        method (or allow/confirm) returns (forward proceeds); a tired mode delays; an
-        exhausted mode without override raises DENIED_BY_POLICY (-31003).
+        A non-danger method (or an allow/confirm decision) returns and the forward
+        proceeds; a tired mode delays; an exhausted mode without override raises
+        DENIED_BY_POLICY (-31003). override_ok is False this slice (salted-hash override
+        storage deferred). confirm is forwarded — its dialog is the surface's job.
         """
-        raise NotImplementedError
+        if method not in self._danger_set:
+            return
+        decision = decide(method, self._pulse_mode, self._danger_set, override_ok=False)
+        if decision.decision == BLOCK:
+            raise RpcError(code=ChimeraError.DENIED_BY_POLICY, message=decision.reason)
+        if decision.decision == DELAY:
+            await asyncio.sleep(decision.delay_seconds)
+
+    async def _gate_loop(self) -> None:
+        """Track PULSE's current mode from pulse.mode.changed events (GW-2)."""
+        assert self._gate_sub is not None
+        try:
+            while True:
+                event = await self._gate_sub.get()
+                new_mode = event.payload.get("new_mode")
+                if isinstance(new_mode, str):
+                    self._pulse_mode = new_mode
+        except SubscriptionClosedError:
+            return
 
     async def _refresh_danger(self) -> None:
-        """Query pulse.danger.list and cache the danger set (GW-3). RED stub."""
-        raise NotImplementedError
+        """Query pulse.danger.list and cache the danger set (GW-3).
+
+        Core-authority query (no connection). Resilient: an offline PULSE, a timeout, a
+        malformed reply, or any error leaves the previous set intact and is swallowed —
+        the gate fails OPEN on a stale/empty set, never blocks on a refresh failure.
+        """
+        try:
+            reply = await self._dispatch_internal("pulse.danger.list", None)
+        except Exception:  # noqa: BLE001 — a refresh failure must never raise
+            logger.exception("danger-set refresh failed")
+            return
+        if reply.error is not None or not isinstance(reply.result, dict):
+            return
+        registry = reply.result.get("registry")
+        if isinstance(registry, list):
+            self._danger_set = {str(s) for s in registry}
 
     # -- param helpers ----------------------------------------------------
 
@@ -461,6 +497,9 @@ class Server:
         if self.RELAY_RULES:
             self._relay_sub = self._broker.subscribe(list(self.RELAY_RULES))
             self._relay_task = asyncio.create_task(self._relay_loop())
+        # GW-2: track PULSE's mode via pulse.mode.changed.
+        self._gate_sub = self._broker.subscribe(["pulse.mode.changed"])
+        self._gate_task = asyncio.create_task(self._gate_loop())
 
     async def stop(self) -> None:
         """Stop accepting, close both sockets, unlink them, cancel the sweep."""
@@ -481,6 +520,18 @@ class Server:
         if self._relay_sub is not None:
             self._relay_sub.close()
             self._relay_sub = None
+        for task in (self._gate_task, self._refresh_task):
+            if task is not None:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+        self._gate_task = None
+        self._refresh_task = None
+        if self._gate_sub is not None:
+            self._gate_sub.close()
+            self._gate_sub = None
         for server in (self._core_server, self._events_server):
             if server is not None:
                 server.close()
@@ -518,6 +569,8 @@ class Server:
                 if conn.is_module and attached is None:
                     attached = conn.subject
                     self._attach_module_writer(attached, writer)
+                    if attached == "pulse":  # GW-3: refresh the cached danger set
+                        self._refresh_task = asyncio.create_task(self._refresh_danger())
         except (ConnectionError, asyncio.IncompleteReadError):
             pass
         finally:
