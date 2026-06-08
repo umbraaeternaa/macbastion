@@ -11,10 +11,29 @@ each time, and a closing monobank QR + GitHub. Then produce a MEDIUM Instagram
 description (what we did today, what we hit, how we fixed it, where we go next) and
 hashtags. This is the LAST ritual of the working day, AFTER `/handoff`.
 
-Pipeline scripts live in `.claude/scripts/`: `reel.py` (SVG frames), `music_dnb.py`
-(numpy synth), `render.py` (rasteriser), `build_all.sh` (orchestrator). Style spec:
+Pipeline scripts live in `.claude/scripts/`: `reel.py` (SVG frames), `music.py`
+(numpy MULTI-GENRE synth — random genre x key x scale x progression x tempo each run),
+`render.py` (rasteriser), `build_all.sh` (orchestrator). Style spec:
 `/Users/macbook/Downloads/#1/MD/video md/CHIMERA_video (1).md` (§2 colours, §5 caption
 tone, §13 honest numbering).
+
+## Creative direction — EVOLVE EVERY DAY (operator directive, standing)
+
+The reel is NOT a fixed template. **Every day it must CHANGE and GROW** — never repeat the
+same frames; add or swap elements each time. Keep it logical, readable, presentable, bright,
+fun, educational, multifaceted, innovative, hi-tech. Draw FREELY from this palette as your
+toolbox for BOTH visuals and audio:
+
+- hi-tech · physics · quantum physics · mechanics · ALL programming languages · galaxies ·
+  deep space · depth · rich colours — on top of the established canon: the Umbra creature,
+  the 8-module arsenal ring (per-module glyphs + readouts), the Interstellar black-hole core,
+  the neural-net "mind" layer, the operator HUD console (telemetry/gauges/oscilloscope), data
+  streams, heavy camera motion + beat-synced flashes.
+
+Reuse the proven scaffold (camera, fades, QR, timeline, `variant_seed` daily palette/camera
+rotation) but bring something genuinely NEW each day — a new element, scene, or motif. The
+music must be genuinely different every run (never the same track twice). ALWAYS smoke-test a
+few `reel.frame(ts)` PNGs via Read BEFORE the full ~8-12 min render, and self-review the look.
 
 ## Preconditions
 - Run AFTER `/handoff` (the journal is the source for the description).
@@ -68,5 +87,7 @@ tone, §13 honest numbering).
 ## Rules
 - All communication with the operator in Ukrainian; explain each command before running.
 - Verify day/test numbers against STATE + git, never invent (§13 honest numbering).
-- A NEW DnB track every run (build_all.sh uses a random seed by default).
+- A genuinely DIFFERENT track every run — `music.py` randomises genre x key x scale x
+  progression x tempo, NOT just a new beat over the same riff (the day-12 fix).
+- EVOLVE the visuals every day (see "Creative direction" above) — never ship the same frames.
 - The video is 45s; "кілька хвилин" only refers to render time, never the video length.

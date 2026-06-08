@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """Multi-genre electronic music synth (numpy, royalty-free) for the reel agent.
 
-Picks a RANDOM genre + random seed every run, so each day's track is new and in a
-(possibly) different style. Genres: house, deep_house, techno, dnb, jungle, liquid,
-trance, psytrance. Each is a PROFILE of parameters fed to one shared engine — distinct
-BPM, drum pattern, bass voice, harmony and lead, so they sound genuinely different.
+Every run is genuinely different — not just a different drum style over the same riff.
+TWO axes of randomness:
+  1. GENRE (8): house, deep_house, techno, dnb, jungle, liquid, trance, psytrance — each a
+     PROFILE of BPM / drum grid / bass voice / harmony / lead.
+  2. MUSICAL CONTENT (the fix): a random KEY (12 roots) x SCALE (4 modes) x PROGRESSION (7)
+     generated per run, plus a BPM jitter and a chance of an extra lead. So the actual
+     notes, chords and mood change every time, not only the beat.
 
 Usage: music.py --dur 45 --out track.wav [--genre NAME] [--seed N]
-Prints the chosen genre (so the reel log/caption can name it).
+Prints the chosen genre | key | bpm (so the reel log/caption can name it).
 """
 
 from __future__ import annotations
@@ -41,9 +44,49 @@ PROFILES = {
                        bass="psy", harmony="pad", lead="squelch", swing=0.0, wet=0.30),
 }
 
-# D-minor-ish material reused across genres (Hz). Roots per bar and chord stacks.
-ROOTS = [73.42, 58.27, 87.31, 65.41]  # D2 Bb1 F2 C2
-CHORDS = [[146.83,174.61,220.0],[116.54,146.83,174.61],[130.81,174.61,220.0],[130.81,164.81,196.0]]
+# --- procedural harmony: a fresh key / scale / progression every run ---
+NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+SCALES = {
+    "natural minor":  [0, 2, 3, 5, 7, 8, 10],
+    "dorian":         [0, 2, 3, 5, 7, 9, 10],
+    "phrygian":       [0, 1, 3, 5, 7, 8, 10],
+    "harmonic minor": [0, 2, 3, 5, 7, 8, 11],
+}
+# 4-chord progressions as 0-based scale degrees (minor-tonic feel).
+PROGRESSIONS = [
+    [0, 5, 3, 4], [0, 6, 5, 6], [0, 4, 5, 3], [0, 3, 4, 0],
+    [0, 2, 5, 4], [0, 6, 3, 4], [0, 5, 6, 4],
+]
+
+
+def _m2f(midi: float) -> float:
+    return 440.0 * 2.0 ** ((midi - 69) / 12.0)
+
+
+def _triad(base_midi: int, scale: list[int], degree: int) -> list[int]:
+    """Root/third/fifth (stacked scale thirds) on a degree, octave-aware."""
+    out = []
+    for k in (0, 2, 4):
+        idx = degree + k
+        out.append(base_midi + 12 * (idx // 7) + scale[idx % 7])
+    return out
+
+
+def _make_harmony(rng):
+    """Pick a random key + scale + progression; return (label, bass roots, chord stacks)."""
+    scale_name = list(SCALES)[int(rng.integers(len(SCALES)))]
+    scale = SCALES[scale_name]
+    root_pc = int(rng.integers(12))
+    prog = PROGRESSIONS[int(rng.integers(len(PROGRESSIONS)))]
+    bass_base = 33 + root_pc  # A1..G#2 region
+    roots, chords = [], []
+    for deg in prog:
+        bm = bass_base + scale[deg % 7]
+        while bm > 47:  # keep the bass in its low register
+            bm -= 12
+        roots.append(_m2f(bm))
+        chords.append([_m2f(x) for x in _triad(bass_base + 12, scale, deg)])
+    return f"{NOTE_NAMES[root_pc]} {scale_name}", roots, chords
 
 
 def _saw(freq, n):
@@ -100,10 +143,13 @@ def _reverb(x, rng, wet):
     return (1 - wet) * x + wet * w
 
 
-def synth(genre: str, dur: float, seed: int | None) -> np.ndarray:
+def synth(genre: str, dur: float, seed: int | None) -> tuple[np.ndarray, str]:
     rng = np.random.default_rng(seed)
     p = PROFILES[genre]
-    beat = 60.0 / p["bpm"]; bar = 4 * beat; step = bar / 16.0
+    bpm = max(90, p["bpm"] + int(rng.integers(-4, 5)))         # tempo jitter
+    key, roots, chords = _make_harmony(rng)                    # fresh notes every run
+    lead_kind = p["lead"] or ("arp" if rng.random() < 0.4 else None)  # arrangement variety
+    beat = 60.0 / bpm; bar = 4 * beat; step = bar / 16.0
     block = p["bars"] * bar
     n = int(dur * SR)
     nb = int(np.ceil(dur / block))
@@ -136,7 +182,7 @@ def synth(genre: str, dur: float, seed: int | None) -> np.ndarray:
         if m <= 0:
             break
         seg = np.arange(m) / SR
-        f = ROOTS[b % len(ROOTS)]
+        f = roots[b % len(roots)]
         if p["bass"] == "reese":
             layers = _supersaw(f, m, 0.015)
             lfo = 600 + 500 * (0.5 + 0.5 * np.sin(2 * np.pi * 0.35 * seg))
@@ -159,7 +205,7 @@ def synth(genre: str, dur: float, seed: int | None) -> np.ndarray:
         if m <= 0:
             break
         seg = np.arange(m) / SR
-        chord = CHORDS[b % len(CHORDS)]
+        chord = chords[b % len(chords)]
         if p["harmony"] == "pad":
             v = sum(np.sin(2 * np.pi * c * seg) + 0.35 * _saw(c, m) for c in chord) / len(chord)
             env = np.clip(np.minimum(seg / 0.4, (block - seg) / 0.6), 0, 1)
@@ -173,12 +219,11 @@ def synth(genre: str, dur: float, seed: int | None) -> np.ndarray:
 
     # lead
     lead = np.zeros(n, dtype=np.float32)
-    if p["lead"] in ("arp", "squelch"):
-        seg_all = np.arange(n) / SR
+    if lead_kind in ("arp", "squelch"):
         for s in range(int(dur / step)):
-            note = CHORDS[(s // 4) % len(CHORDS)][s % 3] * 2
+            note = chords[(s // 4) % len(chords)][s % 3] * 2
             sl = int(step * SR); tt = np.arange(sl) / SR
-            if p["lead"] == "arp":
+            if lead_kind == "arp":
                 v = _supersaw(note, sl, 0.02) * np.exp(-tt * 6)
             else:
                 v = _lpf(_saw(note, sl), 300 + 2500 * np.abs(np.sin(2 * np.pi * 0.5 * (s * step)))) * np.exp(-tt * 4)
@@ -191,7 +236,7 @@ def synth(genre: str, dur: float, seed: int | None) -> np.ndarray:
     mix *= 0.94
     fi, fo = int(0.4 * SR), int(1.2 * SR)
     mix[:fi] *= np.linspace(0, 1, fi); mix[-fo:] *= np.linspace(1, 0, fo)
-    return mix.astype(np.float32)
+    return mix.astype(np.float32), f"{genre} | {key} | {bpm}bpm"
 
 
 def main() -> None:
@@ -203,9 +248,9 @@ def main() -> None:
     a = ap.parse_args()
     rng = np.random.default_rng(a.seed)
     genre = a.genre if a.genre in PROFILES else GENRES[int(rng.integers(len(GENRES)))]
-    audio = synth(genre, a.dur, a.seed)
+    audio, info = synth(genre, a.dur, a.seed)
     wavfile.write(a.out, SR, audio)
-    print(f"OK music: {a.out}  genre={genre}  {a.dur:.1f}s  peak {np.max(np.abs(audio)):.2f}")
+    print(f"OK music: {a.out}  {info}  peak {np.max(np.abs(audio)):.2f}")
 
 
 if __name__ == "__main__":

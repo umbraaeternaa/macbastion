@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""CHIMERA reel — SVG cinematic frame generator with a daily variation engine.
+"""CHIMERA reel — SVG cinematic frame generator (maximalist daily-variation engine).
 
 `frame(ts)` returns an SVG string for the whole timeline; render.py rasterises it via
-cairosvg, then ffmpeg assembles (+grain +music). Style: cyberpunk x steampunk x
-Interstellar — void, animated background, an 8-node module ring, the Umbra creature,
-camera moves, glitch, a closing monobank QR card.
+cairosvg, then ffmpeg assembles (+grain +music). Style: cyberpunk x Interstellar x AI —
+deep-space cosmos, an Interstellar black-hole core, a neural-net "mind" layer, an 8-module
+arsenal ring with per-module glyphs + readouts, an operator HUD console (gauges, scope,
+telemetry), the Umbra creature, heavy camera motion, glitch, a closing monobank QR card.
 
-DAILY VARIATION (seed = brief["variant_seed"] or the day number): the accent palette,
-background style, camera path and Umbra eye colour are chosen per day, so every reel is
-recognisably CHIMERA yet fresh. MOTION: drifting background, beat-pulse on nodes/core/
-eye, colour shimmer, a breathing Umbra. Text = DejaVu Sans Mono (Menlo fallback).
+DAILY VARIATION (seed = brief["variant_seed"] or the day number): accent palette, camera
+path and Umbra eye are chosen per day, so every reel is recognisably CHIMERA yet fresh.
+MOTION: drifting parallax starfield, rotating galaxy + accretion disk, beat-pulse on
+nodes/core/eye, travelling neural pulses, falling data streams, cut flashes, breathing
+Umbra. Text = DejaVu Sans Mono (Menlo fallback).
 """
 
 from __future__ import annotations
@@ -59,7 +61,6 @@ _SCHEMES = [
     (CYAN, MAGENTA), (VIOLET, TURQ), (ACID, AMBER),
     (MAGENTA, CYAN), (AMBER, CYAN), (TURQ, VIOLET), (CYAN, ACID),
 ]
-_BGS = ["stars", "flow", "grid"]
 _CAMS = ["push", "pull", "drift"]
 _EYES = [TURQ, VIOLET, CYAN]
 
@@ -68,8 +69,7 @@ def _variant() -> dict:
     seed = BRIEF.get("variant_seed") or BRIEF.get("day", 0)
     r = random.Random(seed)
     a1, a2 = _SCHEMES[seed % len(_SCHEMES)]  # guaranteed daily colour rotation
-    return {"a1": a1, "a2": a2, "bg": r.choice(_BGS), "cam": r.choice(_CAMS),
-            "eye": r.choice(_EYES), "seed": seed}
+    return {"a1": a1, "a2": a2, "cam": r.choice(_CAMS), "eye": r.choice(_EYES), "seed": seed}
 
 
 V = _variant()
@@ -100,55 +100,173 @@ def _pulse(ts, div=4.0):
     return 0.5 + 0.5 * math.sin(2 * math.pi * (BPM / 60.0) / div * ts)
 
 
-# --- background variants (animated) ---
-def _bg_stars(ts):
+def _beat(ts):
+    """Sharp 0..1 spike on each beat (for flashes)."""
+    ph = (ts * (BPM / 60.0)) % 1.0
+    return math.exp(-ph * 7.0)
+
+
+# --- deep-space cosmos (always-on base) -----------------------------------
+def _nebula(ts):
     out = []
+    for bx, by, br, gid, ph in [
+        (300, 480, 540, "neb1", 0.0), (820, 1180, 620, "neb2", 0.5),
+        (560, 1560, 500, "neb1", 0.3), (150, 1300, 440, "neb2", 0.8),
+    ]:
+        dx = 44 * math.sin(ts * 0.05 + ph * 6)
+        dy = 30 * math.cos(ts * 0.04 + ph * 6)
+        out.append(f'<ellipse cx="{bx+dx:.0f}" cy="{by+dy:.0f}" rx="{br}" ry="{br*0.82:.0f}" fill="url(#{gid})"/>')
+    return "".join(out)
+
+
+def _starfield(ts):
+    out = []
+    for li, (cnt, base, spd, sz) in enumerate([(70, 0.5, 5, 0.7), (60, 0.85, 11, 1.2), (40, 1.3, 20, 1.9)]):
+        for i in range(cnt):
+            x = (i * 97 + li * 43 + 17) % W
+            y = (i * (151 + li * 7) + 31 + int(ts * spd * 4)) % H
+            tw = base * (0.45 + 0.55 * (0.5 + 0.5 * math.sin(ts * 1.6 + i + li)))
+            out.append(f'<circle cx="{x}" cy="{y}" r="{sz*0.42:.1f}" fill="#dff3f7" opacity="{tw:.2f}"/>')
+    return "".join(out)
+
+
+def _galaxy(ts):
+    cx, cy, out, rot = 760, 430, [], ts * 0.06
     for i in range(120):
-        x = (i * 73 + 17) % W
-        y = (i * 149 + 31 + int(ts * 6)) % H  # slow downward drift
-        tw = 0.35 + 0.55 * (0.5 + 0.5 * math.sin(ts * 1.6 + i))
-        out.append(f'<circle cx="{x}" cy="{y}" r="{0.7+(i%3)*0.5:.1f}" fill="#cfe9ee" opacity="{tw:.2f}"/>')
+        t = i / 120
+        ang = t * 6.0 * math.pi + rot + (i % 2) * math.pi
+        rad = 26 + t * 540
+        x, y = cx + rad * math.cos(ang), cy + rad * 0.6 * math.sin(ang)
+        op = (1 - t) * 0.42
+        out.append(f'<circle cx="{x:.0f}" cy="{y:.0f}" r="{1.6*(1-t)+0.5:.1f}" fill="{V["a1"] if i%3 else "#dff3f7"}" opacity="{op:.2f}"/>')
     return "".join(out)
 
 
-def _bg_flow(ts):
+def _cosmos(ts):
+    return f'<g opacity="0.9">{_nebula(ts)}{_galaxy(ts)}{_starfield(ts)}</g>'
+
+
+# --- Interstellar black-hole core -----------------------------------------
+def _blackhole(cx, cy, r, ts, op):
+    rot = ts * 38
+    disk = (f'<ellipse cx="{cx}" cy="{cy}" rx="{r*2.0:.0f}" ry="{r*0.5:.0f}" fill="none" '
+            f'stroke="url(#disk)" stroke-width="{r*0.42:.0f}" opacity="0.85" '
+            f'transform="rotate({rot:.0f} {cx} {cy})" filter="url(#soft)"/>')
+    halo = (f'<path d="M{cx-r*2.0:.0f},{cy} A{r*2.0:.0f},{r*2.0:.0f} 0 0 1 {cx+r*2.0:.0f},{cy}" '
+            f'fill="none" stroke="url(#disk)" stroke-width="{r*0.26:.0f}" opacity="0.75" filter="url(#soft)"/>')
+    ring = f'<circle cx="{cx}" cy="{cy}" r="{r*1.04:.0f}" fill="none" stroke="{AMBER}" stroke-width="3" opacity="{0.8+0.2*_pulse(ts):.2f}" filter="url(#glow)"/>'
+    horizon = f'<circle cx="{cx}" cy="{cy}" r="{r:.0f}" fill="#000"/>'
+    return f'<g opacity="{op:.2f}">{disk}{halo}{horizon}{ring}</g>'
+
+
+# --- neural-net "mind" layer ----------------------------------------------
+_NN_RNG = random.Random(777)
+_NN_NODES = [(_NN_RNG.randint(70, 1010), _NN_RNG.randint(280, 1560)) for _ in range(24)]
+_NN_EDGES = [(i, j) for i in range(24) for j in range(i + 1, 24)
+             if (_NN_NODES[i][0]-_NN_NODES[j][0])**2 + (_NN_NODES[i][1]-_NN_NODES[j][1])**2 < 280**2]
+
+
+def _neural(ts, op):
     out = []
-    for i in range(90):
-        x = (i * 91 + 23) % W
-        y = (i * 137 + 41) % H
-        ang = math.sin(x * 0.006 + y * 0.004 + ts * 0.7) * math.pi
-        ln = 46
-        x2, y2 = x + ln * math.cos(ang), y + ln * math.sin(ang)
-        out.append(f'<line x1="{x}" y1="{y}" x2="{x2:.0f}" y2="{y2:.0f}" stroke="{V["a1"]}" stroke-width="1.4" opacity="0.14"/>')
-    return "".join(out)
+    for i, j in _NN_EDGES:
+        x1, y1 = _NN_NODES[i]; x2, y2 = _NN_NODES[j]
+        out.append(f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{V["a2"]}" stroke-width="1" opacity="0.09"/>')
+    for k, (i, j) in enumerate(_NN_EDGES[::2]):
+        x1, y1 = _NN_NODES[i]; x2, y2 = _NN_NODES[j]
+        f = ((ts * 0.45 + k * 0.17) % 1.0)
+        px, py = x1 + (x2 - x1) * f, y1 + (y2 - y1) * f
+        out.append(f'<circle cx="{px:.0f}" cy="{py:.0f}" r="2.6" fill="{V["a1"]}" opacity="0.65" filter="url(#glow)"/>')
+    for x, y in _NN_NODES:
+        tw = 0.35 + 0.4 * (0.5 + 0.5 * math.sin(ts * 2 + x * 0.01))
+        out.append(f'<circle cx="{x}" cy="{y}" r="3.4" fill="{V["a1"]}" opacity="{tw:.2f}"/>')
+    return f'<g opacity="{op:.2f}">{"".join(out)}</g>'
 
 
-def _bg_grid(ts):
+# --- falling data streams --------------------------------------------------
+_GLY = "0123456789ABCDEF#/<>x="
+
+
+def _datastream(ts, op):
     out = []
-    op = 0.05 + 0.05 * _pulse(ts)
-    for gx in range(0, W + 1, 90):
-        out.append(f'<line x1="{gx}" y1="0" x2="{gx}" y2="{H}" stroke="{V["a1"]}" stroke-width="1" opacity="{op:.3f}"/>')
-    for gy in range(0, H + 1, 90):
-        off = int(ts * 18) % 90
-        out.append(f'<line x1="0" y1="{gy+off}" x2="{W}" y2="{gy+off}" stroke="{V["a1"]}" stroke-width="1" opacity="{op:.3f}"/>')
-    return "".join(out)
+    for c in range(14):
+        x = 46 + c * 76
+        speed = 70 + (c % 5) * 30
+        head = int(ts * speed) % (H + 280) - 120
+        for k in range(8):
+            y = head - k * 32
+            if 0 < y < H:
+                ch = _GLY[(c * 7 + k + int(ts * 8)) % len(_GLY)]
+                o = max(0.0, 0.5 - k * 0.06) * 0.55
+                out.append(f'<text x="{x}" y="{y}" font-family="{FONT}" font-size="20" fill="{V["a1"]}" opacity="{o:.2f}">{esc(ch)}</text>')
+    return f'<g opacity="{op:.2f}">{"".join(out)}</g>'
 
 
-def _background(ts):
-    return {"stars": _bg_stars, "flow": _bg_flow, "grid": _bg_grid}[V["bg"]](ts)
+# --- operator HUD console (instruments) -----------------------------------
+def _gauge(cx, cy, r, frac, col, label, ts):
+    a0, a1 = math.radians(135), math.radians(135 + 270 * max(0.0, min(1.0, frac)))
+    x0, y0 = cx + r * math.cos(a0), cy + r * math.sin(a0)
+    x1, y1 = cx + r * math.cos(a1), cy + r * math.sin(a1)
+    track = (f'<path d="M{cx+r*math.cos(math.radians(135)):.0f},{cy+r*math.sin(math.radians(135)):.0f} '
+             f'A{r},{r} 0 1 1 {cx+r*math.cos(math.radians(45)):.0f},{cy+r*math.sin(math.radians(45)):.0f}" '
+             f'fill="none" stroke="{MUTED}" stroke-width="3" opacity="0.4"/>')
+    large = 1 if (a1 - a0) > math.pi else 0
+    arc = f'<path d="M{x0:.0f},{y0:.0f} A{r},{r} 0 {large} 1 {x1:.0f},{y1:.0f}" fill="none" stroke="{col}" stroke-width="4" opacity="0.9" filter="url(#glow)"/>'
+    nd = f'<circle cx="{x1:.0f}" cy="{y1:.0f}" r="4" fill="{col}"/>'
+    txt = f'<text x="{cx}" y="{cy+5}" font-family="{FONT}" font-size="20" fill="{WHITE}" text-anchor="middle">{label}</text>'
+    return track + arc + nd + txt
 
 
-def _scanlines():
-    return "".join(f'<rect x="0" y="{y}" width="{W}" height="1" fill="#000" opacity="0.06"/>' for y in range(0, H, 4))
+def _hud(ts, op):
+    px = int((ts * 53) % 4096)
+    threat = int(2 + 2 * _pulse(ts, 8))
+    tele = [
+        f"CORE 0x{px:04X}", f"MODE  NOMINAL", f"THREAT {'#'*threat}{'.'*(5-threat)}",
+        f"NET   {int(40+30*_pulse(ts,6))}MB/S",
+    ]
+    lines = "".join(
+        f'<text x="60" y="{150+k*30}" font-family="{FONT}" font-size="22" fill="{V["a1"]}" opacity="0.85">{esc(t)}</text>'
+        for k, t in enumerate(tele))
+    pts = " ".join(f"{60+i*4:.0f},{300+18*math.sin(i*0.18+ts*5)*(0.5+0.5*_pulse(ts)):.0f}" for i in range(0, 110))
+    scope = f'<polyline points="{pts}" fill="none" stroke="{V["a2"]}" stroke-width="2" opacity="0.7"/>'
+    g1 = _gauge(960, 180, 52, _pulse(ts, 6), V["a1"], "LD", ts)
+    g2 = _gauge(960, 320, 40, _pulse(ts, 3), V["a2"], "IO", ts)
+    br = []
+    for bx, by, sx, sy in [(34, 110, 1, 1), (1046, 110, -1, 1), (34, 1810, 1, -1), (1046, 1810, -1, -1)]:
+        br.append(f'<path d="M{bx},{by+34*sy} V{by} H{bx+34*sx}" fill="none" stroke="{V["a1"]}" stroke-width="3" opacity="0.6"/>')
+    return f'<g opacity="{op:.2f}">{"".join(br)}{lines}{scope}{g1}{g2}</g>'
+
+
+# --- module glyphs (the arsenal) ------------------------------------------
+def _glyph(i, x, y, s, col):
+    a = f'stroke="{col}" stroke-width="2.4" fill="none"'
+    if i == 0:  # CHAFF — scatter/noise
+        return "".join(f'<circle cx="{x+dx:.0f}" cy="{y+dy:.0f}" r="2.4" fill="{col}"/>'
+                       for dx, dy in [(-s, -s*0.4), (s*0.5, -s*0.6), (-s*0.3, s*0.5), (s*0.7, s*0.3), (0, 0)])
+    if i == 1:  # ECHO — equalizer bars
+        return "".join(f'<rect x="{x-s+k*s*0.75:.0f}" y="{y-h:.0f}" width="{s*0.4:.0f}" height="{2*h:.0f}" fill="{col}"/>'
+                       for k, h in enumerate([s*0.5, s, s*0.7]))
+    if i == 2:  # ORACLE — eye
+        return f'<circle cx="{x}" cy="{y}" r="{s}" {a}/><circle cx="{x}" cy="{y}" r="{s*0.4:.0f}" fill="{col}"/>'
+    if i == 3:  # MIRROR — mirrored triangles
+        return (f'<path d="M{x-s:.0f},{y+s*0.6:.0f} L{x:.0f},{y-s*0.6:.0f} L{x:.0f},{y+s*0.6:.0f} Z" fill="{col}" opacity="0.85"/>'
+                f'<path d="M{x+s:.0f},{y+s*0.6:.0f} L{x:.0f},{y-s*0.6:.0f} L{x:.0f},{y+s*0.6:.0f} Z" fill="{col}" opacity="0.45"/>')
+    if i == 4:  # PULSE — ECG
+        return f'<polyline points="{x-s:.0f},{y} {x-s*0.4:.0f},{y} {x-s*0.1:.0f},{y-s:.0f} {x+s*0.2:.0f},{y+s:.0f} {x+s*0.5:.0f},{y} {x+s:.0f},{y}" {a}/>'
+    if i == 5:  # VAULT — padlock
+        return (f'<rect x="{x-s*0.7:.0f}" y="{y-s*0.1:.0f}" width="{s*1.4:.0f}" height="{s:.0f}" rx="2" fill="{col}"/>'
+                f'<path d="M{x-s*0.4:.0f},{y-s*0.1:.0f} v{-s*0.4:.0f} a{s*0.4:.0f},{s*0.4:.0f} 0 0 1 {s*0.8:.0f},0 v{s*0.4:.0f}" {a}/>')
+    if i == 6:  # TETHER — link
+        return f'<circle cx="{x-s*0.45:.0f}" cy="{y}" r="{s*0.5:.0f}" {a}/><circle cx="{x+s*0.45:.0f}" cy="{y}" r="{s*0.5:.0f}" {a}/>'
+    return f'<path d="M{x-s:.0f},{y-s:.0f} L{x+s:.0f},{y+s:.0f} M{x+s:.0f},{y-s:.0f} L{x-s:.0f},{y+s:.0f}" {a}/>'  # PURGE — X
 
 
 def _compass(cx, cy, r, ts, op):
     rot = ts * 16
     rays = []
     for i in range(8):
-        a = math.radians(-90 + i * 45 + rot)
+        ang = math.radians(-90 + i * 45 + rot)
         col = V["a1"] if i % 2 == 0 else V["a2"]
-        rays.append(f'<line x1="{cx}" y1="{cy}" x2="{cx+r*math.cos(a):.0f}" y2="{cy+r*math.sin(a):.0f}" stroke="{col}" stroke-width="3" opacity="{op*0.8:.2f}"/>')
+        rays.append(f'<line x1="{cx}" y1="{cy}" x2="{cx+r*math.cos(ang):.0f}" y2="{cy+r*math.sin(ang):.0f}" stroke="{col}" stroke-width="3" opacity="{op*0.8:.2f}"/>')
     g = 0.7 + 0.3 * _pulse(ts)
     return (f'<g opacity="{op:.2f}">{"".join(rays)}'
             f'<circle cx="{cx}" cy="{cy}" r="{r*0.30:.0f}" fill="none" stroke="{V["a1"]}" stroke-width="4" filter="url(#glow)" opacity="{g:.2f}"/>'
@@ -158,34 +276,41 @@ def _compass(cx, cy, r, ts, op):
 def _ring(cx, cy, r, ts, op):
     lit, focus, labels = BRIEF["lit"], BRIEF["focus"], BRIEF["labels"]
     pc = 0.55 + 0.45 * _pulse(ts)
-    parts = [f'<circle cx="{cx}" cy="{cy}" r="{46+8*_pulse(ts):.0f}" fill="{V["a1"]}" opacity="0.22" filter="url(#big)"/>',
-             f'<circle cx="{cx}" cy="{cy}" r="26" fill="{V["a1"]}" filter="url(#glow)"/>']
+    spin = ts * 6  # the arsenal slowly rotates
+    parts = []
+    for ridx in range(2):  # twin orbit rings
+        rr = r + ridx * 26
+        parts.append(f'<circle cx="{cx}" cy="{cy}" r="{rr:.0f}" fill="none" stroke="{V["a1"]}" stroke-width="1" opacity="{0.10+0.05*ridx:.2f}"/>')
     for i in range(8):
-        a = math.radians(-90 + i * 45)
+        a = math.radians(-90 + i * 45 + spin)
         nx, ny = cx + r * math.cos(a), cy + r * math.sin(a)
         is_lit = i in lit or i == focus
         col = V["a1"] if i in lit else (V["a2"] if i == focus else DIM_AMBER)
-        parts.append(f'<line x1="{cx}" y1="{cy}" x2="{nx:.0f}" y2="{ny:.0f}" stroke="{col}" stroke-width="2" opacity="{(0.5 if is_lit else 0.22):.2f}"/>')
+        parts.append(f'<line x1="{cx}" y1="{cy}" x2="{nx:.0f}" y2="{ny:.0f}" stroke="{col}" stroke-width="2" opacity="{(0.45 if is_lit else 0.18):.2f}"/>')
+        rad = 30 + (5 * pc if i == focus else 0)
         if is_lit:
-            rad = 22 + (4 * pc if i == focus else 0)
-            parts.append(f'<circle cx="{nx:.0f}" cy="{ny:.0f}" r="{rad:.0f}" fill="{col}" opacity="{(pc if i==focus else 0.95):.2f}" filter="url(#glow)"/>')
+            parts.append(f'<circle cx="{nx:.0f}" cy="{ny:.0f}" r="{rad:.0f}" fill="{VOID}" stroke="{col}" stroke-width="2.5" opacity="0.95" filter="url(#glow)"/>')
+            parts.append(f'<circle cx="{nx:.0f}" cy="{ny:.0f}" r="{rad+6:.0f}" fill="none" stroke="{col}" stroke-width="1" opacity="{(pc if i==focus else 0.5):.2f}"/>')
         else:
-            parts.append(f'<circle cx="{nx:.0f}" cy="{ny:.0f}" r="20" fill="none" stroke="{DIM_AMBER}" stroke-width="2" opacity="0.55"/>')
-        lx, ly = cx + (r + 58) * math.cos(a), cy + (r + 58) * math.sin(a)
-        parts.append(f'<text x="{lx:.0f}" y="{ly:.0f}" font-family="{FONT}" font-size="26" fill="{col}" text-anchor="middle" opacity="{(0.9 if is_lit else 0.45):.2f}">{labels[i]}</text>')
+            parts.append(f'<circle cx="{nx:.0f}" cy="{ny:.0f}" r="26" fill="{VOID}" stroke="{DIM_AMBER}" stroke-width="2" opacity="0.6"/>')
+        parts.append(_glyph(i, nx, ny, 13, col))
+        lx, ly = cx + (r + 64) * math.cos(a), cy + (r + 64) * math.sin(a)
+        parts.append(f'<text x="{lx:.0f}" y="{ly:.0f}" font-family="{FONT}" font-size="24" fill="{col}" text-anchor="middle" opacity="{(0.9 if is_lit else 0.4):.2f}">{labels[i]}</text>')
+        if is_lit:
+            parts.append(f'<text x="{lx:.0f}" y="{ly+22:.0f}" font-family="{FONT}" font-size="15" fill="{ACID if i!=focus else V["a2"]}" text-anchor="middle" opacity="0.8">{"ACTIVE" if i==focus else "ONLINE"}</text>')
     return f'<g opacity="{op:.2f}">{"".join(parts)}</g>'
 
 
 def _umbra(cx, cy, sc, ts, op):
-    breathe = 1.0 + 0.04 * math.sin(ts * 1.4)
-    sc = sc * breathe
+    sc = sc * (1.0 + 0.04 * math.sin(ts * 1.4))
     blink = 1.0 if (ts % 3.4) > 0.12 else 0.15
     eye_r = 52 * blink * (1.0 + 0.10 * _pulse(ts))
     eye = V["eye"]
     runes = []
-    for i in range(12):
-        a = math.radians(i * 30 + ts * 12)
-        rx, ry = cx + 150 * sc * math.cos(a), cy - 30 * sc + 150 * sc * math.sin(a)
+    for i in range(14):
+        a = math.radians(i * (360 / 14) + ts * 12)
+        rad = 150 + 14 * math.sin(ts * 2 + i)
+        rx, ry = cx + rad * sc * math.cos(a), cy - 30 * sc + rad * sc * math.sin(a)
         runes.append(f'<circle cx="{rx:.0f}" cy="{ry:.0f}" r="4" fill="{V["a1"] if i%2 else V["a2"]}" opacity="0.8" filter="url(#glow)"/>')
     return (f'<g opacity="{op:.2f}">'
             f'<ellipse cx="{cx}" cy="{cy+90*sc:.0f}" rx="{110*sc:.0f}" ry="{130*sc:.0f}" fill="url(#body)" stroke="#3a3f8a" stroke-width="2"/>'
@@ -212,9 +337,9 @@ def _typed(text, x, y, ts, t0, col, size, op):
 
 
 _CAM_KF = {
-    "push": [(0,1.0,540,900),(5,1.05,540,760),(13,1.30,540,720),(23,1.36,540,900),(32,0.9,540,820),(45,0.9,540,820)],
-    "pull": [(0,1.5,540,720),(5,1.4,540,740),(13,1.2,540,760),(23,1.0,540,860),(32,0.88,540,820),(45,0.85,540,820)],
-    "drift":[(0,1.1,470,900),(5,1.12,540,760),(13,1.26,600,720),(23,1.3,500,920),(32,0.9,560,820),(45,0.9,520,820)],
+    "push": [(0,1.0,540,820),(5,1.10,540,760),(13,1.34,540,720),(23,1.40,540,900),(32,0.92,540,820),(45,0.92,540,820)],
+    "pull": [(0,1.55,540,720),(5,1.42,540,740),(13,1.22,540,760),(23,1.02,540,860),(32,0.88,540,820),(45,0.86,540,820)],
+    "drift":[(0,1.12,470,900),(5,1.16,560,760),(13,1.30,610,720),(23,1.32,490,920),(32,0.92,560,820),(45,0.92,520,820)],
 }
 
 
@@ -228,29 +353,38 @@ def _camera(ts):
             k = smooth((ts - t0) / (t1 - t0))
             s, fx, fy = s0+(s1-s0)*k, x0+(x1-x0)*k, y0+(y1-y0)*k
             break
-    return f"translate({540-s*fx:.1f} {900-s*fy:.1f}) scale({s:.3f})"
+    shake = 5.0 * _beat(ts) * (1.0 if 12 < ts < 33 else 0.3)
+    return f"translate({540-s*fx+math.sin(ts*40)*shake:.1f} {900-s*fy:.1f}) scale({s:.3f})"
 
 
-CUTS = [13, 23, 32, 38]
+CUTS = [5, 13, 18, 23, 32, 38]
 
 
 def _glitch(ts):
     for c in CUTS:
-        if 0 <= ts - c < 0.22:
-            return (f'<g opacity="0.5"><rect x="0" y="{int(ts*90)%H}" width="{W}" height="40" fill="{V["a2"]}" opacity="0.14"/>'
-                    f'<rect x="9" y="0" width="{W}" height="{H}" fill="{V["a1"]}" opacity="0.03"/></g>')
+        if 0 <= ts - c < 0.20:
+            yy = int(ts * 120) % H
+            return (f'<g><rect x="0" y="{yy}" width="{W}" height="46" fill="{V["a2"]}" opacity="0.16"/>'
+                    f'<rect x="-7" y="0" width="{W}" height="{H}" fill="{V["a1"]}" opacity="0.05"/>'
+                    f'<rect x="7" y="0" width="{W}" height="{H}" fill="{V["a2"]}" opacity="0.05"/></g>')
+    f = _beat(ts)
+    if f > 0.6:
+        return f'<rect width="{W}" height="{H}" fill="{V["a1"]}" opacity="{(f-0.6)*0.08:.3f}"/>'
     return ""
 
 
 def _defs():
     return ('<defs>'
-            f'<radialGradient id="void" cx="50%" cy="42%" r="75%"><stop offset="0%" stop-color="#0a1018"/><stop offset="100%" stop-color="{VOID}"/></radialGradient>'
+            f'<radialGradient id="void" cx="50%" cy="42%" r="80%"><stop offset="0%" stop-color="#0a1018"/><stop offset="100%" stop-color="{VOID}"/></radialGradient>'
+            f'<radialGradient id="neb1" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="{V["a1"]}" stop-opacity="0.20"/><stop offset="65%" stop-color="{V["a1"]}" stop-opacity="0.05"/><stop offset="100%" stop-color="{V["a1"]}" stop-opacity="0"/></radialGradient>'
+            f'<radialGradient id="neb2" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="{V["a2"]}" stop-opacity="0.18"/><stop offset="65%" stop-color="{V["a2"]}" stop-opacity="0.05"/><stop offset="100%" stop-color="{V["a2"]}" stop-opacity="0"/></radialGradient>'
+            f'<linearGradient id="disk" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="{V["a2"]}"/><stop offset="50%" stop-color="{AMBER}"/><stop offset="100%" stop-color="{V["a1"]}"/></linearGradient>'
             f'<radialGradient id="eye" cx="50%" cy="45%" r="60%"><stop offset="0%" stop-color="#eafffd"/><stop offset="50%" stop-color="{V["eye"]}"/><stop offset="100%" stop-color="#0a3c40"/></radialGradient>'
             '<linearGradient id="body" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#1c1840"/><stop offset="55%" stop-color="#0c0a22"/><stop offset="100%" stop-color="#040310"/></linearGradient>'
-            '<radialGradient id="vign" cx="50%" cy="50%" r="72%"><stop offset="60%" stop-color="#000" stop-opacity="0"/><stop offset="100%" stop-color="#000" stop-opacity="0.7"/></radialGradient>'
+            '<radialGradient id="vign" cx="50%" cy="50%" r="74%"><stop offset="58%" stop-color="#000" stop-opacity="0"/><stop offset="100%" stop-color="#000" stop-opacity="0.72"/></radialGradient>'
             '<filter id="glow"><feGaussianBlur stdDeviation="4"/></filter>'
             '<filter id="big"><feGaussianBlur stdDeviation="20"/></filter>'
-            '<filter id="soft"><feGaussianBlur stdDeviation="2"/></filter></defs>')
+            '<filter id="soft"><feGaussianBlur stdDeviation="3"/></filter></defs>')
 
 
 def _qr_scene(ts, op):
@@ -265,14 +399,21 @@ def _qr_scene(ts, op):
 
 def frame(ts):
     b = BRIEF
-    world = (_compass(540, 760, 230, ts, fade(ts, 0.3, 1.5, 3.5, 5.5, 7.0))
-             + _ring(540, 760, 300, ts, fade(ts, 4.5, 6.5, 24, 32, 38))
-             + _umbra(540, 1150, 0.62, ts, fade(ts, 5.0, 7.0, 22, 30, 36)))
-    screen = (f'<rect width="{W}" height="{H}" fill="url(#void)"/>' + _background(ts)
-              + f'<g transform="{_camera(ts)}">{world}</g>')
-    hud = _typed(f"> CHIMERA :: DAY {b['day']}", 90, 980, ts, 0.6, ACID, 46, fade(ts, 0.5, 1.2, 4.8, 5.8, 7.0))
+    # central core: an Interstellar black hole that opens, then shrinks to the ring core
+    bh_r = 150 - 110 * smooth((ts - 6) / 9) if ts < 15 else 40
+    bh_op = fade(ts, 5.0, 7.0, 30, 33, 35)
+    world = (_blackhole(540, 760, max(34, bh_r), ts, bh_op)
+             + _compass(540, 760, 230, ts, fade(ts, 0.3, 1.5, 3.5, 5.0, 6.5))
+             + _ring(540, 760, 300, ts, fade(ts, 7.5, 9.5, 24, 32, 38))
+             + _umbra(540, 1180, 0.6, ts, fade(ts, 8.0, 10.0, 24, 31, 36)))
+    deep = (f'<rect width="{W}" height="{H}" fill="url(#void)"/>' + _cosmos(ts)
+            + _datastream(ts, fade(ts, 2.0, 4.0, 30, 36, 40))
+            + _neural(ts, fade(ts, 9.0, 12.0, 28, 33, 37)))
+    screen = deep + f'<g transform="{_camera(ts)}">{world}</g>'
+    hud = _hud(ts, fade(ts, 1.5, 3.5, 33, 36, 39))
+    hud += _typed(f"> CHIMERA :: DAY {b['day']}", 90, 1000, ts, 0.6, ACID, 46, fade(ts, 0.5, 1.2, 4.6, 5.6, 6.8))
     hud += _panel(b["event"], V["a1"], fade(ts, 13.5, 14.5, 21, 22.5, 23.5))
-    hud += _panel("THE GATE — SEALED, NOT YET OPENED", AMBER, fade(ts, 24, 25, 30, 31.5, 32.5))
+    hud += _panel("THE ORGANISM LEARNS TO HESITATE", AMBER, fade(ts, 24, 25, 30, 31.5, 32.5))
     tc = fade(ts, 32.5, 33.5, 36.5, 37, 38)
     hud += (f'<g opacity="{tc:.2f}" text-anchor="middle">'
             f'<text x="540" y="1380" font-family="{FONT}" font-size="64" fill="{WHITE}">DAY {b["day"]}</text>'
@@ -280,6 +421,6 @@ def frame(ts):
             f'<text x="540" y="1530" font-family="{FONT}" font-size="48" fill="{AMBER}">{b["modules_done"]} / 8</text>'
             f'<text x="540" y="1590" font-family="{FONT}" font-size="30" fill="{ACID}">{b["tests"]} TESTS GREEN</text></g>')
     hud += _qr_scene(ts, fade(ts, 38.5, 39.5, 44, 44.5, 45))
-    overlay = _scanlines() + f'<rect width="{W}" height="{H}" fill="url(#vign)"/>' + _glitch(ts)
+    overlay = f'<rect width="{W}" height="{H}" fill="url(#vign)"/>' + _glitch(ts)
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}">'
             f'{_defs()}{screen}{hud}{overlay}</svg>')
