@@ -75,7 +75,17 @@ Slice 3A react-entrypoint (RED→GREEN) done. CORE: idea #3 Slice 3B anomaly-rel
 (RED→GREEN) done — a NEW core capability. ORACLE: idea #3 Slice 3C anomaly-emit
 (RED→GREEN) done — the real producer. **Idea #3 (Anomaly-Tripwire) COMPLETE** —
 3A+3B+3C wired + e2e-confirmed by 3D.
-Last completed: **PULSE slice 3 — assess wiring** (commit `54b2751`) — §5.5, the bridge
+Last completed: **PULSE temporal — group B** (commit `abd2bf3`) — §5.5, the time-context
+fatigue signal that fills the empty `temporal` slot in `assess`. `temporal.py` (pure,
+hermetic) maps injected ISO times to one value in [0,1]: a chronotype-weighted hour-of-day
+curve (peak ~3am, low midday; night_owl x0.4 on night hours) weighted 0.5 + hours-since-idle/6
+clamped 0.25 + session-hours/12 clamped 0.25, all clamped [0,1]. now/session_start/last_idle_end
+injected (no clock inside); a missing input contributes 0 (fail-OPEN §8, never inflates).
+Chronotype is an input (auto-detect §9 deferred). 10 tests RED->GREEN; ruff + mypy --strict
+clean. 734 -> 744 (+10). ⚠️ group-B SCORING done (hermetic); the LIVE collector (kqueue
+idle-detection + real clock/session) is still gated.
+
+Prior milestone: **PULSE slice 3 — assess wiring** (commit `54b2751`) — §5.5, the bridge
 that connects PULSE's two halves. `assess.py` pulls each present group-A signal's 14-day
 baseline from the store, normalizes the current reading via `normalize_delta` (fatigue
 direction per GROUP_A_DIRECTIONS), means the present sub-deltas into ONE `input_delta`
@@ -296,7 +306,7 @@ No scaffold remains — all 8 core modules implemented.
   STRICT flags (cJSON-agnostic — the consumer's -I supplies cJSON). VAULT daemon =
   next (first NEW) consumer. — JE-1 done (24cf41f/611c16c/c25dfec/2245f09)
 - `pulse` (`modules/pulse/`) — STARTED (NOT complete): scoring slice 1 (`d9b0a42`) + baseline store slice 2 (`bef89a6`)
-  + assess wiring slice 3 (`54b2751`). §5.5 Cognitive Load Monitor — the operator-facing cognitive gate
+  + assess wiring slice 3 (`54b2751`) + temporal group B (`abd2bf3`). §5.5 Cognitive Load Monitor — the operator-facing cognitive gate
   ("idea #4"), the only module watching the OPERATOR not the system. pure-Python
   (like ORACLE): `scoring.py` weighted-sum + renorm-to-1.0 + mode `[lo,hi)` + clamp +
   delta-normalize; weights validated (Σ=1.0 else ValueError). ⚠️ fail-safe -> `normal`
@@ -306,7 +316,8 @@ No scaffold remains — all 8 core modules implemented.
   buckets in `[now-14d, now)`, baseline_ready (>=14 distinct days), retention purge;
   signals an open {name:float} dict (no MIRROR fields hardcoded — D8); spec amended first
   (BS-1: retention 7->14d). `assess.py` (slice 3, `54b2751`) bridges store->scoring (group-A baseline-normalize ->
-  mean input_delta -> score_and_mode, WS-1..7). 22 + 24 + 10 = 56 Python unit, all RED->GREEN. DEFERRED (later
+  mean input_delta -> score_and_mode, WS-1..7). `temporal.py` (group B, `abd2bf3`) gives the
+  temporal slot its value. 22 + 24 + 10 + 10 = 66 Python unit, all RED->GREEN. DEFERRED (later
   slices): MIRROR
   delta-collection (group A live aggregates),
   ORACLE drift (group C), kqueue idle (group B), IPC/daemon, core gate-enforcement +
@@ -364,7 +375,7 @@ core, as authority, turns the event into a command.) Slices:
 **Tooling:** `pyproject.toml` + `uv.lock` + `.venv` (Python 3.13.9); ruff + mypy (strict) + pytest configured. Direct deps: cryptography, pydantic(-settings), **ollama==0.6.2** (§6-allowed; httpx + anyio/certifi transitive). pytest markers: `integration`, `ollama`. Native C deps (Homebrew, fail-fast in each Makefile, §6 allowlist): openssl@3 + sqlite3 (CHAFF), **libsodium (VAULT crypto — XChaCha20-Poly1305/Argon2id/secure-mem)**.
 
 **Tests:**
-- Python (pytest, default): 502 passing (31 errors + 41 envelope + 36 config + 35 tokens + 36 broker + 63 lifecycle + 60 registry + 86 server [81 + 5 anomaly-relay 3B] + 12 oracle observe-first + 17 oracle Mode B + 10 oracle explainability + 8 oracle time-machine + 8 oracle NL-ask [7 ask + 1 advisory] + 3 oracle anomaly-emit [3C client-unit] + 22 pulse scoring [slice 1] + 24 pulse baseline store [slice 2] + 10 pulse assess [slice 3])
+- Python (pytest, default): 512 passing (31 errors + 41 envelope + 36 config + 35 tokens + 36 broker + 63 lifecycle + 60 registry + 86 server [81 + 5 anomaly-relay 3B] + 12 oracle observe-first + 17 oracle Mode B + 10 oracle explainability + 8 oracle time-machine + 8 oracle NL-ask [7 ask + 1 advisory] + 3 oracle anomaly-emit [3C client-unit] + 22 pulse scoring [slice 1] + 24 pulse baseline store [slice 2] + 10 pulse assess [slice 3] + 10 pulse temporal [group B])
 - Python (integration, marked — `pytest -m integration`): 29 passing (4 CHAFF + 4 MIRROR + 5 TETHER + 2 anomaly-tripwire e2e [#3 3D: ORACLE+core+TETHER full spin] + 14 ORACLE: 4 observe-first + 3 Mode B hermetic + 2 Time-Machine query + 2 NL-ask + 3 real-Ollama); the 3 real-Ollama skip when Ollama is down. NOTE: real-socket integration needs a short `--basetemp` (AF_UNIX path-too-long, see Open tails)
 - Python (ollama, marked — `pytest -m ollama`): 3 passing (subset of integration; real llama3.2:1b)
 - Native (CHAFF Unity): 46 passing (7 endpoints + 6 schedule + 6 crypto + 6 db + 10 jsonrpc + 6 commands + 5 generation)
@@ -372,7 +383,7 @@ core, as authority, turns the event into a command.) Slices:
 - Native (shim Unity): 23 passing (11 ops + 6 peercred + 2 server + 4 protocol) — separate C trust-plane suite, NOT in pytest
 - Native (TETHER C++ Unity): 48 passing (4 ewma + 6 presence + 4 classify + 8 escalation + 6 emit + 10 commands + 10 monitor) — separate C++ suite, NOT in pytest
 - Native (VAULT C Unity): 44 passing (6 lexer + 6 parser + 9 evaluator + 6 fail_closed + 3 relock + 7 decide + 7 crypto) — separate C suite, NOT in pytest
-- Total: 734 passing (502 default [incl 22 pulse scoring + 24 pulse baseline + 10 pulse assess] + 29 integration + 46 CHAFF + 42 MIRROR + 23 shim + 48 TETHER + 44 VAULT Unity; ollama subset not double-counted)
+- Total: 744 passing (512 default [incl 22 pulse scoring + 24 pulse baseline + 10 pulse assess + 10 pulse temporal] + 29 integration + 46 CHAFF + 42 MIRROR + 23 shim + 48 TETHER + 44 VAULT Unity; ollama subset not double-counted)
 
 **Open tails (honest tracking, MANIFESTO §4):**
 - Fernet at-rest: CHAFF (C/OpenSSL) and ORACLE (Python `cryptography.Fernet`) share the format but interop is NOT cross-tested (B1 deferred; format-faithful).
@@ -402,7 +413,7 @@ core, as authority, turns the event into a command.) Slices:
 - ⭐ VAULT tamper-test assertion corrected (`e82f69b`) — NOT test-fitting (same class as TETHER's test_present_from_fringe: impl design-correct, the test encoded the wrong post-condition). The RED test asserted a specific sentinel byte survived after a failed open (out[0]==0xAA), but the agreed defensive active-wipe (design-pass nuance 3) zeroes pt_out on failure. The real invariant is "no plaintext leak", not a sentinel — corrected to `memcmp(out, pt, ptlen) != 0` (impl-agnostic: holds whether wiped to 0 or left untouched).
 - ✅ VAULT catch 3 — jsonrpc 5th copy — RESOLVED: `modules/common/jsonrpc` now EXISTS (JE-1 extract). VAULT's daemon-slice will LINK common as the FIRST new consumer (D1=C done), never a 5th copy. The trigger fired ahead of VAULT — the extract was done proactively across the existing 4 modules.
 - vault.lock (§6) is the TETHER L2 escalation target — when VAULT's daemon + vault.lock land, core can enforce TETHER L2 (tether.escalation → vault.lock), giving #3's L2 a live consumer (currently L2/L3 escalation events have none). Nuance: vault.lock takes {vault_id}; routing an escalation to it means "lock the currently-open vault" — a downstream wiring detail for that slice.
-- 2 of 8 native modules NOT started (ECHO, PURGE) — CHAFF + MIRROR + ORACLE done; TETHER started (engine + daemon-wiring + Slice 3A); VAULT started (policy + DEFER + crypto; Keychain/mount/daemon gated); PULSE started (scoring slice 1 `d9b0a42` + baseline store slice 2 `bef89a6` + assess wiring slice 3 `54b2751`; ⚠️ NOT complete — store→score chain wired, but live inputs MIRROR group-A/ORACLE drift/kqueue + daemon/IPC + core-gate still deferred).
+- 2 of 8 native modules NOT started (ECHO, PURGE) — CHAFF + MIRROR + ORACLE done; TETHER started (engine + daemon-wiring + Slice 3A); VAULT started (policy + DEFER + crypto; Keychain/mount/daemon gated); PULSE started (scoring slice 1 `d9b0a42` + baseline store slice 2 `bef89a6` + assess wiring slice 3 `54b2751` + temporal group B `abd2bf3`; ⚠️ NOT complete — group-B SCORING done but its live collector (kqueue idle/clock) gated; group A (MIRROR) + group C (ORACLE drift) + daemon/IPC + core-gate still deferred).
 - MIRROR CGEventTap install — GATED on code-signing + Accessibility TCC (§6/§9); mirror.enable returns -31004 until then. The code-signing tail is now shared across MIRROR (tap), shim Slice 2 (secret in hardened-runtime memory), and TETHER (CoreBluetooth TCC + IRK in Keychain).
 - MIRROR no event producer yet — daemon wiring done, but drain_events is only a forward-compat seam (queue empty); events ship when the tap lands.
 - MIRROR → PULSE aggregate-event gap (D8) — PULSE expects a periodic aggregate event MIRROR doesn't yet define; address at PULSE time.
