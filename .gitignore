@@ -34,3 +34,11 @@ reports/
 backups/
 scripts/
 *.dSYM/
+
+# CHIMERA reel pipeline — track the live scripts; keep venv + generated state ignored
+!.claude/scripts/
+.claude/scripts/.venv/
+.claude/scripts/__pycache__/
+.claude/scripts/brief.json
+.claude/scripts/reel_day.txt
+.claude/scripts/qr_matrix.png
