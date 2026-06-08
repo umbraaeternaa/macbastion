@@ -2,9 +2,9 @@
 
 In-process (Python): PulseClient runs as an asyncio task on the same loop; the socket
 layer is exercised end to end against a live core.Server. Registers on core.sock, serves
-pulse.status / pulse.weights.set via the 4A router, heartbeats. RED until the client is
-implemented. Marked integration, deselected by default (needs a short --basetemp,
-AF_UNIX path-too-long).
+pulse.status / pulse.weights.set via the 4A router, heartbeats. GREEN — the client is
+implemented; the 4 assertions are unchanged from RED. Marked integration, deselected by
+default (needs a short --basetemp, AF_UNIX path-too-long).
 """
 
 import asyncio
