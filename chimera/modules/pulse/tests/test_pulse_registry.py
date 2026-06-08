@@ -1,7 +1,7 @@
 """PULSE danger-registry unit tests (DR-1…DR-6).
 
-Hermetic: registry.json under tmp_path. RED — the registry methods raise
-NotImplementedError until GREEN. Pins: §4 defaults seeded on first use, add idempotent
+Hermetic: registry.json under tmp_path. GREEN — the registry is implemented; the 5
+assertions are unchanged from RED. Pins: §4 defaults seeded on first use, add idempotent
 (no dupes), remove idempotent (no error if absent), persistence across reopen, file 0600.
 """
 

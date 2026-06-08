@@ -20,6 +20,7 @@ from core.config import CoreConfig
 
 from pulse.baseline import BaselineStore
 from pulse.client import PulseClient
+from pulse.registry import DangerRegistry
 
 
 async def _run(client: PulseClient) -> None:
@@ -39,9 +40,11 @@ def main() -> None:
     config = CoreConfig()
     pulse_dir = Path("~/.config/chimera/pulse").expanduser()
     store = BaselineStore(pulse_dir / "baseline.db", pulse_dir / "baseline.key")
+    registry = DangerRegistry(pulse_dir / "registry.json")
     client = PulseClient(
         config.socket_dir,
         store,
+        danger_registry=registry,
         heartbeat_interval=float(config.heartbeat_interval_s),
     )
     try:

@@ -26,11 +26,13 @@ from core.errors import (
     JSONRPC_INTERNAL_ERROR,
     JSONRPC_INVALID_PARAMS,
     JSONRPC_METHOD_NOT_FOUND,
+    ChimeraError,
     RpcError,
 )
 
 from pulse.assess import assess
 from pulse.baseline import BaselineStore
+from pulse.registry import DangerRegistry
 from pulse.scoring import Weights
 from pulse.temporal import temporal_signal
 
@@ -49,6 +51,9 @@ class PulseClient:
         "pulse.weights.set",
         "pulse.enable",
         "pulse.disable",
+        "pulse.danger.add",
+        "pulse.danger.remove",
+        "pulse.danger.list",
     )
     EVENTS: tuple[str, ...] = ("pulse.mode.changed", "pulse.error")
 
@@ -60,6 +65,7 @@ class PulseClient:
         session_start: str | None = None,
         chronotype: str = "typical",
         weights: Weights | None = None,
+        danger_registry: DangerRegistry | None = None,
         heartbeat_interval: float = 2.0,
         tick_interval: float = 60.0,
     ) -> None:
@@ -68,6 +74,7 @@ class PulseClient:
         self._session_start = session_start
         self._chronotype = chronotype
         self._weights = weights if weights is not None else Weights()
+        self._danger_registry = danger_registry
         self._heartbeat_interval = heartbeat_interval
         self._tick_interval = tick_interval
         self._enabled = True
@@ -147,6 +154,12 @@ class PulseClient:
                 result = self._handle_enable()
             elif request.method == "pulse.disable":
                 result = self._handle_disable()
+            elif request.method == "pulse.danger.add":
+                result = self._handle_danger_add(request.params)
+            elif request.method == "pulse.danger.remove":
+                result = self._handle_danger_remove(request.params)
+            elif request.method == "pulse.danger.list":
+                result = self._handle_danger_list()
             else:
                 raise RpcError(code=JSONRPC_METHOD_NOT_FOUND)
             return Response(jsonrpc="2.0", id=request.id, result=result)
@@ -217,6 +230,31 @@ class PulseClient:
     def _handle_disable(self) -> dict[str, Any]:
         self._enabled = False
         return {"ok": True, "enabled": False}
+
+    def _danger_sig(self, params: dict[str, Any] | list[Any] | None) -> str:
+        sig = params.get("action_signature") if isinstance(params, dict) else None
+        if not isinstance(sig, str):
+            raise RpcError(code=JSONRPC_INVALID_PARAMS, message="action_signature required")
+        return sig
+
+    def _handle_danger_list(self) -> dict[str, Any]:
+        if self._danger_registry is None:
+            raise RpcError(code=ChimeraError.PRECONDITION_FAILED)
+        return {"registry": self._danger_registry.list()}
+
+    def _handle_danger_add(
+        self, params: dict[str, Any] | list[Any] | None
+    ) -> dict[str, Any]:
+        if self._danger_registry is None:
+            raise RpcError(code=ChimeraError.PRECONDITION_FAILED)
+        return {"registry": self._danger_registry.add(self._danger_sig(params))}
+
+    def _handle_danger_remove(
+        self, params: dict[str, Any] | list[Any] | None
+    ) -> dict[str, Any]:
+        if self._danger_registry is None:
+            raise RpcError(code=ChimeraError.PRECONDITION_FAILED)
+        return {"registry": self._danger_registry.remove(self._danger_sig(params))}
 
     async def _tick(self, now: str) -> None:
         """Compute the current mode; emit pulse.mode.changed on a transition (EM-2).

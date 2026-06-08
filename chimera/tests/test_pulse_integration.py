@@ -19,6 +19,7 @@ from core.server import Server
 from core.tokens import TokenIssuer
 from pulse.baseline import BaselineStore
 from pulse.client import PulseClient
+from pulse.registry import DangerRegistry
 
 pytestmark = pytest.mark.integration
 
@@ -120,6 +121,51 @@ async def test_pulse_weights_set_rejects_bad_sum(tmp_path):
             '"params":{"w_a":0.9,"w_b":0.3,"w_c":0.2}}\n',
         )
         assert resp.error is not None  # sum != 1.0 -> invalid params
+    finally:
+        task.cancel()
+        await server.stop()
+
+
+async def test_pulse_danger_list_roundtrip(tmp_path):
+    server, registry, _ = _make_core(tmp_path)
+    await server.start()
+    store = BaselineStore(tmp_path / "baseline.db", tmp_path / "baseline.key")
+    danger = DangerRegistry(tmp_path / "registry.json")
+    client = PulseClient(
+        tmp_path, store, danger_registry=danger, session_start="2026-06-12T14:00:00"
+    )
+    task = asyncio.create_task(client.run())
+    try:
+        assert await _wait(lambda: registry.is_registered("pulse"))
+        resp = await _roundtrip(
+            tmp_path / "core.sock", '{"jsonrpc":"2.0","id":5,"method":"pulse.danger.list"}\n'
+        )
+        assert resp.error is None
+        assert isinstance(resp.result["registry"], list)
+        assert len(resp.result["registry"]) > 0  # seeded §4 defaults
+    finally:
+        task.cancel()
+        await server.stop()
+
+
+async def test_pulse_danger_add_roundtrip(tmp_path):
+    server, registry, _ = _make_core(tmp_path)
+    await server.start()
+    store = BaselineStore(tmp_path / "baseline.db", tmp_path / "baseline.key")
+    danger = DangerRegistry(tmp_path / "registry.json")
+    client = PulseClient(
+        tmp_path, store, danger_registry=danger, session_start="2026-06-12T14:00:00"
+    )
+    task = asyncio.create_task(client.run())
+    try:
+        assert await _wait(lambda: registry.is_registered("pulse"))
+        resp = await _roundtrip(
+            tmp_path / "core.sock",
+            '{"jsonrpc":"2.0","id":6,"method":"pulse.danger.add",'
+            '"params":{"action_signature":"custom:x"}}\n',
+        )
+        assert resp.error is None
+        assert "custom:x" in resp.result["registry"]
     finally:
         task.cancel()
         await server.stop()
