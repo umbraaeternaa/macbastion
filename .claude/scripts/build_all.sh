@@ -13,8 +13,8 @@ FINAL="$OUT/CHIMERA_reel_day${DAY}_${STAMP}.mp4"
 WORK=$(mktemp -d)
 mkdir -p "$OUT" "$WORK/frames"
 
-echo "[1/4] synth new DnB track (${DUR}s, random seed)"
-$PY music_dnb.py --dur $DUR --out "$WORK/track.wav"
+echo "[1/4] synth new track (${DUR}s, RANDOM genre + seed)"
+$PY music.py --dur $DUR --out "$WORK/track.wav"
 
 echo "[2/4] render $NF SVG frames"
 DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib $PY render.py 0 $NF "$WORK/frames" qr_matrix.png
