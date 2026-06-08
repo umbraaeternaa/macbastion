@@ -1,7 +1,7 @@
 """PULSE temporal signal tests — group B (§5.5 / spec §3 group B).
 
-Hermetic: all times injected as ISO strings; pinned weights/curve. RED — temporal_signal
-raises NotImplementedError until GREEN. Encodes the locked numbers:
+Hermetic: all times injected as ISO strings; pinned weights/curve. GREEN — temporal_signal
+is implemented; the 10 assertions are unchanged from RED. Encodes the locked numbers:
 weights hour 0.5 / idle 0.25 / session 0.25; hour 3->1.0, 14->0.05; night_owl x0.4 on
 night hours; idle = hours/6 clamped; session = hours/12 clamped; missing input -> 0.
 """
