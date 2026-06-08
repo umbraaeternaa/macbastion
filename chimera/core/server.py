@@ -133,6 +133,11 @@ class Server:
         # Anomaly-tripwire relay (idea #3, path B).
         self._relay_sub: Subscription | None = None
         self._relay_task: asyncio.Task[None] | None = None
+        # Cognitive gate (PULSE-driven, GW-1): current mode + cached danger set.
+        self._pulse_mode: str | None = None
+        self._danger_set: set[str] = set()
+        self._gate_sub: Subscription | None = None
+        self._gate_task: asyncio.Task[None] | None = None
 
     # -- connections ------------------------------------------------------
 
@@ -378,6 +383,21 @@ class Server:
                 await self._relay_handle(event)
         except SubscriptionClosedError:
             return
+
+    # -- cognitive gate (PULSE-driven, GW-1…GW-6) -------------------------
+
+    async def _gate(self, method: str) -> None:
+        """Apply PULSE-driven friction before forwarding a danger action (GW-4).
+
+        RED stub — raises NotImplementedError until GREEN. In GREEN: a non-danger
+        method (or allow/confirm) returns (forward proceeds); a tired mode delays; an
+        exhausted mode without override raises DENIED_BY_POLICY (-31003).
+        """
+        raise NotImplementedError
+
+    async def _refresh_danger(self) -> None:
+        """Query pulse.danger.list and cache the danger set (GW-3). RED stub."""
+        raise NotImplementedError
 
     # -- param helpers ----------------------------------------------------
 
