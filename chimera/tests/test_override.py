@@ -1,8 +1,9 @@
 """Override-phrase store unit tests (OV-1…OV-6).
 
 Hermetic: override.json under tmp_path. GREEN — the store is implemented; the assertions
-are unchanged from RED. Pins: set->verify true, wrong phrase false, no-phrase-set false (override unavailable
-until configured), persistence across reopen, file 0600, and the phrase NEVER appears in the
+are unchanged from RED. Pins: set->verify true, wrong phrase false, no-phrase-set false
+(override unavailable until configured), persistence across reopen, file 0600, and the phrase
+NEVER appears in the
 file (only a salted hash).
 """
 

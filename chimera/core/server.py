@@ -90,6 +90,7 @@ class Server:
             "core.capabilities",
             "core.status",
             "core.subscribe",
+            "core.override.set",
         }
     )
     # Per-method routing deadlines (§6.8); anything else uses the config default.
@@ -185,9 +186,17 @@ class Server:
             return self._handle_status()
         if method == "core.subscribe":
             return self._handle_subscribe(params, conn)
+        if method == "core.override.set":
+            return self._handle_override_set(params, conn)
         raise RpcError(code=JSONRPC_METHOD_NOT_FOUND)  # defensive
 
     # -- core.* handlers --------------------------------------------------
+
+    def _handle_override_set(
+        self, params: dict[str, Any] | list[Any] | None, conn: Connection
+    ) -> dict[str, Any]:
+        """Operator sets the gate-override phrase (OS-2). RED stub."""
+        raise NotImplementedError
 
     def _handle_register(
         self, params: dict[str, Any] | list[Any] | None, conn: Connection
