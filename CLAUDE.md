@@ -33,7 +33,7 @@ Parent project: `macbastion` (this folder). CHIMERA lives in `chimera/`.
 
 Read first, in this order:
 1. `chimera/MANIFESTO.md` — 7-principle philosophy (the law)
-2. `chimera/docs/ARCHITECTURE.md` — Part 1 of 5: stack, diagram, principles
+2. `chimera/docs/ARCHITECTURE.md` — complete (§1–§8): stack, principles, module specs, IPC, lifecycle, security model
 3. `chimera/STATE.md` — current snapshot (what's done, what's pending)
 4. `chimera/docs/modules/*.md` — module specifications (CHAFF, ECHO, …)
 
@@ -62,7 +62,7 @@ macbastion/
 │   ├── modules/                  ← future: 8 native daemons
 │   ├── proto/                    ← future: JSON-RPC schemas
 │   └── docs/
-│       ├── ARCHITECTURE.md       ← Parts 1-5 (currently Part 1)
+│       ├── ARCHITECTURE.md       ← complete (§1–§8, all 5 parts)
 │       └── modules/
 │           ├── CHAFF.md          ← §5.1 (done)
 │           ├── ECHO.md           ← §5.2 (done)
