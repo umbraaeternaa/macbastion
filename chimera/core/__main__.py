@@ -8,9 +8,12 @@ up separately (the SV-2 supervisor). This module is just "what launchd runs".
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import os
 import signal
+import subprocess
+from collections.abc import Callable
 from pathlib import Path
 
 from core.broker import EventBroker
@@ -19,6 +22,7 @@ from core.lifecycle import Lifecycle
 from core.override import OverrideStore
 from core.registry import Registry
 from core.server import Server
+from core.supervisor import ModuleSpec
 from core.tokens import TokenIssuer
 
 
@@ -53,6 +57,31 @@ async def serve_forever(server: Server) -> None:
         await stop
     finally:
         await server.stop()
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    """Parse the chimera CLI: no subcommand = bare core; `up` = whole organism; `plist`."""
+    raise NotImplementedError("parse_args — to be implemented (SV-4)")
+
+
+def module_binary(name: str) -> Path:
+    """Resolve a module's daemon binary: modules/<name>/<name>."""
+    raise NotImplementedError("module_binary — to be implemented (SV-4)")
+
+
+def _default_spawn(socket_dir: Path) -> Callable[[ModuleSpec], subprocess.Popen[bytes]]:
+    """Build a spawn() that launches module binaries pointed at this socket_dir."""
+    raise NotImplementedError("_default_spawn — to be implemented (SV-4)")
+
+
+async def run_up(config: CoreConfig) -> None:
+    """`chimera up`: start core, bring modules up in waves, serve until a signal, tear down."""
+    raise NotImplementedError("run_up — to be implemented (SV-4)")
+
+
+def launch_agent_plist(socket_dir: Path) -> str:
+    """The LaunchAgent plist XML that runs `python -m core up` (§7.10)."""
+    raise NotImplementedError("launch_agent_plist — to be implemented (SV-4)")
 
 
 def main() -> None:
