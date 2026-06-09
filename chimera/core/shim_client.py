@@ -8,6 +8,10 @@ call() raises NotImplementedError until GREEN (MANIFESTO §4).
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import json
+
 DEFAULT_SHIM_SOCKET = "/var/run/chimera-shim.sock"
 
 
@@ -30,7 +34,32 @@ class ShimClient:
 
     async def call(self, method: str, params: dict[str, object] | None = None) -> dict[str, object]:
         """Send one shim.* request; return its `result`, or raise ShimError."""
-        raise NotImplementedError("ShimClient.call — to be implemented (P4b)")
+        self._id += 1
+        req: dict[str, object] = {"jsonrpc": "2.0", "id": self._id, "method": method}
+        if params is not None:
+            req["params"] = params
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_unix_connection(self._path), self._timeout
+            )
+        except (OSError, TimeoutError) as exc:
+            raise ShimError(-32000, f"cannot reach shim at {self._path}: {exc}") from exc
+        try:
+            writer.write((json.dumps(req) + "\n").encode())
+            await writer.drain()
+            raw = await asyncio.wait_for(reader.readline(), self._timeout)
+        finally:
+            writer.close()
+            with contextlib.suppress(Exception):
+                await writer.wait_closed()
+        if not raw:
+            raise ShimError(-32000, "shim closed the connection without responding")
+        msg = json.loads(raw.decode())
+        err = msg.get("error")
+        if err is not None:
+            raise ShimError(int(err.get("code", -32000)), str(err.get("message", "")))
+        result = msg.get("result", {})
+        return result if isinstance(result, dict) else {}
 
     async def ping(self) -> dict[str, object]:
         return await self.call("shim.ping")
