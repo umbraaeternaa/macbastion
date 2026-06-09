@@ -54,6 +54,8 @@ class PulseClient:
         "pulse.danger.add",
         "pulse.danger.remove",
         "pulse.danger.list",
+        "pulse.calibrate.start",
+        "pulse.calibrate.reset",
     )
     EVENTS: tuple[str, ...] = ("pulse.mode.changed", "pulse.error")
 
@@ -160,6 +162,10 @@ class PulseClient:
                 result = self._handle_danger_remove(request.params)
             elif request.method == "pulse.danger.list":
                 result = self._handle_danger_list()
+            elif request.method == "pulse.calibrate.start":
+                result = await self._handle_calibrate_start()
+            elif request.method == "pulse.calibrate.reset":
+                result = await self._handle_calibrate_reset()
             else:
                 raise RpcError(code=JSONRPC_METHOD_NOT_FOUND)
             return Response(jsonrpc="2.0", id=request.id, result=result)
@@ -255,6 +261,18 @@ class PulseClient:
         if self._danger_registry is None:
             raise RpcError(code=ChimeraError.PRECONDITION_FAILED)
         return {"registry": self._danger_registry.remove(self._danger_sig(params))}
+
+    async def _handle_calibrate_start(self) -> dict[str, Any]:
+        """Report calibration progress; stamp the epoch on first call (PF-3). RED stub."""
+        raise NotImplementedError
+
+    async def _handle_calibrate_reset(self) -> dict[str, Any]:
+        """Wipe the baseline to recalibrate from scratch (PF-4). RED stub."""
+        raise NotImplementedError
+
+    async def _safe_tick(self, now: str) -> None:
+        """Run one tick; on any error emit pulse.error and continue (PF-5). RED stub."""
+        raise NotImplementedError
 
     async def _tick(self, now: str) -> None:
         """Compute the current mode; emit pulse.mode.changed on a transition (EM-2).

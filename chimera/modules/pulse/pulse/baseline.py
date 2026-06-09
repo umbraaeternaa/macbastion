@@ -147,6 +147,17 @@ class BaselineStore:
             row = self._con.execute("SELECT COUNT(*) AS n FROM buckets").fetchone()
         return int(row["n"])
 
+    def calibration_days(self, now: str) -> int:
+        """Distinct calendar days observed in [now-14d, now) (calibration progress).
+
+        RED stub — raises NotImplementedError until GREEN.
+        """
+        raise NotImplementedError
+
+    def clear(self) -> int:
+        """Delete ALL buckets (calibration reset); return rows removed. RED stub."""
+        raise NotImplementedError
+
     # -- meta -------------------------------------------------------------
 
     def get_meta(self, key: str) -> str | None:
