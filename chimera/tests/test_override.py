@@ -50,3 +50,34 @@ def test_phrase_not_in_file(tmp_path):
     s = _store(tmp_path)
     s.set_phrase("supersecret")
     assert "supersecret" not in (tmp_path / "override.json").read_text()
+
+
+# -- GH: changing the phrase requires the current one --------------------------
+
+
+def test_first_set_no_current_ok(tmp_path):
+    s = _store(tmp_path)
+    assert s.set_phrase("first") is True  # first set needs no current
+    assert s.verify("first") is True
+
+
+def test_change_with_correct_current(tmp_path):
+    s = _store(tmp_path)
+    s.set_phrase("first")
+    assert s.set_phrase("second", current="first") is True
+    assert s.verify("second") is True
+
+
+def test_change_wrong_current_rejected(tmp_path):
+    s = _store(tmp_path)
+    s.set_phrase("first")
+    assert s.set_phrase("hack", current="wrong") is False
+    assert s.verify("first") is True  # old phrase stays active
+    assert s.verify("hack") is False
+
+
+def test_change_missing_current_rejected(tmp_path):
+    s = _store(tmp_path)
+    s.set_phrase("first")
+    assert s.set_phrase("hack") is False  # existing phrase, no current supplied
+    assert s.verify("first") is True

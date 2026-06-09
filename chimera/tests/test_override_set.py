@@ -26,8 +26,10 @@ def _server(tmp_path, *, with_store=True):
     return Server(config, registry, lifecycle, broker, TokenIssuer(), override_store=store)
 
 
-def _req(phrase):
+def _req(phrase, current=None):
     params = {} if phrase is None else {"phrase": phrase}
+    if current is not None:
+        params["current"] = current
     return Request(jsonrpc="2.0", id=1, method="core.override.set", params=params)
 
 
@@ -67,3 +69,22 @@ async def test_missing_phrase_invalid(tmp_path):
     conn = server.new_connection()
     resp = await server.handle_command(_req(None), conn)
     assert resp.error["code"] == -32602
+
+
+async def test_change_with_correct_current(tmp_path):
+    server = _server(tmp_path)
+    conn = server.new_connection()
+    await server.handle_command(_req("first"), conn)  # initial set
+    resp = await server.handle_command(_req("second", current="first"), conn)
+    assert resp.error is None
+    assert server._override_store.verify("second") is True
+
+
+async def test_change_wrong_current_rejected(tmp_path):
+    server = _server(tmp_path)
+    conn = server.new_connection()
+    await server.handle_command(_req("first"), conn)
+    resp = await server.handle_command(_req("hack", current="wrong"), conn)
+    assert resp.error is not None
+    assert resp.error["code"] == ChimeraError.NOT_AUTHORIZED
+    assert server._override_store.verify("first") is True  # unchanged
