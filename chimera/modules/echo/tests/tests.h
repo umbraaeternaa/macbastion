@@ -3,5 +3,6 @@
 #define ECHO_TESTS_H
 
 void run_shaper_tests(void);
+void run_config_tests(void);
 
 #endif /* ECHO_TESTS_H */
