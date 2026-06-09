@@ -16,6 +16,7 @@
 
 #include "jsonrpc.h"
 #include "ops.h"
+#include "secret.h"
 
 static char *ok_noop(const cJSON *id, int did_noop) {
     cJSON *result = cJSON_CreateObject();
@@ -26,9 +27,6 @@ static char *ok_noop(const cJSON *id, int did_noop) {
 
 char *protocol_dispatch(const char *method, const cJSON *params, const cJSON *id, int authorized,
                         const char *secret) {
-    (void)params; /* RED: params.secret is read in GREEN. */
-    (void)secret; /* RED: destructive-op secret gating lands in GREEN. */
-
     /* Auth-first: deny before revealing method existence. */
     if (!authorized) {
         return jsonrpc_serialize_error(id, SHIM_RPC_NOT_AUTHORIZED, "not authorized", NULL);
@@ -41,6 +39,16 @@ char *protocol_dispatch(const char *method, const cJSON *params, const cJSON *id
     shim_op_t op = ops_from_method(method);
     if (op == SHIM_OP_UNKNOWN) {
         return jsonrpc_serialize_error(id, SHIM_RPC_CAPABILITY_MISSING, "capability missing", NULL);
+    }
+    /* SS-2: destructive ops (evict/reboot/killall) require the per-boot secret; the
+     * reversible op (lock) and ping do not. No destructive op authed by peercred alone. */
+    if (op != SHIM_OP_LOCK) {
+        const cJSON *s = params ? cJSON_GetObjectItem(params, "secret") : NULL;
+        const char *provided = cJSON_IsString(s) ? s->valuestring : NULL;
+        if (secret == NULL || provided == NULL || strlen(provided) != SHIM_SECRET_HEX_LEN
+            || !secret_equal(provided, secret)) {
+            return jsonrpc_serialize_error(id, SHIM_RPC_NOT_AUTHORIZED, "secret required", NULL);
+        }
     }
     int did_noop = 0;
     if (ops_execute(op, &did_noop) != SHIM_OK) {

@@ -124,7 +124,7 @@ int main(int argc, char **argv) {
         if (conn < 0) {
             break;
         }
-        serve_one(conn, operator_uid);
+        serve_one(conn, operator_uid, secret);
         server_close(conn);
     }
     server_close(listen_fd);
