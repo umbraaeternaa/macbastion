@@ -4,5 +4,6 @@
 
 void run_plan_tests(void);
 void run_targets_tests(void);
+void run_config_tests(void);
 
 #endif /* PURGE_TESTS_H */

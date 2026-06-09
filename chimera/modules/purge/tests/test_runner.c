@@ -11,5 +11,6 @@ int main(void) {
     UNITY_BEGIN();
     run_plan_tests();
     run_targets_tests();
+    run_config_tests();
     return UNITY_END();
 }
