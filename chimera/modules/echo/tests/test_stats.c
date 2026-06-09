@@ -1,4 +1,4 @@
-/* RED contract for the ECHO stats core (ET-1…ET-3). Fails against the stub until GREEN.
+/* GREEN contract for the ECHO stats core (ET-1…ET-3) — the 7 asserts are unchanged from RED.
  * Pins: init-zero, overall padding ratio, per-tick decile histogram, surge trigger, guard. */
 #include "unity.h"
 
