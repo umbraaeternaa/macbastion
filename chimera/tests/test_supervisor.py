@@ -44,11 +44,23 @@ def test_waves_unknown_dependency_rejected():
 
 
 class _FakeProc:
-    def __init__(self):
+    def __init__(self, exits_on_terminate=True):
         self.terminated = False
+        self.killed = False
+        self._exits = exits_on_terminate
 
     def terminate(self):
         self.terminated = True
+
+    def kill(self):
+        self.killed = True
+
+    def poll(self):
+        if self.killed:
+            return -9
+        if self.terminated and self._exits:
+            return 0
+        return None  # still running
 
 
 async def test_up_spawns_in_wave_order():
@@ -98,3 +110,23 @@ async def test_down_terminates_all():
     await sup.up()
     await sup.down()
     assert all(p.terminated for p in procs.values())
+
+
+async def test_down_graceful_then_force():
+    procs = {"a": _FakeProc(exits_on_terminate=True), "b": _FakeProc(exits_on_terminate=False)}
+
+    def spawn(spec):
+        return procs[spec.name]
+
+    sup = Supervisor(
+        [ModuleSpec("a"), ModuleSpec("b")],
+        spawn=spawn,
+        is_registered=lambda n: True,
+        shutdown_grace=0.2,
+    )
+    await sup.up()
+    await sup.down()
+    # 'a' exits on SIGTERM -> not force-killed
+    assert procs["a"].terminated and not procs["a"].killed
+    # 'b' ignores SIGTERM (hung) -> force-killed after the grace window
+    assert procs["b"].terminated and procs["b"].killed

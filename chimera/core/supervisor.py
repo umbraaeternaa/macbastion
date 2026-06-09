@@ -72,11 +72,13 @@ class Supervisor:
         spawn: Callable[[ModuleSpec], SupervisedProc],
         is_registered: Callable[[str], bool],
         wave_timeout: float = 5.0,
+        shutdown_grace: float = 5.0,
     ) -> None:
         self._specs = list(specs)
         self._spawn = spawn
         self._is_registered = is_registered
         self._wave_timeout = wave_timeout
+        self._shutdown_grace = shutdown_grace
         self._procs: dict[str, SupervisedProc] = {}
         self._failed: set[str] = set()
 
