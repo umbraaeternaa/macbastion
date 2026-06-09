@@ -12,5 +12,6 @@ int main(void) {
     run_shaper_tests();
     run_config_tests();
     run_stats_tests();
+    run_commands_tests();
     return UNITY_END();
 }
