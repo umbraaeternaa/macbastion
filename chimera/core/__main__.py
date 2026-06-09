@@ -23,7 +23,7 @@ from core.lifecycle import Lifecycle
 from core.override import OverrideStore
 from core.registry import Registry
 from core.server import Server
-from core.shim_client import ShimClient
+from core.shim_client import ShimClient, ShimError
 from core.supervisor import CHIMERA_MODULES, ModuleSpec, Supervisor
 from core.tokens import TokenIssuer
 
@@ -70,6 +70,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     sub = parser.add_subparsers(dest="command")
     sub.add_parser("up", help="start core and bring all modules up (the whole organism)")
     sub.add_parser("plist", help="print the LaunchAgent plist for `python -m core up`")
+    sub.add_parser(
+        "shim-check", help="diagnostic: ping the shim and attempt the per-boot-secret handshake"
+    )
     return parser.parse_args(argv)
 
 
@@ -166,8 +169,31 @@ def launch_agent_plist(socket_dir: Path) -> str:
     )
 
 
+async def _shim_check() -> int:
+    """Diagnostic: ping the shim, then attempt the per-boot-secret handshake. Prints the
+    outcome (never the secret itself) and returns a process exit code. The handshake succeeds
+    only when the shim attests this process as the signed core (Slice 2b)."""
+    sock = os.environ.get("CHIMERA_SHIM_SOCKET")
+    client = ShimClient(sock) if sock else ShimClient()
+    try:
+        await client.ping()
+        print("ping: pong")
+    except ShimError as exc:
+        print(f"ping: FAILED — {exc}")
+        return 1
+    try:
+        secret = await client.handshake()
+        print(f"handshake: ok — secret obtained ({len(secret)} hex chars)")
+        return 0
+    except ShimError as exc:
+        print(f"handshake: DENIED — {exc}")
+        return 1
+
+
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(sys.argv[1:] if argv is None else argv)
+    if args.command == "shim-check":  # standalone diagnostic — needs no core config
+        raise SystemExit(asyncio.run(_shim_check()))
     config = _config_from_env()
     if args.command == "plist":
         print(launch_agent_plist(config.socket_dir))

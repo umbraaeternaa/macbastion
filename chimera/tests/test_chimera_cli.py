@@ -20,6 +20,10 @@ def test_parse_args_plist():
     assert parse_args(["plist"]).command == "plist"
 
 
+def test_parse_args_shim_check():
+    assert parse_args(["shim-check"]).command == "shim-check"
+
+
 def test_module_binary_path():
     p = module_binary("echo")
     assert isinstance(p, Path)
