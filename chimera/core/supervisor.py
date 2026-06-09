@@ -1,10 +1,12 @@
-"""CHIMERA module supervisor (SV-2) — RED stub.
+"""CHIMERA module supervisor (§7.3 dependency-ordered launch + §7.5 process restart).
 
-Dependency-ordered module launch (§7.3): compute startup waves from each module's
-depends_on, then bring modules up wave by wave, each wave waiting for the previous to
-register. Launch + registration-check are injected (DI) so the wave logic is testable
-without real processes. The logic raises NotImplementedError until GREEN (MANIFESTO §4);
-the dataclass is real so tests can construct specs.
+Computes startup waves from each module's depends_on and brings modules up wave by wave,
+each wave waiting for the previous to register; tears down in reverse. Launch +
+registration-check are injected (DI) so the wave logic is testable without real processes.
+
+The §7.5 restart DECISION (budget, backoff, FSM) lives in core.lifecycle — the single
+source of truth. The supervisor's role is the process ACTION: on a module reaching FAILED,
+it asks lifecycle to restart and, if allowed (-> STARTING), re-spawns the OS process.
 """
 
 from __future__ import annotations
@@ -58,35 +60,6 @@ def topological_waves(specs: Sequence[ModuleSpec]) -> list[list[ModuleSpec]]:
     return waves
 
 
-def backoff_delay(attempt: int) -> float:
-    """§7.5 restart backoff: attempts 1-4 -> 1/2/4/8s, attempt 5+ capped at 30s."""
-    if attempt <= 4:
-        return float(2 ** (attempt - 1))
-    return 30.0
-
-
-class RestartTracker:
-    """Tracks a module's restart timestamps within a rolling window (§7.5)."""
-
-    def __init__(self, max_restarts: int = 5, window_s: float = 3600.0) -> None:
-        self._max = max_restarts
-        self._window = window_s
-        self._times: list[float] = []
-
-    def _prune(self, now: float) -> None:
-        self._times = [t for t in self._times if now - t < self._window]
-
-    def attempts(self, now: float) -> int:
-        self._prune(now)
-        return len(self._times)
-
-    def allowed(self, now: float) -> bool:
-        return self.attempts(now) < self._max
-
-    def record(self, now: float) -> None:
-        self._times.append(now)
-
-
 class Supervisor:
     """Brings modules up in dependency waves and tears them down in reverse."""
 
@@ -97,45 +70,17 @@ class Supervisor:
         spawn: Callable[[ModuleSpec], SupervisedProc],
         is_registered: Callable[[str], bool],
         wave_timeout: float = 5.0,
-        max_restarts: int = 5,
-        restart_window_s: float = 3600.0,
     ) -> None:
         self._specs = list(specs)
         self._spawn = spawn
         self._is_registered = is_registered
         self._wave_timeout = wave_timeout
-        self._max_restarts = max_restarts
-        self._restart_window_s = restart_window_s
         self._procs: dict[str, SupervisedProc] = {}
         self._failed: set[str] = set()
-        self._trackers: dict[str, RestartTracker] = {}
-        self._dead: set[str] = set()
 
     @property
     def failed(self) -> set[str]:
         return self._failed
-
-    @property
-    def dead(self) -> set[str]:
-        """Modules that exhausted their restart budget (PERMANENTLY_FAILED, §7.5)."""
-        return self._dead
-
-    def restart(self, name: str, *, now: float) -> float | None:
-        """Restart a failed module if its budget allows (§7.5). Returns the backoff delay
-        the caller should wait before the module is expected live, or None if the module
-        is now permanently failed (gave up)."""
-        spec = next((s for s in self._specs if s.name == name), None)
-        if spec is None:
-            raise KeyError(name)
-        tracker = self._trackers.setdefault(
-            name, RestartTracker(self._max_restarts, self._restart_window_s)
-        )
-        if not tracker.allowed(now):
-            self._dead.add(name)
-            return None
-        tracker.record(now)
-        self._procs[name] = self._spawn(spec)
-        return backoff_delay(tracker.attempts(now))
 
     async def up(self) -> None:
         """Launch every module wave by wave; a wave waits for the previous to register.
