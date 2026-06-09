@@ -1,5 +1,5 @@
-/* RED contract for the ECHO shaper core (ES-2/ES-3). Fails against the stub until GREEN.
- * Pins: the budget formula, the constant-rate FLAT-wire invariant, burst drain, clamps. */
+/* GREEN contract for the ECHO shaper core (ES-2/ES-3) — the 9 asserts are unchanged from
+ * RED. Pins: the budget formula, the constant-rate FLAT-wire invariant, burst drain, clamps. */
 #include "unity.h"
 
 #include "shaper.h"
