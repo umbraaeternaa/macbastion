@@ -75,7 +75,16 @@ Slice 3A react-entrypoint (RED→GREEN) done. CORE: idea #3 Slice 3B anomaly-rel
 (RED→GREEN) done — a NEW core capability. ORACLE: idea #3 Slice 3C anomaly-emit
 (RED→GREEN) done — the real producer. **Idea #3 (Anomaly-Tripwire) COMPLETE** —
 3A+3B+3C wired + e2e-confirmed by 3D.
-Last completed: **graceful-then-force shutdown** (commit `14671c3`) — GD, §7.7. `Supervisor.down`
+Last completed: **shim per-boot secret gates destructive ops** (commit `2b92ef9`) — Slice 2a, SS-2/3.
+`secret.{h,c}`: per-boot secret = 32 arc4random bytes hex-encoded (in-memory only, SS-4) + constant-
+time `secret_equal`. `protocol_dispatch` now REQUIRES `params.secret` == the per-boot secret for the
+destructive ops (evict/reboot/killall) -> -31007 otherwise; lock/ping stay peercred-only (SS-2 staged,
+lock reversible). main generates the secret at load + threads it through serve_one. Enforces "no
+destructive op authed by peercred alone" at the protocol. 7 RED->GREEN Unity (30/30 shim). 906 -> 913.
+⚠️ DEFERRED: Slice 2b — the secret HANDOFF to core (shim verifies the peer's CODE SIGNATURE via audit
+token + SecCode, then issues the secret only to the verified signed core); Slice 3 real op effects.
+
+Prior milestone: **graceful-then-force shutdown** (commit `14671c3`) — GD, §7.7. `Supervisor.down`
 now SIGTERMs every module (reverse launch order), waits up to `shutdown_grace`, then SIGKILLs any
 straggler still running (`SupervisedProc` gained kill()/poll()). HONEST §8.8(d) note: the spec lists
 `shim.killall` (core->shim) for shutdown, but the supervisor OWNS its module procs (Popen handles) so
@@ -653,12 +662,12 @@ core, as authority, turns the event into a command.) Slices:
 - Python (ollama, marked — `pytest -m ollama`): 3 passing (subset of integration; real llama3.2:1b)
 - Native (CHAFF Unity): 46 passing (7 endpoints + 6 schedule + 6 crypto + 6 db + 10 jsonrpc + 6 commands + 5 generation)
 - Native (MIRROR Unity): 42 passing (6 perturb + 6 profile + 5 exclude + 5 stats + 4 rng + 10 jsonrpc + 6 commands)
-- Native (shim Unity): 23 passing (11 ops + 6 peercred + 2 server + 4 protocol) — separate C trust-plane suite, NOT in pytest
+- Native (shim Unity): 30 passing (11 ops + 6 peercred + 2 server + 8 protocol [incl 4 secret-gating] + 3 secret — per-boot secret + destructive-op gating, SS-2/3) — separate C trust-plane suite, NOT in pytest
 - Native (TETHER C++ Unity): 48 passing (4 ewma + 6 presence + 4 classify + 8 escalation + 6 emit + 10 commands + 10 monitor) — separate C++ suite, NOT in pytest
 - Native (VAULT C Unity): 44 passing (6 lexer + 6 parser + 9 evaluator + 6 fail_closed + 3 relock + 7 decide + 7 crypto) — separate C suite, NOT in pytest
 - Native (ECHO C Unity): 31 passing (9 shaper — budget + flat-wire invariant + burst + clamps; 7 config — defaults + validation + atomic set + budget bridge; 7 stats — padding ratio + decile histogram + surge; 8 commands — echo.* dispatch over jsonrpc) — separate C suite, NOT in pytest
 - Native (PURGE C Unity): 35 passing (7 dry-run planner — §8 honest-wipe classify + keys-first tier plan; 9 target registry — add/dedup/remove + plan bridge; 7 config — post-action + marker, atomic set; 12 commands — purge.* dispatch, trigger gated -31004) — separate C suite, NOT in pytest
-- Total: 906 passing (584 default [incl 22 pulse scoring + 24 pulse baseline + 10 pulse assess + 10 pulse temporal + 3 pulse emission + 5 pulse danger-registry + 5 pulse finishers + 8 core gate + 5 core gate-wiring + 7 core override + 3 core gate-override + 5 core override.set + 6 core gate-hardening + 3 core entry + 8 core supervisor + 5 core CLI + 4 core autonomy + 3 core mark-lost + 1 core lock + 1 core graceful-down] + 54 integration + 46 CHAFF + 31 ECHO + 35 PURGE + 42 MIRROR + 23 shim + 48 TETHER + 44 VAULT Unity; ollama subset not double-counted)
+- Total: 913 passing (584 default [incl 22 pulse scoring + 24 pulse baseline + 10 pulse assess + 10 pulse temporal + 3 pulse emission + 5 pulse danger-registry + 5 pulse finishers + 8 core gate + 5 core gate-wiring + 7 core override + 3 core gate-override + 5 core override.set + 6 core gate-hardening + 3 core entry + 8 core supervisor + 5 core CLI + 4 core autonomy + 3 core mark-lost + 1 core lock + 1 core graceful-down] + 54 integration + 46 CHAFF + 31 ECHO + 35 PURGE + 42 MIRROR + 30 shim + 48 TETHER + 44 VAULT Unity; ollama subset not double-counted)
 
 **Open tails (honest tracking, MANIFESTO §4):**
 - Fernet at-rest: CHAFF (C/OpenSSL) and ORACLE (Python `cryptography.Fernet`) share the format but interop is NOT cross-tested (B1 deferred; format-faithful).
