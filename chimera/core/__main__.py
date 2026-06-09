@@ -134,8 +134,16 @@ async def run_up(config: CoreConfig) -> None:
 
 
 def launch_agent_plist(socket_dir: Path) -> str:
-    """The LaunchAgent plist XML that runs `python -m core up` (§7.10)."""
-    program = [sys.executable, "-m", "core", "up"]
+    """The LaunchAgent plist XML that runs core `up` (§7.10).
+
+    A signed frozen binary (PyInstaller, deploy/build-core.sh) IS the entry point, so it
+    takes `up` directly; the dev interpreter needs `-m core up`.
+    """
+    program = (
+        [sys.executable, "up"]
+        if getattr(sys, "frozen", False)
+        else [sys.executable, "-m", "core", "up"]
+    )
     args_xml = "".join(f"        <string>{a}</string>\n" for a in program)
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'

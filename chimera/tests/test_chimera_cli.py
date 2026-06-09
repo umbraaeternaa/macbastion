@@ -2,6 +2,7 @@
 green once parse_args / module_binary / launch_agent_plist land. Pure unit-level.
 """
 
+import sys
 from pathlib import Path
 
 from core.__main__ import launch_agent_plist, module_binary, parse_args
@@ -33,3 +34,22 @@ def test_launch_agent_plist_has_keys(tmp_path):
     assert "Label" in xml
     assert str(tmp_path) in xml
     assert "up" in xml  # the agent runs `python -m core up`
+
+
+def test_launch_agent_plist_frozen_uses_bare_up(tmp_path, monkeypatch):
+    # A signed frozen binary IS the entry point -> `chimera up`, not `chimera -m core up`.
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", "/opt/chimera/chimera")
+    xml = launch_agent_plist(tmp_path)
+    assert "<string>-m</string>" not in xml
+    assert "<string>core</string>" not in xml
+    assert "<string>/opt/chimera/chimera</string>" in xml
+    assert "<string>up</string>" in xml
+
+
+def test_launch_agent_plist_unfrozen_uses_dash_m_core(tmp_path, monkeypatch):
+    # Dev mode (python -m core): the interpreter needs `-m core up`.
+    monkeypatch.setattr(sys, "frozen", False, raising=False)
+    xml = launch_agent_plist(tmp_path)
+    assert "<string>-m</string>" in xml
+    assert "<string>core</string>" in xml
