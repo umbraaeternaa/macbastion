@@ -58,6 +58,29 @@ def topological_waves(specs: Sequence[ModuleSpec]) -> list[list[ModuleSpec]]:
     return waves
 
 
+def backoff_delay(attempt: int) -> float:
+    """§7.5 restart backoff: attempts 1-4 -> 1/2/4/8s, attempt 5+ capped at 30s."""
+    raise NotImplementedError("backoff_delay — to be implemented (SV-3)")
+
+
+class RestartTracker:
+    """Tracks a module's restart timestamps within a rolling window (§7.5)."""
+
+    def __init__(self, max_restarts: int = 5, window_s: float = 3600.0) -> None:
+        self._max = max_restarts
+        self._window = window_s
+        self._times: list[float] = []
+
+    def attempts(self, now: float) -> int:
+        raise NotImplementedError("RestartTracker.attempts — to be implemented (SV-3)")
+
+    def allowed(self, now: float) -> bool:
+        raise NotImplementedError("RestartTracker.allowed — to be implemented (SV-3)")
+
+    def record(self, now: float) -> None:
+        raise NotImplementedError("RestartTracker.record — to be implemented (SV-3)")
+
+
 class Supervisor:
     """Brings modules up in dependency waves and tears them down in reverse."""
 
@@ -68,17 +91,34 @@ class Supervisor:
         spawn: Callable[[ModuleSpec], SupervisedProc],
         is_registered: Callable[[str], bool],
         wave_timeout: float = 5.0,
+        max_restarts: int = 5,
+        restart_window_s: float = 3600.0,
     ) -> None:
         self._specs = list(specs)
         self._spawn = spawn
         self._is_registered = is_registered
         self._wave_timeout = wave_timeout
+        self._max_restarts = max_restarts
+        self._restart_window_s = restart_window_s
         self._procs: dict[str, SupervisedProc] = {}
         self._failed: set[str] = set()
+        self._trackers: dict[str, RestartTracker] = {}
+        self._dead: set[str] = set()
 
     @property
     def failed(self) -> set[str]:
         return self._failed
+
+    @property
+    def dead(self) -> set[str]:
+        """Modules that exhausted their restart budget (PERMANENTLY_FAILED, §7.5)."""
+        return self._dead
+
+    def restart(self, name: str, *, now: float) -> float | None:
+        """Restart a failed module if its budget allows (§7.5). Returns the backoff delay
+        the caller should wait before the module is expected live, or None if the module
+        is now permanently failed (gave up)."""
+        raise NotImplementedError("Supervisor.restart — to be implemented (SV-3)")
 
     async def up(self) -> None:
         """Launch every module wave by wave; a wave waits for the previous to register.
