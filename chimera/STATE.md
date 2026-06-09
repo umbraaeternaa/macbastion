@@ -75,7 +75,20 @@ Slice 3A react-entrypoint (RED→GREEN) done. CORE: idea #3 Slice 3B anomaly-rel
 (RED→GREEN) done — a NEW core capability. ORACLE: idea #3 Slice 3C anomaly-emit
 (RED→GREEN) done — the real producer. **Idea #3 (Anomaly-Tripwire) COMPLETE** —
 3A+3B+3C wired + e2e-confirmed by 3D.
-Last completed: **shim per-boot secret gates destructive ops** (commit `2b92ef9`) — Slice 2a, SS-2/3.
+Last completed: **core signed as a standalone binary** (commits `399509f`/`7630fb3`/`94049a8`) —
+slice A, the §5.5 prerequisite for shim Slice 2b. core is frozen to a onedir Mach-O
+(`deploy/build-core.sh`, PyInstaller) and deep-signed with hardened runtime under one identity
+(`deploy/sign-core.sh`): 132 nested Mach-O + the exe, verified `flags=runtime`, NO get-task-allow,
+NO disable-library-validation, still runs. Core's designated requirement is stable across rebuilds
+(identifier "chimera" + Apple Development leaf, NOT cdhash) — the pin the shim verifies in 2b.
+`launch_agent_plist` now targets the frozen binary (`chimera up`, not `-m core up`) under `sys.frozen`.
+WHY A existed: 2b's secret handoff needs the shim to tell core from a same-uid process, but
+`python -m core` peers resolve (via SecCode) to the python interpreter — indistinguishable — so core
+had to become its own signed binary first. +2 cli unit. 913 -> 915. NEXT: shim Slice 2b — audit-token
+peer attestation (build SecRequirement from core's DR captured at install) + secret issuance to the
+verified core; then Slice 3 real op effects.
+
+Prior milestone: **shim per-boot secret gates destructive ops** (commit `2b92ef9`) — Slice 2a, SS-2/3.
 `secret.{h,c}`: per-boot secret = 32 arc4random bytes hex-encoded (in-memory only, SS-4) + constant-
 time `secret_equal`. `protocol_dispatch` now REQUIRES `params.secret` == the per-boot secret for the
 destructive ops (evict/reboot/killall) -> -31007 otherwise; lock/ping stay peercred-only (SS-2 staged,
@@ -657,7 +670,7 @@ core, as authority, turns the event into a command.) Slices:
 **Tooling:** `pyproject.toml` + `uv.lock` + `.venv` (Python 3.13.9); ruff + mypy (strict) + pytest configured. Direct deps: cryptography, pydantic(-settings), **ollama==0.6.2** (§6-allowed; httpx + anyio/certifi transitive). pytest markers: `integration`, `ollama`. Native C deps (Homebrew, fail-fast in each Makefile, §6 allowlist): openssl@3 + sqlite3 (CHAFF), **libsodium (VAULT crypto — XChaCha20-Poly1305/Argon2id/secure-mem)**.
 
 **Tests:**
-- Python (pytest, default): 584 passing (31 errors + 41 envelope + 36 config + 35 tokens + 36 broker + 63 lifecycle + 60 registry + 86 server [81 + 5 anomaly-relay 3B] + 12 oracle observe-first + 17 oracle Mode B + 10 oracle explainability + 8 oracle time-machine + 8 oracle NL-ask [7 ask + 1 advisory] + 3 oracle anomaly-emit [3C client-unit] + 22 pulse scoring [slice 1] + 24 pulse baseline store [slice 2] + 10 pulse assess [slice 3] + 10 pulse temporal [group B] + 3 pulse emission [EM] + 5 pulse danger-registry [DR] + 5 pulse finishers [PF] + 8 core gate [GE] + 5 core gate-wiring [GW] + 7 core override [OV] + 3 core gate-override + 5 core override.set [OS] + 6 core gate-hardening [GH] + 3 core entry [SV-1] + 8 core supervisor [SV-2] + 5 core CLI [SV-4] + 4 core autonomy [SV-5'] (lifecycle owns §7.5 restart) + 3 core mark-lost [CR-1] + 1 core lock [P4c] + 1 core graceful-down [GD])
+- Python (pytest, default): 586 passing (31 errors + 41 envelope + 36 config + 35 tokens + 36 broker + 63 lifecycle + 60 registry + 86 server [81 + 5 anomaly-relay 3B] + 12 oracle observe-first + 17 oracle Mode B + 10 oracle explainability + 8 oracle time-machine + 8 oracle NL-ask [7 ask + 1 advisory] + 3 oracle anomaly-emit [3C client-unit] + 22 pulse scoring [slice 1] + 24 pulse baseline store [slice 2] + 10 pulse assess [slice 3] + 10 pulse temporal [group B] + 3 pulse emission [EM] + 5 pulse danger-registry [DR] + 5 pulse finishers [PF] + 8 core gate [GE] + 5 core gate-wiring [GW] + 7 core override [OV] + 3 core gate-override + 5 core override.set [OS] + 6 core gate-hardening [GH] + 3 core entry [SV-1] + 8 core supervisor [SV-2] + 7 core CLI [SV-4 + A-4 frozen-plist] + 4 core autonomy [SV-5'] (lifecycle owns §7.5 restart) + 3 core mark-lost [CR-1] + 1 core lock [P4c] + 1 core graceful-down [GD])
 - Python (integration, marked — `pytest -m integration`): 54 passing (2 core.lock [forwards + LIVE shim] + 5 shim-client [fake + LIVE root shim ping->pong] + 1 crash-restart [kill echo -> core marks FAILED] + 1 chimera-up [python -m core up brings the organism alive] + 1 supervisor [ECHO+PURGE via dependency waves] + 2 core entry [python -m core serves + clean SIGTERM] + 1 multi-module e2e [ECHO+PURGE+PULSE coexist on one core] + 4 CHAFF + 2 ECHO daemon + 2 PURGE daemon + 4 MIRROR + 5 TETHER + 4 PULSE daemon + 2 PULSE danger + 2 core gate-wiring + 2 anomaly-tripwire e2e [#3 3D: ORACLE+core+TETHER full spin] + 14 ORACLE: 4 observe-first + 3 Mode B hermetic + 2 Time-Machine query + 2 NL-ask + 3 real-Ollama); the 3 real-Ollama skip when Ollama is down. NOTE: real-socket integration needs a short `--basetemp` (AF_UNIX path-too-long, see Open tails)
 - Python (ollama, marked — `pytest -m ollama`): 3 passing (subset of integration; real llama3.2:1b)
 - Native (CHAFF Unity): 46 passing (7 endpoints + 6 schedule + 6 crypto + 6 db + 10 jsonrpc + 6 commands + 5 generation)
@@ -667,7 +680,7 @@ core, as authority, turns the event into a command.) Slices:
 - Native (VAULT C Unity): 44 passing (6 lexer + 6 parser + 9 evaluator + 6 fail_closed + 3 relock + 7 decide + 7 crypto) — separate C suite, NOT in pytest
 - Native (ECHO C Unity): 31 passing (9 shaper — budget + flat-wire invariant + burst + clamps; 7 config — defaults + validation + atomic set + budget bridge; 7 stats — padding ratio + decile histogram + surge; 8 commands — echo.* dispatch over jsonrpc) — separate C suite, NOT in pytest
 - Native (PURGE C Unity): 35 passing (7 dry-run planner — §8 honest-wipe classify + keys-first tier plan; 9 target registry — add/dedup/remove + plan bridge; 7 config — post-action + marker, atomic set; 12 commands — purge.* dispatch, trigger gated -31004) — separate C suite, NOT in pytest
-- Total: 913 passing (584 default [incl 22 pulse scoring + 24 pulse baseline + 10 pulse assess + 10 pulse temporal + 3 pulse emission + 5 pulse danger-registry + 5 pulse finishers + 8 core gate + 5 core gate-wiring + 7 core override + 3 core gate-override + 5 core override.set + 6 core gate-hardening + 3 core entry + 8 core supervisor + 5 core CLI + 4 core autonomy + 3 core mark-lost + 1 core lock + 1 core graceful-down] + 54 integration + 46 CHAFF + 31 ECHO + 35 PURGE + 42 MIRROR + 30 shim + 48 TETHER + 44 VAULT Unity; ollama subset not double-counted)
+- Total: 915 passing (586 default [incl 22 pulse scoring + 24 pulse baseline + 10 pulse assess + 10 pulse temporal + 3 pulse emission + 5 pulse danger-registry + 5 pulse finishers + 8 core gate + 5 core gate-wiring + 7 core override + 3 core gate-override + 5 core override.set + 6 core gate-hardening + 3 core entry + 8 core supervisor + 7 core CLI + 4 core autonomy + 3 core mark-lost + 1 core lock + 1 core graceful-down] + 54 integration + 46 CHAFF + 31 ECHO + 35 PURGE + 42 MIRROR + 30 shim + 48 TETHER + 44 VAULT Unity; ollama subset not double-counted)
 
 **Open tails (honest tracking, MANIFESTO §4):**
 - Fernet at-rest: CHAFF (C/OpenSSL) and ORACLE (Python `cryptography.Fernet`) share the format but interop is NOT cross-tested (B1 deferred; format-faithful).
