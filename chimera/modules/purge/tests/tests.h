@@ -3,5 +3,6 @@
 #define PURGE_TESTS_H
 
 void run_plan_tests(void);
+void run_targets_tests(void);
 
 #endif /* PURGE_TESTS_H */

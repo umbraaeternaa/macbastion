@@ -10,5 +10,6 @@ void tearDown(void) {}
 int main(void) {
     UNITY_BEGIN();
     run_plan_tests();
+    run_targets_tests();
     return UNITY_END();
 }
