@@ -161,9 +161,24 @@ The skeleton (Slice 1, peercred) has no such dependency.
 - **~~Per-boot shared-secret mechanism.~~** RESOLVED at design level (§5, SS-0…SS-7):
   staged — peercred for the skeleton, in-memory secret (paired with code-signing)
   for destructive ops. Implementation lands in Slice 2.
-- **Code-signing prerequisite.** LaunchDaemon registration and trust need a signed
-  binary — the same tail that gates the MIRROR CGEventTap. Now also gates Slice 2's
-  secret (F2 / §5.5). The skeleton (Slice 1) does not depend on it.
+- **~~Code-signing prerequisite.~~** RESOLVED — core-signing slice "A" (2026-06-09).
+  §5.5 named "core signed with hardened runtime, no get-task-allow" as the prerequisite for the
+  secret, but core ran as `python -m core` — `SecCode` of that peer resolves to the *python
+  interpreter*, identical for any same-uid process, so the shim could not tell core apart from
+  same-uid malware (this is exactly how Apple's SMJobBless privileged helpers require a *signed
+  client*). Fix: core is now frozen to a standalone onedir Mach-O (`deploy/build-core.sh`) and
+  deep-signed with hardened runtime under one identity (`deploy/sign-core.sh`) — verified
+  `flags=0x10000(runtime)`, NO `get-task-allow`, NO `disable-library-validation`, still runs.
+  Core's designated requirement is stable across rebuilds (pinned by identifier + leaf cert,
+  NOT cdhash):
+
+      identifier "chimera" and anchor apple generic
+        and certificate leaf[subject.CN] = "<operator's Apple Development cert>"
+
+  Slice 2b consumes this: the shim obtains core's DR at INSTALL time (`codesign -d -r-`, written
+  to a root-only config — not hardcoded, not committed), builds a `SecRequirement`, and verifies
+  the connecting peer via its audit token before issuing the per-boot secret. LaunchDaemon trust
+  (the original phrasing of this item) also rides on the same signing.
 - **Login-window operation (§7.11 open Q).** Which modules (if any) must run before
   user login, and does that force more into the LaunchDaemon? Affects how early the
   shim must be available and what it must do pre-login.
