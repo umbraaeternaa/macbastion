@@ -2,7 +2,7 @@
 
 > Living document. v1.0. Updated as practice evolves.
 > Companion to ARCHITECTURE.md §8 (Security Model).
-> Updated: 2026-05-28
+> Updated: 2026-06-09
 
 ---
 
@@ -215,7 +215,7 @@ The review is manual on purpose. A script that nags you reduces this to clicking
 
 This document is not a security guarantee. It is a discipline.
 
-You will fail at some of these rules. CHIMERA is designed to fail gracefully when you do — fail-closed, never fail-open; cascade can only lock more, never destroy (ARCHITECTURE I3, I4).
+You will fail at some of these rules. CHIMERA is designed to fail gracefully when you do — secrets fail closed (a mistake never opens a vault or unpauses traffic), while the cognitive gate fails open (a broken fatigue sensor never locks you out of your own machine); and the dependency cascade can only lock more, never destroy (ARCHITECTURE I3, I4).
 
 The goal is not perfection. It is making the cost of a mistake bounded and recoverable for as many mistakes as possible — and making the few unrecoverable ones (forgotten phrases, mixed personas) explicit, so you know exactly which lines truly cannot be crossed.
 
