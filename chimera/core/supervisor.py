@@ -12,9 +12,11 @@ it asks lifecycle to restart and, if allowed (-> STARTING), re-spawns the OS pro
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol
+
+from core.lifecycle import Lifecycle
 
 
 @dataclass(frozen=True)
@@ -106,3 +108,14 @@ class Supervisor:
         for name in reversed(list(self._procs)):
             self._procs[name].terminate()
             await asyncio.sleep(0)
+
+    def handle_failure(self, name: str, lifecycle: Lifecycle) -> bool:
+        """A supervised module reached FAILED: delegate the restart decision to lifecycle
+        (§7.5 budget/backoff/FSM — the single source of truth); if it transitions to
+        STARTING, re-spawn the OS process. Returns True iff the process was respawned."""
+        raise NotImplementedError("Supervisor.handle_failure — to be implemented (SV-5'b)")
+
+    def on_state_changed(self, payload: Mapping[str, object], lifecycle: Lifecycle) -> bool:
+        """Broker hook for module.state_changed: restart on a transition TO FAILED,
+        ignore every other transition. Returns whether a restart was attempted."""
+        raise NotImplementedError("Supervisor.on_state_changed — to be implemented (SV-5'b)")
