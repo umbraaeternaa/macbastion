@@ -62,18 +62,44 @@ Before this, the shim only runs by hand under its manual `-m privileged` tier (S
 
 ---
 
-## Step 3 — Grant TCC permissions  (P3 — guide lands next)
+## Step 3 — Grant TCC permissions  (P3)
 
-These are **System Settings grants**, not entitlements — you grant them to the signed
-binary once, and they persist because the identity is stable:
+TCC (Transparency, Consent & Control) grants CANNOT be scripted — Apple blocks
+programmatic granting on purpose (`tccutil` only *resets*, never grants). You grant them
+once, by hand, to the **signed** binary; they persist because the `CHIMERA Local`
+identity is stable across rebuilds.
 
-- **MIRROR** (CGEventTap, behavioral noise): System Settings → Privacy & Security →
-  **Accessibility** → enable the MIRROR binary.
-- **TETHER** (CoreBluetooth dead-man): System Settings → Privacy & Security →
-  **Bluetooth** → enable. (TETHER also needs a Bluetooth usage string.)
+**Prerequisite:** sign the module binaries first (same as the shim):
 
-If you ever rebuild a binary with a DIFFERENT identity, its TCC grant resets — that is
-why the stable `CHIMERA Local` identity matters.
+```bash
+bash deploy/sign.sh modules/mirror/mirror modules/tether/tether
+```
+
+### MIRROR — Accessibility (CGEventTap)
+
+MIRROR injects humanlike input jitter via `CGEventTap`, which requires **Accessibility**.
+
+1. Start the organism once so MIRROR runs and triggers the prompt: `python -m core up`.
+2. The first CGEventTap call raises a system prompt → **Open System Settings** → allow.
+   - If no prompt: System Settings → Privacy & Security → **Accessibility** → **+** →
+     navigate to `…/modules/mirror/mirror` → enable the toggle.
+3. Verify: MIRROR's status should report the tap as active (not `-31004`).
+
+### TETHER — Bluetooth (CoreBluetooth)
+
+TETHER's BLE dead-man needs **Bluetooth**. CoreBluetooth also requires a usage string
+(`NSBluetoothAlwaysUsageDescription`) in the binary's `Info.plist` — that is a TETHER
+*build* concern (embedded `__info_plist` section), separate from this grant.
+
+1. With TETHER running, the first CoreBluetooth use raises the Bluetooth prompt → allow.
+2. Or manually: System Settings → Privacy & Security → **Bluetooth** → enable the TETHER binary.
+
+### When a grant resets
+
+- **Same identity, rebuilt binary** → grant PERSISTS (this is why we use one stable cert).
+- **Different identity / unsigned** → grant RESETS; macOS re-prompts.
+- To force a clean re-prompt during testing: `tccutil reset Accessibility` /
+  `tccutil reset Bluetooth` (resets ALL apps' grant for that service — use deliberately).
 
 ---
 
