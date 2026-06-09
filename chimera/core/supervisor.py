@@ -60,7 +60,9 @@ def topological_waves(specs: Sequence[ModuleSpec]) -> list[list[ModuleSpec]]:
 
 def backoff_delay(attempt: int) -> float:
     """§7.5 restart backoff: attempts 1-4 -> 1/2/4/8s, attempt 5+ capped at 30s."""
-    raise NotImplementedError("backoff_delay — to be implemented (SV-3)")
+    if attempt <= 4:
+        return float(2 ** (attempt - 1))
+    return 30.0
 
 
 class RestartTracker:
@@ -71,14 +73,18 @@ class RestartTracker:
         self._window = window_s
         self._times: list[float] = []
 
+    def _prune(self, now: float) -> None:
+        self._times = [t for t in self._times if now - t < self._window]
+
     def attempts(self, now: float) -> int:
-        raise NotImplementedError("RestartTracker.attempts — to be implemented (SV-3)")
+        self._prune(now)
+        return len(self._times)
 
     def allowed(self, now: float) -> bool:
-        raise NotImplementedError("RestartTracker.allowed — to be implemented (SV-3)")
+        return self.attempts(now) < self._max
 
     def record(self, now: float) -> None:
-        raise NotImplementedError("RestartTracker.record — to be implemented (SV-3)")
+        self._times.append(now)
 
 
 class Supervisor:
@@ -118,7 +124,18 @@ class Supervisor:
         """Restart a failed module if its budget allows (§7.5). Returns the backoff delay
         the caller should wait before the module is expected live, or None if the module
         is now permanently failed (gave up)."""
-        raise NotImplementedError("Supervisor.restart — to be implemented (SV-3)")
+        spec = next((s for s in self._specs if s.name == name), None)
+        if spec is None:
+            raise KeyError(name)
+        tracker = self._trackers.setdefault(
+            name, RestartTracker(self._max_restarts, self._restart_window_s)
+        )
+        if not tracker.allowed(now):
+            self._dead.add(name)
+            return None
+        tracker.record(now)
+        self._procs[name] = self._spawn(spec)
+        return backoff_delay(tracker.attempts(now))
 
     async def up(self) -> None:
         """Launch every module wave by wave; a wave waits for the previous to register.
