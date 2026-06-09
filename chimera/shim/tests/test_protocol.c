@@ -17,7 +17,7 @@
  * NULL. Fails the test if the dispatcher returned NULL (the RED state). */
 static cJSON *dispatch_parse(const char *method, int authorized) {
     cJSON *id = cJSON_CreateNumber(1);
-    char *resp = protocol_dispatch(method, NULL, id, authorized, NULL);
+    char *resp = protocol_dispatch(method, NULL, id, authorized, NULL, 0);
     cJSON_Delete(id);
     TEST_ASSERT_NOT_NULL(resp);
     cJSON *root = cJSON_Parse(resp);
@@ -75,7 +75,7 @@ static cJSON *dispatch_secret(const char *method, const char *params_secret,
         params = cJSON_CreateObject();
         cJSON_AddStringToObject(params, "secret", params_secret);
     }
-    char *resp = protocol_dispatch(method, params, id, 1, shim_secret);
+    char *resp = protocol_dispatch(method, params, id, 1, shim_secret, 0);
     cJSON_Delete(id);
     if (params) {
         cJSON_Delete(params);
@@ -113,6 +113,41 @@ static void test_lock_needs_no_secret(void) {
     cJSON_Delete(root);
 }
 
+/* 2b-i: shim.handshake issues the per-boot secret to a peercred-authorized AND code-sig-
+ * attested peer (core). `attested` is the SecCode verdict (computed by main in 2b-ii);
+ * injected here so the handoff logic is hermetic. */
+static cJSON *dispatch_handshake(int authorized, int attested, const char *shim_secret) {
+    cJSON *id = cJSON_CreateNumber(1);
+    char *resp = protocol_dispatch("shim.handshake", NULL, id, authorized, shim_secret, attested);
+    cJSON_Delete(id);
+    TEST_ASSERT_NOT_NULL(resp);
+    cJSON *root = cJSON_Parse(resp);
+    free(resp);
+    TEST_ASSERT_NOT_NULL(root);
+    return root;
+}
+
+static void test_handshake_attested_returns_secret(void) {
+    cJSON *root = dispatch_handshake(1, 1, SEC_A);
+    cJSON *result = cJSON_GetObjectItemCaseSensitive(root, "result");
+    cJSON *s = cJSON_GetObjectItemCaseSensitive(result, "secret");
+    TEST_ASSERT_TRUE(cJSON_IsString(s));
+    TEST_ASSERT_EQUAL_STRING(SEC_A, s->valuestring);
+    cJSON_Delete(root);
+}
+
+static void test_handshake_unattested_is_31007(void) {
+    cJSON *root = dispatch_handshake(1, 0, SEC_A); /* peercred ok, NOT code-sig attested */
+    TEST_ASSERT_EQUAL_INT(SHIM_RPC_NOT_AUTHORIZED, error_code(root));
+    cJSON_Delete(root);
+}
+
+static void test_handshake_unauthorized_is_31007(void) {
+    cJSON *root = dispatch_handshake(0, 1, SEC_A); /* attested but not peercred-authorized */
+    TEST_ASSERT_EQUAL_INT(SHIM_RPC_NOT_AUTHORIZED, error_code(root));
+    cJSON_Delete(root);
+}
+
 void run_protocol_tests(void) {
     RUN_TEST(test_ping_returns_pong);
     RUN_TEST(test_authorized_op_is_noop);
@@ -122,4 +157,7 @@ void run_protocol_tests(void) {
     RUN_TEST(test_destructive_with_secret_is_noop);
     RUN_TEST(test_destructive_wrong_secret_is_31007);
     RUN_TEST(test_lock_needs_no_secret);
+    RUN_TEST(test_handshake_attested_returns_secret);
+    RUN_TEST(test_handshake_unattested_is_31007);
+    RUN_TEST(test_handshake_unauthorized_is_31007);
 }

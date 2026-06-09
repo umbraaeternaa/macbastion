@@ -20,6 +20,6 @@
  * check. Returns a malloc'd JSON-RPC response string, or NULL on allocation
  * failure. */
 char *protocol_dispatch(const char *method, const cJSON *params, const cJSON *id, int authorized,
-                        const char *secret);
+                        const char *secret, int attested);
 
 #endif /* SHIM_PROTOCOL_H */

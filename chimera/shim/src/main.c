@@ -68,7 +68,10 @@ static void serve_one(int conn, uid_t operator_uid, const char *secret) {
     if (jsonrpc_parse_request(line, &req) != JSONRPC_OK) {
         return;
     }
-    char *resp = protocol_dispatch(req->method, req->params, req->id, authorized, secret);
+    /* 2b-ii will compute this via SecCode peer attestation; fail-closed (0) until then, so
+     * shim.handshake issues no secret yet and destructive ops stay sealed. */
+    int attested = 0;
+    char *resp = protocol_dispatch(req->method, req->params, req->id, authorized, secret, attested);
     if (resp) {
         (void)write(conn, resp, strlen(resp));
         (void)write(conn, "\n", 1);

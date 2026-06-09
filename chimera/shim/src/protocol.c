@@ -3,6 +3,7 @@
  *
  *   any method, unauthorized peer  -> error -31007 (not authorized)   [auth-first]
  *   shim.ping (authorized)         -> {"pong": true}
+ *   shim.handshake (authorized + code-sig attested) -> {"secret": "<per-boot>"}
  *   shim.{lock,evict,reboot,killall} (authorized) -> {"ok":true,"noop":true}
  *   unknown method (authorized)    -> error -31002 (capability missing)
  *
@@ -26,7 +27,7 @@ static char *ok_noop(const cJSON *id, int did_noop) {
 }
 
 char *protocol_dispatch(const char *method, const cJSON *params, const cJSON *id, int authorized,
-                        const char *secret) {
+                        const char *secret, int attested) {
     /* Auth-first: deny before revealing method existence. */
     if (!authorized) {
         return jsonrpc_serialize_error(id, SHIM_RPC_NOT_AUTHORIZED, "not authorized", NULL);
@@ -34,6 +35,17 @@ char *protocol_dispatch(const char *method, const cJSON *params, const cJSON *id
     if (method && strcmp(method, "shim.ping") == 0) {
         cJSON *result = cJSON_CreateObject();
         cJSON_AddBoolToObject(result, "pong", 1);
+        return jsonrpc_serialize_response(id, result);
+    }
+    /* 2b: issue the per-boot secret ONLY to a code-sig-attested peer (the real core).
+     * peercred (authorized) is already checked above; `attested` is the audit-token SecCode
+     * verdict. No attestation -> no secret -> destructive ops stay unreachable. */
+    if (method && strcmp(method, "shim.handshake") == 0) {
+        if (!attested || secret == NULL) {
+            return jsonrpc_serialize_error(id, SHIM_RPC_NOT_AUTHORIZED, "not attested", NULL);
+        }
+        cJSON *result = cJSON_CreateObject();
+        cJSON_AddStringToObject(result, "secret", secret);
         return jsonrpc_serialize_response(id, result);
     }
     shim_op_t op = ops_from_method(method);
