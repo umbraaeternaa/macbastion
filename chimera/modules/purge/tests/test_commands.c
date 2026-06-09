@@ -1,5 +1,5 @@
-/* RED contract for PURGE's purge.* command dispatch (PD-2/PD-3). Fails against the stub
- * until GREEN. Pins: runtime defaults, status, config.get/set, target add/list/remove, the
+/* GREEN contract for PURGE's purge.* command dispatch (PD-2/PD-3) — the 12 asserts are
+ * unchanged from RED. Pins: runtime defaults, status, config.get/set, target add/list/remove, the
  * dry-run test (destroys NOTHING), arm/disarm, and — critically — purge.trigger is GATED
  * (-31004): the dispatch never destroys. */
 #include <stdlib.h>
