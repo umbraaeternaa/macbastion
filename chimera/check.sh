@@ -20,7 +20,7 @@ sec "pytest (default)"
 TMPDIR=/tmp/t $PY -m pytest -q || FAIL=1
 
 sec "native suites (C / C++)"
-for m in chaff echo mirror vault tether; do
+for m in chaff echo mirror purge vault tether; do
   if make -C "modules/$m" test >"/tmp/chk_$m.log" 2>&1; then echo "  $m  OK"; else echo "  $m  FAIL -> /tmp/chk_$m.log"; FAIL=1; fi
 done
 if make -C shim test >/tmp/chk_shim.log 2>&1; then echo "  shim OK"; else echo "  shim FAIL -> /tmp/chk_shim.log"; FAIL=1; fi

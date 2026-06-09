@@ -1,5 +1,5 @@
-/* RED contract for the PURGE dry-run planner (PG-2/PG-3). Fails against the stub until
- * GREEN. Pins: §8 honest-wipe classification, always-on tier0/tier3, the refusal that an
+/* GREEN contract for the PURGE dry-run planner (PG-2/PG-3) — the 7 asserts are unchanged
+ * from RED. Pins: §8 honest-wipe classification, always-on tier0/tier3, the refusal that an
  * unencrypted Tier-2 target is NEVER crypto-shredded, tier gating. Destroys nothing. */
 #include "unity.h"
 
