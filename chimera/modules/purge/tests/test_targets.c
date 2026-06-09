@@ -1,6 +1,6 @@
-/* RED contract for the PURGE Tier-2 target registry (PR-1…PR-4). Fails against the stub
- * until GREEN. Pins: init, add+store, dedup by path, remove (idempotent), invalid/full
- * rejection, and the bridge that turns the registry into a dry-run plan. */
+/* GREEN contract for the PURGE Tier-2 target registry (PR-1…PR-4) — the 9 asserts are
+ * unchanged from RED. Pins: init, add+store, dedup by path, remove (idempotent),
+ * invalid/full rejection, and the bridge that turns the registry into a dry-run plan. */
 #include <stdio.h>
 
 #include "unity.h"
