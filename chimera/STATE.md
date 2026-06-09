@@ -75,7 +75,16 @@ Slice 3A react-entrypoint (RED→GREEN) done. CORE: idea #3 Slice 3B anomaly-rel
 (RED→GREEN) done — a NEW core capability. ORACLE: idea #3 Slice 3C anomaly-emit
 (RED→GREEN) done — the real producer. **Idea #3 (Anomaly-Tripwire) COMPLETE** —
 3A+3B+3C wired + e2e-confirmed by 3D.
-Last completed: **multi-module e2e (consolidation)** (commit `8e963d8`) — CO-1…3. First proof the
+Last completed: **ARCHITECTURE §8 I3 reconciliation** (commit `c770309`) — B2a, a docs/spec fix (no
+test change; 870). Closed a real spec-vs-code contradiction: §8 I3 read absolute "fail-closed, never
+fail-open", but the built cognitive gate (PULSE + `core/gate.py`) fails OPEN by design. I3 now
+scoped — secrecy/safety state fails CLOSED (vault relock, traffic pause); the operator-autonomy
+layer fails OPEN (broken fatigue sensor must never lock the operator out, §5.5). Same class as the
+PULSE.md 7->14d catch (BS-1). Also refreshed the stale "Part 1 of 5" title (the doc is whole). NOTE:
+the root CLAUDE.md still carries 2 stale "Part 1" lines (outside chimera/ — left untouched pending
+the operator's ok).
+
+Prior milestone: **multi-module e2e (consolidation)** (commit `8e963d8`) — CO-1…3. First proof the
 organism breathes with MANY live modules at once: one core.Server + the ECHO and PURGE C daemons
 (subprocesses) + a PULSE Python client (in-process) all register CONCURRENTLY, core.capabilities
 sees all three, and each answers its own status with no cross-talk. A confirmation test (passed on
