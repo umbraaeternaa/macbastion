@@ -133,6 +133,12 @@ class Registry:
         del self._entries[name]
         self._emit_deregistered(name)
 
+    def mark_lost(self, name: str) -> None:
+        """An abrupt connection loss (crash, not a graceful deregister): if the module is
+        still live, transition it to FAILED so the supervisor can restart it (§7.5). No-op
+        if absent or already terminal — a graceful deregister (-> STOPPED) is left alone."""
+        raise NotImplementedError("Registry.mark_lost — to be implemented (CR-1)")
+
     # -- queries ----------------------------------------------------------
 
     def get(self, name: str) -> ModuleEntry:
