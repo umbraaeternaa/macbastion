@@ -28,9 +28,17 @@ create_identity() {
     -days 3650 -nodes -subj "/CN=$IDENTITY" \
     -addext "extendedKeyUsage=critical,codeSigning" \
     -addext "basicConstraints=critical,CA:FALSE" 2>/dev/null
-  openssl pkcs12 -export -inkey "$tmp/key.pem" -in "$tmp/cert.pem" \
-    -out "$tmp/chimera.p12" -passout pass: -name "$IDENTITY"
-  security import "$tmp/chimera.p12" -k "$KEYCHAIN" -P "" -T /usr/bin/codesign
+  # macOS `security` can't import an openssl-3 default PKCS#12 (SHA-256 MAC) — it fails
+  # with "MAC verification failed". -legacy makes openssl emit the SHA-1/3DES form Apple
+  # reads; fall back without it for LibreSSL / older openssl. A non-empty transient
+  # password avoids the empty-password MAC edge case.
+  local p12pass="chimera"
+  if ! openssl pkcs12 -export -legacy -inkey "$tmp/key.pem" -in "$tmp/cert.pem" \
+        -out "$tmp/chimera.p12" -passout "pass:$p12pass" -name "$IDENTITY" 2>/dev/null; then
+    openssl pkcs12 -export -inkey "$tmp/key.pem" -in "$tmp/cert.pem" \
+      -out "$tmp/chimera.p12" -passout "pass:$p12pass" -name "$IDENTITY"
+  fi
+  security import "$tmp/chimera.p12" -k "$KEYCHAIN" -P "$p12pass" -T /usr/bin/codesign
   rm -rf "$tmp"
   echo "[*] imported into $KEYCHAIN"
   echo "[!] ONE manual step: open Keychain Access -> '$IDENTITY' -> Get Info -> Trust ->"
