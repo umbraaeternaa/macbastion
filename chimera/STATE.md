@@ -75,7 +75,17 @@ Slice 3A react-entrypoint (RED→GREEN) done. CORE: idea #3 Slice 3B anomaly-rel
 (RED→GREEN) done — a NEW core capability. ORACLE: idea #3 Slice 3C anomaly-emit
 (RED→GREEN) done — the real producer. **Idea #3 (Anomaly-Tripwire) COMPLETE** —
 3A+3B+3C wired + e2e-confirmed by 3D.
-Last completed: **PULSE §6 finishers — calibrate + pulse.error** (commit `53547ad`) — PF-1…7,
+Last completed: **ECHO shaper core** (commit `ca06b25`) — §5.2 §3, ES-1…6. A NEW C module
+(`modules/echo/`, mirrors CHAFF's scaffold — strict-c17 Makefile + Unity), the bandwidth-
+normalizer pair to CHAFF. First hermetic slice = the pure constant-rate-padding math:
+`echo_budget_bytes(target_kbps, tick_ms)` (100KB/s @10ms = 1024 B/tick) + `echo_shape(queued,
+budget, burst) -> {real_send, padding}` = min(queued, budget+burst) real + max(0, budget-real)
+padding, so the WIRE stays FLAT at budget whenever queued <= budget (the hiding guarantee —
+idle and light traffic look identical on the wire), bursting to budget+burst to drain a backlog.
+9 Unity RED->GREEN; added to check.sh. ⚠️ DEFERRED/GATED: pf/BPF packet I/O + raw sockets +
+padding emission (root/kernel, like MIRROR's tap) + config/stats DB + IPC/jsonrpc daemon (echo.*).
+
+Prior milestone: **PULSE §6 finishers — calibrate + pulse.error** (commit `53547ad`) — PF-1…7,
 closing PULSE's §6 method surface. Store (`baseline.py`): `calibration_days(now)` = distinct days
 in the window (baseline_ready now reuses it, DRY) + `clear()` wipes all buckets. Daemon
 (`client.py`): `pulse.calibrate.start` reports {days_observed, days_required:14, ready, started_at}
@@ -470,7 +480,8 @@ core, as authority, turns the event into a command.) Slices:
 - Native (shim Unity): 23 passing (11 ops + 6 peercred + 2 server + 4 protocol) — separate C trust-plane suite, NOT in pytest
 - Native (TETHER C++ Unity): 48 passing (4 ewma + 6 presence + 4 classify + 8 escalation + 6 emit + 10 commands + 10 monitor) — separate C++ suite, NOT in pytest
 - Native (VAULT C Unity): 44 passing (6 lexer + 6 parser + 9 evaluator + 6 fail_closed + 3 relock + 7 decide + 7 crypto) — separate C suite, NOT in pytest
-- Total: 793 passing (553 default [incl 22 pulse scoring + 24 pulse baseline + 10 pulse assess + 10 pulse temporal + 3 pulse emission + 5 pulse danger-registry + 5 pulse finishers + 8 core gate + 5 core gate-wiring + 7 core override + 3 core gate-override + 5 core override.set] + 37 integration + 46 CHAFF + 42 MIRROR + 23 shim + 48 TETHER + 44 VAULT Unity; ollama subset not double-counted)
+- Native (ECHO C Unity): 9 passing (9 shaper — budget formula + flat-wire invariant + burst drain + clamps) — separate C suite, NOT in pytest
+- Total: 802 passing (553 default [incl 22 pulse scoring + 24 pulse baseline + 10 pulse assess + 10 pulse temporal + 3 pulse emission + 5 pulse danger-registry + 5 pulse finishers + 8 core gate + 5 core gate-wiring + 7 core override + 3 core gate-override + 5 core override.set] + 37 integration + 46 CHAFF + 9 ECHO + 42 MIRROR + 23 shim + 48 TETHER + 44 VAULT Unity; ollama subset not double-counted)
 
 **Open tails (honest tracking, MANIFESTO §4):**
 - Fernet at-rest: CHAFF (C/OpenSSL) and ORACLE (Python `cryptography.Fernet`) share the format but interop is NOT cross-tested (B1 deferred; format-faithful).
@@ -500,7 +511,7 @@ core, as authority, turns the event into a command.) Slices:
 - ⭐ VAULT tamper-test assertion corrected (`e82f69b`) — NOT test-fitting (same class as TETHER's test_present_from_fringe: impl design-correct, the test encoded the wrong post-condition). The RED test asserted a specific sentinel byte survived after a failed open (out[0]==0xAA), but the agreed defensive active-wipe (design-pass nuance 3) zeroes pt_out on failure. The real invariant is "no plaintext leak", not a sentinel — corrected to `memcmp(out, pt, ptlen) != 0` (impl-agnostic: holds whether wiped to 0 or left untouched).
 - ✅ VAULT catch 3 — jsonrpc 5th copy — RESOLVED: `modules/common/jsonrpc` now EXISTS (JE-1 extract). VAULT's daemon-slice will LINK common as the FIRST new consumer (D1=C done), never a 5th copy. The trigger fired ahead of VAULT — the extract was done proactively across the existing 4 modules.
 - vault.lock (§6) is the TETHER L2 escalation target — when VAULT's daemon + vault.lock land, core can enforce TETHER L2 (tether.escalation → vault.lock), giving #3's L2 a live consumer (currently L2/L3 escalation events have none). Nuance: vault.lock takes {vault_id}; routing an escalation to it means "lock the currently-open vault" — a downstream wiring detail for that slice.
-- 2 of 8 native modules NOT started (ECHO, PURGE) — CHAFF + MIRROR + ORACLE done; TETHER started (engine + daemon-wiring + Slice 3A); VAULT started (policy + DEFER + crypto; Keychain/mount/daemon gated); PULSE started (scoring slice 1 `d9b0a42` + baseline store slice 2 `bef89a6` + assess wiring slice 3 `54b2751` + temporal group B `abd2bf3` + daemon `44280d2` + mode.changed emission `76e9955` + danger-registry `b87be5a`; ⚠️ NOT complete — LIVE module (registers, serves pulse.* incl danger-registry, emits pulse.mode.changed) but live signal collection (MIRROR group-A / kqueue idle / ORACLE drift) STILL gated (§6 method surface COMPLETE incl calibrate + pulse.error `53547ad`) + core gate-enforcement — DECISION (`core/gate.py` `7d6c8fa`) + LIVE WIRING (`fbe64cc`: block/delay in `_route` + mode-track + danger-refresh) done + override-phrase storage (`3564968`: PBKDF2 store, gate honors `_override`, secret stripped) done + operator set-phrase (`22aebc7`: core.override.set, surface-only) done; ⚠️ confirm-dialog (surface) + external-OS gating (CLI/shell) + live registry-refresh + change-requires-old-phrase still deferred).
+- 1 of 8 native modules NOT started (PURGE) — CHAFF + MIRROR + ORACLE done; ECHO started (shaper core `ca06b25` — constant-rate padding math; ⚠️ pf/BPF I/O + IPC daemon gated/deferred); TETHER started (engine + daemon-wiring + Slice 3A); VAULT started (policy + DEFER + crypto; Keychain/mount/daemon gated); PULSE started (scoring slice 1 `d9b0a42` + baseline store slice 2 `bef89a6` + assess wiring slice 3 `54b2751` + temporal group B `abd2bf3` + daemon `44280d2` + mode.changed emission `76e9955` + danger-registry `b87be5a`; ⚠️ NOT complete — LIVE module (registers, serves pulse.* incl danger-registry, emits pulse.mode.changed) but live signal collection (MIRROR group-A / kqueue idle / ORACLE drift) STILL gated (§6 method surface COMPLETE incl calibrate + pulse.error `53547ad`) + core gate-enforcement — DECISION (`core/gate.py` `7d6c8fa`) + LIVE WIRING (`fbe64cc`: block/delay in `_route` + mode-track + danger-refresh) done + override-phrase storage (`3564968`: PBKDF2 store, gate honors `_override`, secret stripped) done + operator set-phrase (`22aebc7`: core.override.set, surface-only) done; ⚠️ confirm-dialog (surface) + external-OS gating (CLI/shell) + live registry-refresh + change-requires-old-phrase still deferred).
 - MIRROR CGEventTap install — GATED on code-signing + Accessibility TCC (§6/§9); mirror.enable returns -31004 until then. The code-signing tail is now shared across MIRROR (tap), shim Slice 2 (secret in hardened-runtime memory), and TETHER (CoreBluetooth TCC + IRK in Keychain).
 - MIRROR no event producer yet — daemon wiring done, but drain_events is only a forward-compat seam (queue empty); events ship when the tap lands.
 - MIRROR → PULSE aggregate-event gap (D8) — PULSE expects a periodic aggregate event MIRROR doesn't yet define; address at PULSE time.
