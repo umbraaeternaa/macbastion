@@ -58,7 +58,7 @@ from core.gate import BLOCK, DELAY, decide
 from core.lifecycle import InvalidTransitionError, Lifecycle
 from core.override import OverrideStore
 from core.registry import Registry
-from core.shim_client import ShimClient
+from core.shim_client import ShimClient, ShimError
 from core.tokens import TokenIssuer
 
 logger = logging.getLogger(__name__)
@@ -201,7 +201,12 @@ class Server:
 
     async def _handle_lock(self) -> dict[str, Any]:
         """core.lock (operator command, §8.8) — ask the privileged shim to lock the screen."""
-        raise NotImplementedError("_handle_lock — to be implemented (P4c)")
+        if self._shim_client is None:
+            raise RpcError(code=ChimeraError.PRECONDITION_FAILED, message="shim unavailable")
+        try:
+            return await self._shim_client.lock()
+        except ShimError as exc:
+            raise RpcError(code=ChimeraError.PRECONDITION_FAILED, message=str(exc)) from exc
 
     def _handle_override_set(
         self, params: dict[str, Any] | list[Any] | None, conn: Connection

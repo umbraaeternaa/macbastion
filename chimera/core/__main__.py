@@ -23,6 +23,7 @@ from core.lifecycle import Lifecycle
 from core.override import OverrideStore
 from core.registry import Registry
 from core.server import Server
+from core.shim_client import ShimClient
 from core.supervisor import CHIMERA_MODULES, ModuleSpec, Supervisor
 from core.tokens import TokenIssuer
 
@@ -33,7 +34,10 @@ def build_core(config: CoreConfig) -> Server:
     lifecycle = Lifecycle(config, broker)
     registry = Registry(lifecycle, broker)
     override = OverrideStore(config.socket_dir / "override.json")
-    return Server(config, registry, lifecycle, broker, TokenIssuer(), override_store=override)
+    return Server(
+        config, registry, lifecycle, broker, TokenIssuer(),
+        override_store=override, shim_client=ShimClient(),
+    )
 
 
 def _config_from_env() -> CoreConfig:
