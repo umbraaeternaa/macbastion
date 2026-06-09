@@ -12,6 +12,8 @@ from core.shim_client import ShimClient, ShimError
 
 pytestmark = pytest.mark.integration
 
+SECRET = "ab" * 32  # 64-char hex, stands in for a per-boot secret
+
 
 async def _fake_shim(sock_path, responder):
     """A one-shot fake shim: read one NDJSON request, reply with responder(req)."""
@@ -64,6 +66,57 @@ async def test_error_response_raises(tmp_path):
 async def test_unreachable_raises(tmp_path):
     with pytest.raises(ShimError):
         await ShimClient(socket_path=str(tmp_path / "nope.sock")).ping()
+
+
+async def test_handshake_returns_secret(tmp_path):
+    sock = tmp_path / "shim.sock"
+    server = await _fake_shim(sock, lambda req: {"result": {"secret": SECRET}})
+    try:
+        assert await ShimClient(socket_path=str(sock)).handshake() == SECRET
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_evict_does_handshake_then_carries_secret(tmp_path):
+    sock = tmp_path / "shim.sock"
+    seen: dict[str, object] = {}
+
+    def responder(req):
+        if req.get("method") == "shim.handshake":
+            return {"result": {"secret": SECRET}}
+        seen["evict_secret"] = (req.get("params") or {}).get("secret")
+        return {"result": {"ok": True, "noop": True}}
+
+    server = await _fake_shim(sock, responder)
+    try:
+        result = await ShimClient(socket_path=str(sock)).evict()
+        assert result == {"ok": True, "noop": True}
+        assert seen["evict_secret"] == SECRET  # evict carried the handshake secret
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_secret_cached_across_destructive_calls(tmp_path):
+    sock = tmp_path / "shim.sock"
+    counts = {"handshake": 0}
+
+    def responder(req):
+        if req.get("method") == "shim.handshake":
+            counts["handshake"] += 1
+            return {"result": {"secret": SECRET}}
+        return {"result": {"ok": True, "noop": True}}
+
+    server = await _fake_shim(sock, responder)
+    try:
+        client = ShimClient(socket_path=str(sock))
+        await client.evict()
+        await client.reboot()
+        assert counts["handshake"] == 1  # handshake once; secret cached + reused
+    finally:
+        server.close()
+        await server.wait_closed()
 
 
 @pytest.mark.skipif(

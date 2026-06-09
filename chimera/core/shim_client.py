@@ -2,8 +2,9 @@
 
 The unprivileged core reaches the root shim over its UNIX socket
 (/var/run/chimera-shim.sock) and asks for one of the four enumerated ops. This is the
-ONLY path core has into root; auth is the shim's (peercred now, per-boot secret later).
-call() raises NotImplementedError until GREEN (MANIFESTO §4).
+ONLY path core has into root; auth is the shim's: peercred for ping/lock, plus a per-boot
+secret (obtained via shim.handshake, issued only to a code-sig-attested peer) for the
+destructive ops evict/reboot/killall.
 """
 
 from __future__ import annotations
@@ -31,6 +32,7 @@ class ShimClient:
         self._path = str(socket_path)
         self._timeout = timeout
         self._id = 0
+        self._secret: str | None = None  # per-boot secret, obtained lazily via shim.handshake
 
     async def call(self, method: str, params: dict[str, object] | None = None) -> dict[str, object]:
         """Send one shim.* request; return its `result`, or raise ShimError."""
@@ -61,6 +63,22 @@ class ShimClient:
         result = msg.get("result", {})
         return result if isinstance(result, dict) else {}
 
+    async def handshake(self) -> str:
+        """Obtain the per-boot secret from the shim (issued only to an attested peer)."""
+        result = await self.call("shim.handshake")
+        secret = result.get("secret")
+        if not isinstance(secret, str):
+            raise ShimError(-32000, "shim.handshake returned no secret")
+        self._secret = secret
+        return secret
+
+    async def _ensure_secret(self) -> str:
+        """The cached per-boot secret, handshaking once on first need."""
+        secret = self._secret
+        if secret is None:
+            secret = await self.handshake()
+        return secret
+
     async def ping(self) -> dict[str, object]:
         return await self.call("shim.ping")
 
@@ -68,10 +86,10 @@ class ShimClient:
         return await self.call("shim.lock")
 
     async def evict(self) -> dict[str, object]:
-        return await self.call("shim.evict")
+        return await self.call("shim.evict", {"secret": await self._ensure_secret()})
 
     async def reboot(self) -> dict[str, object]:
-        return await self.call("shim.reboot")
+        return await self.call("shim.reboot", {"secret": await self._ensure_secret()})
 
     async def killall(self) -> dict[str, object]:
-        return await self.call("shim.killall")
+        return await self.call("shim.killall", {"secret": await self._ensure_secret()})
