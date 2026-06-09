@@ -124,14 +124,7 @@ class BaselineStore:
     def baseline_ready(self, now: str) -> bool:
         """True once >= CALIBRATION_DAYS distinct calendar days fall in
         [now-14d, now) (the 14-day cold-start gate)."""
-        cutoff = self._cutoff(now)
-        with self._lock:
-            row = self._con.execute(
-                "SELECT COUNT(DISTINCT substr(ts, 1, 10)) AS n FROM buckets "
-                "WHERE ts >= ? AND ts < ?",
-                (cutoff, now),
-            ).fetchone()
-        return int(row["n"]) >= self.CALIBRATION_DAYS
+        return self.calibration_days(now) >= self.CALIBRATION_DAYS
 
     def purge(self, now: str) -> int:
         """Delete buckets older than now-RETENTION_DAYS; return rows removed."""
@@ -148,15 +141,22 @@ class BaselineStore:
         return int(row["n"])
 
     def calibration_days(self, now: str) -> int:
-        """Distinct calendar days observed in [now-14d, now) (calibration progress).
-
-        RED stub — raises NotImplementedError until GREEN.
-        """
-        raise NotImplementedError
+        """Distinct calendar days observed in [now-14d, now) (calibration progress)."""
+        cutoff = self._cutoff(now)
+        with self._lock:
+            row = self._con.execute(
+                "SELECT COUNT(DISTINCT substr(ts, 1, 10)) AS n FROM buckets "
+                "WHERE ts >= ? AND ts < ?",
+                (cutoff, now),
+            ).fetchone()
+        return int(row["n"])
 
     def clear(self) -> int:
-        """Delete ALL buckets (calibration reset); return rows removed. RED stub."""
-        raise NotImplementedError
+        """Delete ALL buckets (calibration reset); return rows removed."""
+        with self._lock:
+            cur = self._con.execute("DELETE FROM buckets")
+            self._con.commit()
+            return cur.rowcount
 
     # -- meta -------------------------------------------------------------
 

@@ -263,16 +263,48 @@ class PulseClient:
         return {"registry": self._danger_registry.remove(self._danger_sig(params))}
 
     async def _handle_calibrate_start(self) -> dict[str, Any]:
-        """Report calibration progress; stamp the epoch on first call (PF-3). RED stub."""
-        raise NotImplementedError
+        """Report calibration progress; stamp the epoch on first call (PF-3).
+
+        Calibration is passive — the store accrues buckets as signals arrive. start just
+        reports progress and records WHEN calibration began (idempotent; re-stamps after a
+        reset cleared it).
+        """
+        now = datetime.now().isoformat()
+        days = await asyncio.to_thread(self._store.calibration_days, now)
+        ready = await asyncio.to_thread(self._store.baseline_ready, now)
+        started = await asyncio.to_thread(self._store.get_meta, "calibration_started_at")
+        if not started:
+            started = now
+            await asyncio.to_thread(self._store.set_meta, "calibration_started_at", now)
+        return {
+            "days_observed": days,
+            "days_required": self._store.CALIBRATION_DAYS,
+            "ready": ready,
+            "started_at": started,
+        }
 
     async def _handle_calibrate_reset(self) -> dict[str, Any]:
-        """Wipe the baseline to recalibrate from scratch (PF-4). RED stub."""
-        raise NotImplementedError
+        """Wipe the baseline to recalibrate from scratch (PF-4) — operator-invoked."""
+        await asyncio.to_thread(self._store.clear)
+        await asyncio.to_thread(self._store.set_meta, "calibration_started_at", "")
+        return {"ok": True, "days_observed": 0}
 
     async def _safe_tick(self, now: str) -> None:
-        """Run one tick; on any error emit pulse.error and continue (PF-5). RED stub."""
-        raise NotImplementedError
+        """Run one tick; on ANY error emit pulse.error and continue (PF-5).
+
+        The tick loop must never die (fail-open §8); an internal failure is announced as
+        an advisory pulse.error, not raised.
+        """
+        try:
+            await self._tick(now)
+        except Exception as exc:  # noqa: BLE001 — announce, never let the loop die
+            await self._send_cmd(
+                Notification(
+                    jsonrpc="2.0",
+                    method="pulse.error",
+                    params={"where": "tick", "message": str(exc)},
+                )
+            )
 
     async def _tick(self, now: str) -> None:
         """Compute the current mode; emit pulse.mode.changed on a transition (EM-2).
@@ -300,7 +332,7 @@ class PulseClient:
         await self._registered.wait()
         while True:
             await asyncio.sleep(self._tick_interval)
-            await self._tick(datetime.now().isoformat())
+            await self._safe_tick(datetime.now().isoformat())
 
     async def _heartbeat_loop(self) -> None:
         await self._registered.wait()

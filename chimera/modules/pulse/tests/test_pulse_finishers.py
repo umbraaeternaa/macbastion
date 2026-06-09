@@ -2,7 +2,7 @@
 
 Hermetic: store-level (calibration_days / clear) + client-level (calibrate handlers and
 the pulse.error tick-channel) with a FakeWriter capturing emitted frames. RED — the store
-methods, the calibrate handlers, and _safe_tick raise NotImplementedError until GREEN.
+methods, calibrate handlers, and _safe_tick are implemented; assertions unchanged from RED.
 """
 
 import json
