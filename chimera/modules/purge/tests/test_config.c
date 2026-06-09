@@ -1,5 +1,5 @@
-/* RED contract for the PURGE config core (PC-1…PC-3). Fails against the stub until GREEN.
- * Pins: §4/§8 defaults, post-action parse/format round-trip, atomic partial set. */
+/* GREEN contract for the PURGE config core (PC-1…PC-3) — the 7 asserts are unchanged from
+ * RED. Pins: §4/§8 defaults, post-action parse/format round-trip, atomic partial set. */
 #include "unity.h"
 
 #include "config.h"
