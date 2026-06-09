@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- CHIMERA shim runs as root via LaunchDaemon and needs NO special entitlements:
+         it opens one local socket, execs nothing operator-provided, reads no files (§8.8).
+         Hardened runtime (codesign --options runtime) is applied with an empty entitlement
+         set — the strictest posture.
+
+         Module capabilities that look like they might need entitlements do NOT:
+           - MIRROR CGEventTap  -> Accessibility is a TCC GRANT (System Settings), not an entitlement
+           - TETHER CoreBluetooth -> Bluetooth is a TCC GRANT + an Info.plist usage string
+         Add real entitlements here only if a future signed binary genuinely requires one,
+         and only alongside the matching §8 review. -->
+</dict>
+</plist>
