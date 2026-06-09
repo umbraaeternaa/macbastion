@@ -7,5 +7,6 @@ void run_peercred_tests(void);
 void run_server_tests(void);
 void run_protocol_tests(void);
 void run_secret_tests(void);
+void run_attest_tests(void);
 
 #endif /* SHIM_TESTS_H */

@@ -19,13 +19,17 @@ STRICT  := -std=c17 -Wall -Wextra -Werror -O2 $(INCLUDES)
 RELAXED := -std=c17 -O2 $(INCLUDES)
 TESTCFL := -std=c17 -Wall -Wextra -O2 $(INCLUDES) -Itests/vendor/unity -DUNITY_INCLUDE_DOUBLE
 
+# Security + CoreFoundation: audit-token SecCode peer attestation (attest.c, 2b-ii). Still
+# NO network libs — UNIX-domain sockets only (§8.8).
+FRAMEWORKS := -framework Security -framework CoreFoundation
+
 BIN        := chimera-shim
 OUR_OBJS   := $(patsubst %.c,%.o,$(filter-out src/main.c,$(wildcard src/*.c)))
 COMMON_OBJS := ../modules/common/jsonrpc.o   # shared jsonrpc (JE-1 extract; no longer copied)
 VEND_OBJS  := src/vendor/cjson/cJSON.o
 
 $(BIN): src/main.o $(OUR_OBJS) $(COMMON_OBJS) $(VEND_OBJS)
-	$(CC) $^ -o $@
+	$(CC) $^ $(FRAMEWORKS) -o $@
 
 # Vendored objects — relaxed flags (more specific stem wins over src/%.o).
 src/vendor/%.o: src/vendor/%.c
@@ -45,7 +49,7 @@ test:
 	$(CC) $(TESTCFL) $(wildcard tests/*.c) tests/vendor/unity/unity.c \
 	  $(filter-out src/main.c,$(wildcard src/*.c)) ../modules/common/jsonrpc.c \
 	  src/vendor/cjson/cJSON.c \
-	  -o run_tests
+	  $(FRAMEWORKS) -o run_tests
 	./run_tests
 
 format:

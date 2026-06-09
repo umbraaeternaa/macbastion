@@ -17,12 +17,14 @@ DEST="$LIBEXEC/chimera-shim"
 SOCKET="/var/run/chimera-shim.sock"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SRC="$HERE/../shim/chimera-shim"
+CORE_SRC="$HERE/../dist/chimera/chimera"   # signed frozen core (deploy/build-core.sh + sign-core.sh)
+CORE_REQ="$LIBEXEC/core.req"               # core's designated requirement, for SecCode attestation
 
 [ "$(id -u)" -eq 0 ] || { echo "[x] run with sudo" >&2; exit 1; }
 
 uninstall() {
   launchctl bootout system "$PLIST" 2>/dev/null || true
-  rm -f "$PLIST" "$DEST"
+  rm -f "$PLIST" "$DEST" "$CORE_REQ"
   echo "[*] uninstalled $LABEL"
 }
 
@@ -38,6 +40,23 @@ install_shim() {
   mkdir -p "$LIBEXEC"
   install -m 0755 "$SRC" "$DEST"
 
+  # 2b-ii: capture core's designated requirement so the shim attests the connecting peer
+  # (audit-token SecCode) before issuing the per-boot secret. Best-effort: if core isn't
+  # built+signed, core.req is absent and the shim stays fail-closed (no secret issued).
+  if [ -x "$CORE_SRC" ] && codesign --verify "$CORE_SRC" 2>/dev/null; then
+    if codesign -d -r- "$CORE_SRC" 2>&1 | sed -n 's/^designated => //p' > "$CORE_REQ" \
+       && [ -s "$CORE_REQ" ]; then
+      chown root:wheel "$CORE_REQ"; chmod 0644 "$CORE_REQ"
+      echo "[*] core designated requirement -> $CORE_REQ"
+    else
+      rm -f "$CORE_REQ"
+      echo "[!] could not capture core requirement — shim stays fail-closed (no secret issued)"
+    fi
+  else
+    echo "[!] core binary not built+signed ($CORE_SRC): shim runs WITHOUT attestation"
+    echo "    (fail-closed, no per-boot secret). Run deploy/build-core.sh + sign-core.sh, then reinstall."
+  fi
+
   cat > "$PLIST" <<PLISTEOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -52,6 +71,8 @@ install_shim() {
         <string>$SOCKET</string>
         <string>--operator-uid</string>
         <string>$op_uid</string>
+        <string>--core-req</string>
+        <string>$CORE_REQ</string>
         <string>-m</string>
         <string>privileged</string>
     </array>

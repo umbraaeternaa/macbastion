@@ -9,9 +9,11 @@
  * Args:
  *   --socket-path PATH   socket to bind (default /var/run/chimera-shim.sock)
  *   --operator-uid UID   uid the shim trusts as the core (default: getuid())
+ *   --core-req PATH      file with core's designated requirement; peers are attested
+ *                        against it (SecCode) before the per-boot secret is issued (2b-ii)
  *   -m privileged        apply SS-0(b) ownership (root-only; off by default)
  *
- * No secret (Slice 2), no launchd plist (SH-8), no real ops (Slice 3+). */
+ * Per-boot secret + SecCode peer attestation live; no real op effects yet (Slice 3+). */
 #include <pwd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,6 +22,7 @@
 
 #include "cJSON.h"
 
+#include "attest.h"
 #include "jsonrpc.h"
 #include "ops.h"
 #include "ownership.h"
@@ -50,9 +53,35 @@ static long read_line(int fd, char *buf, size_t cap) {
     return -1; /* overlong frame */
 }
 
+/* Slurp the core designated-requirement file into a malloc'd, NUL-terminated, trailing-
+ * whitespace-trimmed string (so a stray newline from `codesign -d -r-` does not break
+ * parsing). NULL on any error -> attests nobody (fail-closed). */
+static char *read_core_requirement(const char *path) {
+    FILE *f = fopen(path, "r");
+    if (f == NULL) {
+        return NULL;
+    }
+    char buf[4096];
+    size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+    fclose(f);
+    buf[n] = '\0';
+    while (n > 0 && (buf[n - 1] == '\n' || buf[n - 1] == '\r' || buf[n - 1] == ' '
+                     || buf[n - 1] == '\t')) {
+        buf[--n] = '\0';
+    }
+    if (n == 0) {
+        return NULL;
+    }
+    char *out = malloc(n + 1);
+    if (out != NULL) {
+        memcpy(out, buf, n + 1);
+    }
+    return out;
+}
+
 /* Serve exactly one request on a connected fd: authenticate the peer, read a
  * line, dispatch, write the response. */
-static void serve_one(int conn, uid_t operator_uid, const char *secret) {
+static void serve_one(int conn, uid_t operator_uid, const char *secret, const char *requirement) {
     shim_peer_t peer = {0};
     int authorized = 0;
     if (peercred_resolve_current(conn, &peer) == SHIM_OK) {
@@ -68,9 +97,10 @@ static void serve_one(int conn, uid_t operator_uid, const char *secret) {
     if (jsonrpc_parse_request(line, &req) != JSONRPC_OK) {
         return;
     }
-    /* 2b-ii will compute this via SecCode peer attestation; fail-closed (0) until then, so
-     * shim.handshake issues no secret yet and destructive ops stay sealed. */
-    int attested = 0;
+    /* SecCode peer attestation (2b-ii): the per-boot secret is issued via shim.handshake ONLY
+     * to a peer whose audit-token code satisfies core's designated requirement. A NULL/absent
+     * requirement attests nobody — fail-closed, destructive ops stay sealed. */
+    int attested = attest_peer_is_core(conn, requirement);
     char *resp = protocol_dispatch(req->method, req->params, req->id, authorized, secret, attested);
     if (resp) {
         (void)write(conn, resp, strlen(resp));
@@ -82,6 +112,7 @@ static void serve_one(int conn, uid_t operator_uid, const char *secret) {
 
 int main(int argc, char **argv) {
     const char *socket_path = DEFAULT_SOCKET_PATH;
+    const char *core_req_path = NULL;
     uid_t operator_uid = getuid();
     int privileged = 0;
 
@@ -90,6 +121,8 @@ int main(int argc, char **argv) {
             socket_path = argv[++i];
         } else if (strcmp(argv[i], "--operator-uid") == 0 && i + 1 < argc) {
             operator_uid = (uid_t)strtoul(argv[++i], NULL, 10);
+        } else if (strcmp(argv[i], "--core-req") == 0 && i + 1 < argc) {
+            core_req_path = argv[++i];
         } else if (strcmp(argv[i], "-m") == 0 && i + 1 < argc &&
                    strcmp(argv[i + 1], "privileged") == 0) {
             privileged = 1;
@@ -122,14 +155,19 @@ int main(int argc, char **argv) {
     char secret[SHIM_SECRET_HEX_LEN + 1];
     secret_generate(secret);
 
+    /* Core's designated requirement, for SecCode peer attestation (2b-ii). Absent -> NULL ->
+     * the secret is never issued (fail-closed). */
+    char *requirement = core_req_path ? read_core_requirement(core_req_path) : NULL;
+
     for (;;) {
         int conn = server_accept(listen_fd);
         if (conn < 0) {
             break;
         }
-        serve_one(conn, operator_uid, secret);
+        serve_one(conn, operator_uid, secret, requirement);
         server_close(conn);
     }
+    free(requirement);
     server_close(listen_fd);
     return 0;
 }
