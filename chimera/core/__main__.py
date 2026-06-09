@@ -92,7 +92,8 @@ def _default_spawn(socket_dir: Path) -> Callable[[ModuleSpec], subprocess.Popen[
 
 
 async def run_up(config: CoreConfig) -> None:
-    """`chimera up`: start core, bring modules up in waves, serve until a signal, tear down."""
+    """`chimera up`: start core, bring modules up in waves, auto-restart on FAILED, serve
+    until a signal, then tear down."""
     config.socket_dir.mkdir(parents=True, exist_ok=True)
     server = build_core(config)
     await server.start()
@@ -101,6 +102,7 @@ async def run_up(config: CoreConfig) -> None:
         spawn=_default_spawn(config.socket_dir),
         is_registered=server._registry.is_registered,  # noqa: SLF001 (internal wiring)
     )
+    sub = server._broker.subscribe([Lifecycle.STATE_CHANGED_TOPIC])  # noqa: SLF001
     loop = asyncio.get_running_loop()
     stop = loop.create_future()
 
@@ -108,12 +110,21 @@ async def run_up(config: CoreConfig) -> None:
         if not stop.done():
             stop.set_result(None)
 
+    async def _monitor() -> None:
+        # The autonomy link: core's sweep marks a hung module FAILED -> we re-spawn it.
+        while True:
+            event = await sub.get()
+            sup.on_state_changed(event.payload, server._lifecycle)  # noqa: SLF001
+
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, _request_stop)
+    monitor = asyncio.create_task(_monitor())
     try:
         await sup.up()
         await stop
     finally:
+        monitor.cancel()
+        server._broker.unsubscribe(sub)  # noqa: SLF001
         await sup.down()
         await server.stop()
 

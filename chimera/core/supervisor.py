@@ -16,7 +16,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
-from core.lifecycle import Lifecycle
+from core.lifecycle import Lifecycle, ModuleState
 
 
 @dataclass(frozen=True)
@@ -113,9 +113,26 @@ class Supervisor:
         """A supervised module reached FAILED: delegate the restart decision to lifecycle
         (§7.5 budget/backoff/FSM — the single source of truth); if it transitions to
         STARTING, re-spawn the OS process. Returns True iff the process was respawned."""
-        raise NotImplementedError("Supervisor.handle_failure — to be implemented (SV-5'b)")
+        spec = next((s for s in self._specs if s.name == name), None)
+        if spec is None:
+            return False
+        try:
+            if lifecycle.state_of(name) != ModuleState.FAILED:
+                return False
+        except KeyError:
+            return False
+        lifecycle.restart(name)  # FAILED -> STARTING (within budget) or PERMANENTLY_FAILED
+        if lifecycle.state_of(name) == ModuleState.STARTING:
+            self._procs[name] = self._spawn(spec)
+            return True
+        return False
 
     def on_state_changed(self, payload: Mapping[str, object], lifecycle: Lifecycle) -> bool:
         """Broker hook for module.state_changed: restart on a transition TO FAILED,
         ignore every other transition. Returns whether a restart was attempted."""
-        raise NotImplementedError("Supervisor.on_state_changed — to be implemented (SV-5'b)")
+        if payload.get("to") != ModuleState.FAILED:
+            return False
+        module = payload.get("module")
+        if not isinstance(module, str):
+            return False
+        return self.handle_failure(module, lifecycle)
