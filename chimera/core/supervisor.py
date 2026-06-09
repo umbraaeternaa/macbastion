@@ -38,6 +38,8 @@ class SupervisedProc(Protocol):
     """Minimal process handle the supervisor needs (subprocess.Popen satisfies this)."""
 
     def terminate(self) -> None: ...
+    def kill(self) -> None: ...
+    def poll(self) -> int | None: ...
 
 
 def topological_waves(specs: Sequence[ModuleSpec]) -> list[list[ModuleSpec]]:
@@ -106,10 +108,19 @@ class Supervisor:
         return self._is_registered(name)
 
     async def down(self) -> None:
-        """Terminate spawned modules in reverse launch order."""
-        for name in reversed(list(self._procs)):
+        """Graceful shutdown (§7.7): SIGTERM every module (reverse launch order), wait up to
+        shutdown_grace for them to exit, then SIGKILL any straggler still running."""
+        names = list(reversed(self._procs))
+        for name in names:
             self._procs[name].terminate()
-            await asyncio.sleep(0)
+        steps = max(1, int(self._shutdown_grace / 0.05))
+        for _ in range(steps):
+            if all(self._procs[n].poll() is not None for n in names):
+                return
+            await asyncio.sleep(0.05)
+        for name in names:
+            if self._procs[name].poll() is None:
+                self._procs[name].kill()
 
     def handle_failure(self, name: str, lifecycle: Lifecycle) -> bool:
         """A supervised module reached FAILED: delegate the restart decision to lifecycle
