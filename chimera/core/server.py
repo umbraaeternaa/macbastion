@@ -627,6 +627,9 @@ class Server:
         finally:
             if attached is not None:
                 self._detach_module_writer(attached)
+                # An abrupt disconnect (crash) -> FAILED so the supervisor restarts it; a
+                # graceful core.deregister already moved it to STOPPED (mark_lost no-ops).
+                self._registry.mark_lost(attached)
             await self._close_writer(writer)
 
     async def _serve_events(

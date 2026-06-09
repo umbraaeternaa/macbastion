@@ -137,7 +137,10 @@ class Registry:
         """An abrupt connection loss (crash, not a graceful deregister): if the module is
         still live, transition it to FAILED so the supervisor can restart it (§7.5). No-op
         if absent or already terminal — a graceful deregister (-> STOPPED) is left alone."""
-        raise NotImplementedError("Registry.mark_lost — to be implemented (CR-1)")
+        if not self.is_registered(name):
+            return
+        if self._lifecycle.state_of(name) in self._LIVE_STATES:
+            self._lifecycle.transition(name, ModuleState.FAILED)
 
     # -- queries ----------------------------------------------------------
 
