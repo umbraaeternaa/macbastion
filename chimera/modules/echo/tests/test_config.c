@@ -1,5 +1,5 @@
-/* RED contract for the ECHO config core (EC-1…EC-4). Fails against the stub until GREEN.
- * Pins: §3 defaults, range validation, atomic partial set, the shaper bridge. */
+/* GREEN contract for the ECHO config core (EC-1…EC-4) — the 7 asserts are unchanged from
+ * RED. Pins: §3 defaults, range validation, atomic partial set, the shaper bridge. */
 #include "unity.h"
 
 #include "config.h"
