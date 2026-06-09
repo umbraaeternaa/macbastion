@@ -39,18 +39,26 @@ owner (MANIFESTO §1).
 
 ---
 
-## Step 2 — Install the shim as a root LaunchDaemon  (P2 — script lands next)
+## Step 2 — Install the shim as a root LaunchDaemon  (P2)
 
 The shim is the only root component (§7.10 / §8.8: lock screen, evict Keychain, reboot,
-force-killall — nothing else). It runs as a LaunchDaemon.
+force-killall — nothing else). One command installs + bootstraps it:
 
 ```bash
-# (provided in P2)
-sudo cp deploy/com.umbra.chimera.shim.plist /Library/LaunchDaemons/
-sudo launchctl bootstrap system /Library/LaunchDaemons/com.umbra.chimera.shim.plist
+make -C shim                          # build the shim binary (if not built)
+bash deploy/sign.sh shim/chimera-shim # Step 1, if not already signed
+sudo bash deploy/install-shim.sh      # copy -> /usr/local/libexec/chimera, write plist, bootstrap
 ```
 
-Until then the shim runs by hand under its manual `-m privileged` test tier (SHIM.md SH-7/SH-8).
+`install-shim.sh` writes `/Library/LaunchDaemons/com.umbra.chimera.shim.plist` with YOUR
+console-user UID (so core can reach the root socket, SS-0) and runs `launchctl bootstrap
+system`. Remove it any time:
+
+```bash
+sudo bash deploy/install-shim.sh --uninstall
+```
+
+Before this, the shim only runs by hand under its manual `-m privileged` tier (SHIM.md SH-7/8).
 
 ---
 
