@@ -27,6 +27,16 @@ _REGISTER = (
 )
 
 
+def _spawn_core(tmp_path):
+    return subprocess.Popen(
+        [sys.executable, "-m", "core"],
+        cwd=str(CHIMERA),
+        env={**os.environ, "CHIMERA_SOCKET_DIR": str(tmp_path)},
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
 async def _register_roundtrip(sock):
     reader, writer = await asyncio.open_unix_connection(str(sock))
     try:
@@ -53,13 +63,7 @@ async def test_build_core_serves(tmp_path):
 
 
 async def test_main_subprocess_serves_and_stops(tmp_path):
-    proc = subprocess.Popen(
-        [sys.executable, "-m", "core"],
-        cwd=str(CHIMERA),
-        env={**os.environ, "CHIMERA_SOCKET_DIR": str(tmp_path)},
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    proc = _spawn_core(tmp_path)
     try:
         sock = tmp_path / "core.sock"
         for _ in range(100):
