@@ -9,7 +9,7 @@
 # (CLAUDE.md §5); vendored Unity is relaxed.
 CC := clang
 
-INCLUDES := -Iinclude
+INCLUDES := -Iinclude -Isrc/vendor/cjson -I../common
 STRICT   := -std=c17 -Wall -Wextra -Werror -O2 $(INCLUDES)
 TESTCFL  := -std=c17 -Wall -Wextra -O2 $(INCLUDES) -Itests/vendor/unity -DUNITY_INCLUDE_DOUBLE
 
@@ -18,7 +18,7 @@ src/%.o: src/%.c
 
 test:
 	$(CC) $(TESTCFL) $(wildcard tests/*.c) tests/vendor/unity/unity.c \
-	  $(wildcard src/*.c) -o run_tests
+	  $(wildcard src/*.c) ../common/jsonrpc.c src/vendor/cjson/cJSON.c -o run_tests
 	./run_tests
 
 format:
