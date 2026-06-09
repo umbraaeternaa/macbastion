@@ -1,12 +1,22 @@
-/* ownership — SS-0(b) socket-ownership seam (chmod 0660 + chown root:group).
- *
- * RED STUB (Slice 1): not implemented. This step is root-only and is exercised
- * solely under the manual `-m privileged` tier (SH-7), never in hermetic tests,
- * so it stays a stub returning SHIM_ERR until the GREEN privileged slice. */
+/* ownership — SS-0(b) socket-ownership seam: chmod 0660 + chown root:operator_group, so
+ * the user-level core (a member of operator_group) can connect while other local users
+ * cannot. Root-only effect; exercised under the manual `-m privileged` tier (SH-7), not
+ * in hermetic tests (chown to root needs root). */
 #include "ownership.h"
 
+#include <sys/stat.h>
+#include <unistd.h>
+
 shim_result_t ownership_apply(const char *path, gid_t operator_group) {
-    (void)path;           /* RED: GREEN will chmod 0660 here. */
-    (void)operator_group; /* RED: GREEN will chown root:group here. */
-    return SHIM_ERR;
+    if (path == NULL) {
+        return SHIM_ERR;
+    }
+    /* chown first (it clears setuid/setgid bits), then set the mode. */
+    if (chown(path, 0, operator_group) != 0) {
+        return SHIM_ERR;
+    }
+    if (chmod(path, 0660) != 0) {
+        return SHIM_ERR;
+    }
+    return SHIM_OK;
 }

@@ -12,6 +12,7 @@
  *   -m privileged        apply SS-0(b) ownership (root-only; off by default)
  *
  * No secret (Slice 2), no launchd plist (SH-8), no real ops (Slice 3+). */
+#include <pwd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -100,8 +101,17 @@ int main(int argc, char **argv) {
         fprintf(stderr, "chimera-shim: cannot bind %s\n", socket_path);
         return 1;
     }
-    if (privileged && ownership_apply(socket_path, getgid()) != SHIM_OK) {
-        fprintf(stderr, "chimera-shim: ownership_apply failed (need root)\n");
+    if (privileged) {
+        /* Reach the socket to the operator's primary group (so the non-root core can
+         * connect), not the shim's own root group. */
+        gid_t operator_group = getgid();
+        const struct passwd *pw = getpwuid(operator_uid);
+        if (pw != NULL) {
+            operator_group = pw->pw_gid;
+        }
+        if (ownership_apply(socket_path, operator_group) != SHIM_OK) {
+            fprintf(stderr, "chimera-shim: ownership_apply failed (need root)\n");
+        }
     }
 
     for (;;) {
