@@ -21,29 +21,21 @@ ENTITLEMENTS="$HERE/entitlements.plist"
 have_identity() { security find-identity -v -p codesigning 2>/dev/null | grep -q "$IDENTITY"; }
 
 create_identity() {
-  echo "[*] '$IDENTITY' code-signing identity not found — creating a self-signed one"
-  local tmp
-  tmp="$(mktemp -d)"
-  openssl req -x509 -newkey rsa:2048 -keyout "$tmp/key.pem" -out "$tmp/cert.pem" \
-    -days 3650 -nodes -subj "/CN=$IDENTITY" \
-    -addext "extendedKeyUsage=critical,codeSigning" \
-    -addext "basicConstraints=critical,CA:FALSE" 2>/dev/null
-  # macOS `security` can't import an openssl-3 default PKCS#12 (SHA-256 MAC) — it fails
-  # with "MAC verification failed". -legacy makes openssl emit the SHA-1/3DES form Apple
-  # reads; fall back without it for LibreSSL / older openssl. A non-empty transient
-  # password avoids the empty-password MAC edge case.
-  local p12pass="chimera"
-  if ! openssl pkcs12 -export -legacy -inkey "$tmp/key.pem" -in "$tmp/cert.pem" \
-        -out "$tmp/chimera.p12" -passout "pass:$p12pass" -name "$IDENTITY" 2>/dev/null; then
-    openssl pkcs12 -export -inkey "$tmp/key.pem" -in "$tmp/cert.pem" \
-      -out "$tmp/chimera.p12" -passout "pass:$p12pass" -name "$IDENTITY"
-  fi
-  security import "$tmp/chimera.p12" -k "$KEYCHAIN" -P "$p12pass" -T /usr/bin/codesign
-  rm -rf "$tmp"
-  echo "[*] imported into $KEYCHAIN"
-  echo "[!] ONE manual step: open Keychain Access -> '$IDENTITY' -> Get Info -> Trust ->"
-  echo "    'Code Signing: Always Trust' (self-signed certs are untrusted until you say so)."
-  echo "    Then re-run this script. See deploy/INSTALL.md."
+  cat >&2 <<MSG
+[x] No trusted '$IDENTITY' code-signing identity found.
+    macOS will not let codesign use a self-signed cert until it is TRUSTED, and trust
+    cannot be set non-interactively. Create it ONCE via the GUI (it is auto-trusted):
+
+      Keychain Access  ->  menu "Keychain Access"  ->  Certificate Assistant
+        ->  "Create a Certificate..."
+              Name:             $IDENTITY
+              Identity Type:    Self Signed Root
+              Certificate Type: Code Signing
+        ->  Create  ->  (Continue past the self-signed warning)  ->  Done
+
+    Then re-run:  bash deploy/sign.sh <binary>
+MSG
+  exit 1
 }
 
 sign_one() {

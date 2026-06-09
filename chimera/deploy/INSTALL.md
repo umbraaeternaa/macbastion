@@ -13,17 +13,28 @@ CGEventTap, TETHER's CoreBluetooth, PURGE's Keychain eviction) only work against
 
 ## Step 1 — Code-signing identity + sign the shim  (P1)
 
-```bash
-cd ~/Projects/macbastion/chimera
-bash deploy/sign.sh shim/chimera-shim
-```
+macOS will not let `codesign` use a self-signed cert until it is **trusted**, and trust
+cannot be scripted. So the identity is created ONCE via the GUI (it is then auto-trusted,
+because it is your own self-signed root):
 
-First run: no `CHIMERA Local` identity exists, so the script creates a self-signed
-code-signing cert in your **login keychain** and stops. Then, ONE manual step:
-
-1. Open **Keychain Access** → login → find **CHIMERA Local**.
-2. Double-click it → **Trust** → **Code Signing: Always Trust** → close (Touch ID / password).
-3. Re-run `bash deploy/sign.sh shim/chimera-shim` — it now signs + verifies.
+1. Open the real **Keychain Access** app. On recent macOS it is hidden behind the new
+   **Passwords** app — do NOT use "Passwords". Open Keychain Access via
+   **Finder → Go → Utilities → Keychain Access**, or:
+   ```bash
+   open "/System/Applications/Utilities/Keychain Access.app"
+   ```
+2. Menu bar (with Keychain Access focused): **Keychain Access → Certificate Assistant →
+   Create a Certificate…**
+   - **Name:** `CHIMERA Local`
+   - **Identity Type:** `Self Signed Root`
+   - **Certificate Type:** `Code Signing`
+   - **Create → Continue (past the self-signed warning) → Done**.
+3. Sign the binary:
+   ```bash
+   cd ~/Projects/macbastion/chimera
+   bash deploy/sign.sh shim/chimera-shim
+   ```
+   Expect `[ok] signed + verifies`. (`sign.sh` only SIGNS — it does not create certs.)
 
 Verify yourself:
 
@@ -31,6 +42,10 @@ Verify yourself:
 codesign --verify --verbose=2 shim/chimera-shim
 codesign --display --entitlements - shim/chimera-shim
 ```
+
+> Signing is the keystone for PRIVILEGED + TCC-gated ops only. Everything non-privileged
+> (the supervisor, `chimera up`, self-heal, all module logic) runs fine UNSIGNED — do this
+> step when you actually need the gated capabilities, not before.
 
 **What self-signed gives you:** a stable identity (cdhash) for TCC + a hardened-runtime
 signature, on THIS machine. **What it does NOT give:** notarization, Gatekeeper-clean
