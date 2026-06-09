@@ -1,5 +1,5 @@
-/* RED contract for ECHO's echo.* command dispatch (ED-2/ED-3). Fails against the stub
- * until GREEN. Pins: runtime defaults, status, config.get/set (valid + invalid), stats
+/* GREEN contract for ECHO's echo.* command dispatch (ED-2/ED-3) — the 8 asserts are
+ * unchanged from RED. Pins: runtime defaults, status, config.get/set (valid + invalid), stats
  * (ratio + histogram), start/stop flag, unknown-method error. */
 #include <stdlib.h>
 
