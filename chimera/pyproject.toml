@@ -23,6 +23,7 @@ dev = [
     "hypothesis>=6.98",
     "ruff>=0.4",
     "mypy>=1.10",
+    "pyinstaller>=6.20", # build-time only: freeze core to a signed Mach-O (Slice 2b prereq)
 ]
 
 [build-system]
