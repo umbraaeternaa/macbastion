@@ -13,6 +13,7 @@ import asyncio
 import os
 import signal
 import subprocess
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -22,7 +23,7 @@ from core.lifecycle import Lifecycle
 from core.override import OverrideStore
 from core.registry import Registry
 from core.server import Server
-from core.supervisor import ModuleSpec
+from core.supervisor import CHIMERA_MODULES, ModuleSpec, Supervisor
 from core.tokens import TokenIssuer
 
 
@@ -61,31 +62,96 @@ async def serve_forever(server: Server) -> None:
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     """Parse the chimera CLI: no subcommand = bare core; `up` = whole organism; `plist`."""
-    raise NotImplementedError("parse_args — to be implemented (SV-4)")
+    parser = argparse.ArgumentParser(prog="chimera", description="CHIMERA core / organism control")
+    sub = parser.add_subparsers(dest="command")
+    sub.add_parser("up", help="start core and bring all modules up (the whole organism)")
+    sub.add_parser("plist", help="print the LaunchAgent plist for `python -m core up`")
+    return parser.parse_args(argv)
 
 
 def module_binary(name: str) -> Path:
     """Resolve a module's daemon binary: modules/<name>/<name>."""
-    raise NotImplementedError("module_binary — to be implemented (SV-4)")
+    return Path(__file__).resolve().parent.parent / "modules" / name / name
 
 
 def _default_spawn(socket_dir: Path) -> Callable[[ModuleSpec], subprocess.Popen[bytes]]:
     """Build a spawn() that launches module binaries pointed at this socket_dir."""
-    raise NotImplementedError("_default_spawn — to be implemented (SV-4)")
+
+    def spawn(spec: ModuleSpec) -> subprocess.Popen[bytes]:
+        return subprocess.Popen(  # noqa: S603 (trusted: our own built module binary)
+            [str(module_binary(spec.name))],
+            env={
+                "CHIMERA_SOCKET_DIR": str(socket_dir),
+                "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            },
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+    return spawn
 
 
 async def run_up(config: CoreConfig) -> None:
     """`chimera up`: start core, bring modules up in waves, serve until a signal, tear down."""
-    raise NotImplementedError("run_up — to be implemented (SV-4)")
+    config.socket_dir.mkdir(parents=True, exist_ok=True)
+    server = build_core(config)
+    await server.start()
+    sup = Supervisor(
+        CHIMERA_MODULES,
+        spawn=_default_spawn(config.socket_dir),
+        is_registered=server._registry.is_registered,  # noqa: SLF001 (internal wiring)
+    )
+    loop = asyncio.get_running_loop()
+    stop = loop.create_future()
+
+    def _request_stop() -> None:
+        if not stop.done():
+            stop.set_result(None)
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, _request_stop)
+    try:
+        await sup.up()
+        await stop
+    finally:
+        await sup.down()
+        await server.stop()
 
 
 def launch_agent_plist(socket_dir: Path) -> str:
     """The LaunchAgent plist XML that runs `python -m core up` (§7.10)."""
-    raise NotImplementedError("launch_agent_plist — to be implemented (SV-4)")
+    program = [sys.executable, "-m", "core", "up"]
+    args_xml = "".join(f"        <string>{a}</string>\n" for a in program)
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
+        '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+        '<plist version="1.0">\n'
+        "<dict>\n"
+        "    <key>Label</key>\n"
+        "    <string>com.umbra.chimera</string>\n"
+        "    <key>ProgramArguments</key>\n"
+        f"    <array>\n{args_xml}    </array>\n"
+        "    <key>EnvironmentVariables</key>\n"
+        "    <dict>\n"
+        "        <key>CHIMERA_SOCKET_DIR</key>\n"
+        f"        <string>{socket_dir}</string>\n"
+        "    </dict>\n"
+        "    <key>RunAtLoad</key>\n    <true/>\n"
+        "    <key>KeepAlive</key>\n    <true/>\n"
+        "</dict>\n</plist>\n"
+    )
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
+    args = parse_args(sys.argv[1:] if argv is None else argv)
     config = _config_from_env()
+    if args.command == "plist":
+        print(launch_agent_plist(config.socket_dir))
+        return
+    if args.command == "up":
+        asyncio.run(run_up(config))
+        return
     config.socket_dir.mkdir(parents=True, exist_ok=True)
     asyncio.run(serve_forever(build_core(config)))
 
