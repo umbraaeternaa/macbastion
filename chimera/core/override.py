@@ -28,9 +28,15 @@ class OverrideStore:
         """True if an override phrase has been configured."""
         return self._path.exists()
 
-    def set_phrase(self, phrase: str, *, current: str | None = None) -> None:
-        """Store a salted PBKDF2 hash. RED: `current` is accepted but the
-        change-requires-current-phrase policy (GH-1) is enforced only in GREEN."""
+    def set_phrase(self, phrase: str, *, current: str | None = None) -> bool:
+        """Store a salted PBKDF2 hash of the phrase.
+
+        The FIRST set (none configured) needs no current. CHANGING an existing phrase
+        requires the correct current phrase (GH-1, §8) — else the change is rejected
+        (returns False) and the old phrase stays active. Returns True when stored.
+        """
+        if self.is_set() and (current is None or not self.verify(current)):
+            return False
         salt = os.urandom(16)
         digest = hashlib.pbkdf2_hmac("sha256", phrase.encode("utf-8"), salt, ITERATIONS)
         payload = {"salt": salt.hex(), "hash": digest.hex(), "iterations": ITERATIONS}
@@ -38,6 +44,7 @@ class OverrideStore:
         self._path.touch(mode=0o600, exist_ok=True)
         self._path.chmod(0o600)
         self._path.write_text(json.dumps(payload))
+        return True
 
     def verify(self, phrase: str) -> bool:
         """Constant-time check of phrase against the stored hash; False if unset."""

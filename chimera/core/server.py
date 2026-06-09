@@ -208,7 +208,11 @@ class Server:
         phrase = self._require_str(params, "phrase")
         if not phrase:
             raise RpcError(code=JSONRPC_INVALID_PARAMS, message="phrase must be non-empty")
-        self._override_store.set_phrase(phrase)
+        # GH-1: changing an existing phrase requires the correct current one (§8).
+        current = params.get("current") if isinstance(params, dict) else None
+        cur = current if isinstance(current, str) else None
+        if not self._override_store.set_phrase(phrase, current=cur):
+            raise RpcError(code=ChimeraError.NOT_AUTHORIZED)
         return {"ok": True}
 
     def _handle_register(
