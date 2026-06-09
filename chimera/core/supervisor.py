@@ -9,6 +9,7 @@ the dataclass is real so tests can construct specs.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Protocol
@@ -38,7 +39,23 @@ class SupervisedProc(Protocol):
 def topological_waves(specs: Sequence[ModuleSpec]) -> list[list[ModuleSpec]]:
     """Layer specs into dependency waves (a module follows all its deps). Raises
     ValueError on a cycle or an unknown dependency."""
-    raise NotImplementedError("topological_waves — to be implemented (SV-2)")
+    by_name = {s.name: s for s in specs}
+    deps = {s.name: set(s.depends_on) for s in specs}
+    for name, ds in deps.items():
+        for d in ds:
+            if d not in by_name:
+                raise ValueError(f"unknown dependency {d!r} for module {name!r}")
+    done: set[str] = set()
+    remaining = set(by_name)
+    waves: list[list[ModuleSpec]] = []
+    while remaining:
+        ready = sorted(n for n in remaining if deps[n] <= done)
+        if not ready:
+            raise ValueError(f"dependency cycle among {sorted(remaining)}")
+        waves.append([by_name[n] for n in ready])
+        done.update(ready)
+        remaining.difference_update(ready)
+    return waves
 
 
 class Supervisor:
@@ -67,8 +84,23 @@ class Supervisor:
         """Launch every module wave by wave; a wave waits for the previous to register.
         A module that never registers within wave_timeout is marked failed, not awaited
         forever (§7.3 fail-closed, not fail-stuck)."""
-        raise NotImplementedError("Supervisor.up — to be implemented (SV-2)")
+        for wave in topological_waves(self._specs):
+            for spec in wave:
+                self._procs[spec.name] = self._spawn(spec)
+            for spec in wave:
+                if not await self._await_registered(spec.name):
+                    self._failed.add(spec.name)
+
+    async def _await_registered(self, name: str) -> bool:
+        steps = max(1, int(self._wave_timeout / 0.05))
+        for _ in range(steps):
+            if self._is_registered(name):
+                return True
+            await asyncio.sleep(0.05)
+        return self._is_registered(name)
 
     async def down(self) -> None:
         """Terminate spawned modules in reverse launch order."""
-        raise NotImplementedError("Supervisor.down — to be implemented (SV-2)")
+        for name in reversed(list(self._procs)):
+            self._procs[name].terminate()
+            await asyncio.sleep(0)
