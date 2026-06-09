@@ -1,4 +1,4 @@
-# CHIMERA — Architecture (Part 1 of 5)
+# CHIMERA — Architecture (§1–§8, all five parts)
 
 > Жива технічна біблія проекту. Оновлюється з кожним архітектурним рішенням.
 > Версія: 0.1.0-alpha (genesis)
@@ -594,7 +594,7 @@ System-wide rules that hold across all modules. Any future module must respect t
 |-----|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | I1  | **Core is the only hub.** Modules never talk to each other directly. All cross-module signal is relayed by core (§6.2).                                                                                                    |
 | I2  | **No outbound network from any module except CHAFF.** Every other module makes zero outbound calls. Checked at code review and at runtime.                                                                                 |
-| I3  | **Fail-closed, never fail-open.** When state is uncertain (dependency dead, core crashed, policy module offline), CHIMERA locks down, not opens up (§7.6, §7.8).                                                          |
+| I3  | **Security state fails CLOSED; the operator-autonomy layer fails OPEN.** When *secrecy/safety* state is uncertain (dependency dead, core crashed, policy module offline), CHIMERA locks down — relock vaults, pause traffic, hold state (§7.6, §7.8). The ONE deliberate exception is the **operator-autonomy layer** — PULSE cognitive load + the §4 cognitive gate (§5.5): a broken or uncertain *cognitive* signal fails OPEN (mode → `normal`, gate → `allow`, override always available), because a fatigue sensor must never lock the operator out of their own machine. Secrecy fails closed to protect data; autonomy fails open to protect the operator. (Implemented: `core/gate.py` decide() defaults to allow on unknown mode; PULSE baseline/scoring default to `normal`.) |
 | I4  | **Cascade can only lock more, never destroy.** A dependency failure may relock vaults, pause traffic, hold state. It can NEVER auto-trigger PURGE or any irreversible action (§7.6).                                       |
 | I5  | **Privilege separation.** The main core is unprivileged (LaunchAgent). Only the minimal shim (LaunchDaemon) has root, and only for §8.8's enumerated operations.                                                           |
 | I6  | **Capability scope is never expanded at runtime.** A module's capability token is issued at connect time and is immutable for the connection's life (§6.9). No method exists to "elevate" a token mid-session.            |
