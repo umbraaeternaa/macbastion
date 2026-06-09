@@ -13,5 +13,6 @@ int main(void) {
     run_peercred_tests();
     run_server_tests();
     run_protocol_tests();
+    run_secret_tests();
     return UNITY_END();
 }

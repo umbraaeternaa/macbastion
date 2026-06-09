@@ -24,8 +24,10 @@ static char *ok_noop(const cJSON *id, int did_noop) {
     return jsonrpc_serialize_response(id, result);
 }
 
-char *protocol_dispatch(const char *method, const cJSON *params, const cJSON *id, int authorized) {
-    (void)params; /* structured enum only — no free-form params this slice. */
+char *protocol_dispatch(const char *method, const cJSON *params, const cJSON *id, int authorized,
+                        const char *secret) {
+    (void)params; /* RED: params.secret is read in GREEN. */
+    (void)secret; /* RED: destructive-op secret gating lands in GREEN. */
 
     /* Auth-first: deny before revealing method existence. */
     if (!authorized) {

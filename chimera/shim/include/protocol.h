@@ -19,6 +19,7 @@
 /* Dispatch one request. `authorized` != 0 means the peer passed the peercred
  * check. Returns a malloc'd JSON-RPC response string, or NULL on allocation
  * failure. */
-char *protocol_dispatch(const char *method, const cJSON *params, const cJSON *id, int authorized);
+char *protocol_dispatch(const char *method, const cJSON *params, const cJSON *id, int authorized,
+                        const char *secret);
 
 #endif /* SHIM_PROTOCOL_H */

@@ -25,6 +25,7 @@
 #include "ownership.h"
 #include "peercred.h"
 #include "protocol.h"
+#include "secret.h"
 #include "server.h"
 #include "shim.h"
 
@@ -51,7 +52,7 @@ static long read_line(int fd, char *buf, size_t cap) {
 
 /* Serve exactly one request on a connected fd: authenticate the peer, read a
  * line, dispatch, write the response. */
-static void serve_one(int conn, uid_t operator_uid) {
+static void serve_one(int conn, uid_t operator_uid, const char *secret) {
     shim_peer_t peer = {0};
     int authorized = 0;
     if (peercred_resolve_current(conn, &peer) == SHIM_OK) {
@@ -67,7 +68,7 @@ static void serve_one(int conn, uid_t operator_uid) {
     if (jsonrpc_parse_request(line, &req) != JSONRPC_OK) {
         return;
     }
-    char *resp = protocol_dispatch(req->method, req->params, req->id, authorized);
+    char *resp = protocol_dispatch(req->method, req->params, req->id, authorized, secret);
     if (resp) {
         (void)write(conn, resp, strlen(resp));
         (void)write(conn, "\n", 1);
@@ -113,6 +114,10 @@ int main(int argc, char **argv) {
             fprintf(stderr, "chimera-shim: ownership_apply failed (need root)\n");
         }
     }
+
+    /* Per-boot secret (SS-3/SS-4): generated in memory at load, never on disk. */
+    char secret[SHIM_SECRET_HEX_LEN + 1];
+    secret_generate(secret);
 
     for (;;) {
         int conn = server_accept(listen_fd);

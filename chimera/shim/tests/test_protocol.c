@@ -17,7 +17,7 @@
  * NULL. Fails the test if the dispatcher returned NULL (the RED state). */
 static cJSON *dispatch_parse(const char *method, int authorized) {
     cJSON *id = cJSON_CreateNumber(1);
-    char *resp = protocol_dispatch(method, NULL, id, authorized);
+    char *resp = protocol_dispatch(method, NULL, id, authorized, NULL);
     cJSON_Delete(id);
     TEST_ASSERT_NOT_NULL(resp);
     cJSON *root = cJSON_Parse(resp);
@@ -60,9 +60,66 @@ static void test_unknown_method_is_31002(void) {
     cJSON_Delete(root);
 }
 
+/* Slice 2: destructive ops (evict/reboot/killall) require params.secret == the per-boot
+ * secret; lock/ping do not (SS-2 staged). 64 'a'/'b' stand in for hex secrets. */
+static const char *SEC_A =
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+static const char *SEC_B =
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+static cJSON *dispatch_secret(const char *method, const char *params_secret,
+                              const char *shim_secret) {
+    cJSON *id = cJSON_CreateNumber(1);
+    cJSON *params = NULL;
+    if (params_secret) {
+        params = cJSON_CreateObject();
+        cJSON_AddStringToObject(params, "secret", params_secret);
+    }
+    char *resp = protocol_dispatch(method, params, id, 1, shim_secret);
+    cJSON_Delete(id);
+    if (params) {
+        cJSON_Delete(params);
+    }
+    TEST_ASSERT_NOT_NULL(resp);
+    cJSON *root = cJSON_Parse(resp);
+    free(resp);
+    TEST_ASSERT_NOT_NULL(root);
+    return root;
+}
+
+static void test_destructive_without_secret_is_31007(void) {
+    cJSON *root = dispatch_secret("shim.evict", NULL, SEC_A);
+    TEST_ASSERT_EQUAL_INT(SHIM_RPC_NOT_AUTHORIZED, error_code(root));
+    cJSON_Delete(root);
+}
+
+static void test_destructive_with_secret_is_noop(void) {
+    cJSON *root = dispatch_secret("shim.evict", SEC_A, SEC_A);
+    cJSON *result = cJSON_GetObjectItemCaseSensitive(root, "result");
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(result, "ok")));
+    cJSON_Delete(root);
+}
+
+static void test_destructive_wrong_secret_is_31007(void) {
+    cJSON *root = dispatch_secret("shim.evict", SEC_B, SEC_A);
+    TEST_ASSERT_EQUAL_INT(SHIM_RPC_NOT_AUTHORIZED, error_code(root));
+    cJSON_Delete(root);
+}
+
+static void test_lock_needs_no_secret(void) {
+    cJSON *root = dispatch_secret("shim.lock", NULL, SEC_A);
+    cJSON *result = cJSON_GetObjectItemCaseSensitive(root, "result");
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(result, "ok")));
+    cJSON_Delete(root);
+}
+
 void run_protocol_tests(void) {
     RUN_TEST(test_ping_returns_pong);
     RUN_TEST(test_authorized_op_is_noop);
     RUN_TEST(test_unauthorized_is_31007);
     RUN_TEST(test_unknown_method_is_31002);
+    RUN_TEST(test_destructive_without_secret_is_31007);
+    RUN_TEST(test_destructive_with_secret_is_noop);
+    RUN_TEST(test_destructive_wrong_secret_is_31007);
+    RUN_TEST(test_lock_needs_no_secret);
 }
