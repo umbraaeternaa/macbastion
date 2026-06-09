@@ -58,6 +58,7 @@ from core.gate import BLOCK, DELAY, decide
 from core.lifecycle import InvalidTransitionError, Lifecycle
 from core.override import OverrideStore
 from core.registry import Registry
+from core.shim_client import ShimClient
 from core.tokens import TokenIssuer
 
 logger = logging.getLogger(__name__)
@@ -91,6 +92,7 @@ class Server:
             "core.status",
             "core.subscribe",
             "core.override.set",
+            "core.lock",
         }
     )
     # Per-method routing deadlines (§6.8); anything else uses the config default.
@@ -117,6 +119,7 @@ class Server:
         broker: EventBroker,
         token_issuer: TokenIssuer,
         override_store: OverrideStore | None = None,
+        shim_client: ShimClient | None = None,
     ) -> None:
         self._config = config
         self._registry = registry
@@ -124,6 +127,7 @@ class Server:
         self._broker = broker
         self._token_issuer = token_issuer
         self._override_store = override_store
+        self._shim_client = shim_client
         self._core_path = config.socket_dir / "core.sock"
         self._events_path = config.socket_dir / "events.sock"
         self._core_server: asyncio.Server | None = None
@@ -162,7 +166,10 @@ class Server:
         try:
             if method in self.CORE_METHODS:
                 self._token_issuer.validate(conn.token, method)
-                result = self._dispatch_core(method, request.params, conn)
+                if method == "core.lock":
+                    result = await self._handle_lock()
+                else:
+                    result = self._dispatch_core(method, request.params, conn)
                 return Response(jsonrpc="2.0", id=request.id, result=result)
             if method.startswith("core."):
                 raise RpcError(code=JSONRPC_METHOD_NOT_FOUND)
@@ -191,6 +198,10 @@ class Server:
         raise RpcError(code=JSONRPC_METHOD_NOT_FOUND)  # defensive
 
     # -- core.* handlers --------------------------------------------------
+
+    async def _handle_lock(self) -> dict[str, Any]:
+        """core.lock (operator command, §8.8) — ask the privileged shim to lock the screen."""
+        raise NotImplementedError("_handle_lock — to be implemented (P4c)")
 
     def _handle_override_set(
         self, params: dict[str, Any] | list[Any] | None, conn: Connection
