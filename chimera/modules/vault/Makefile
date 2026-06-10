@@ -19,7 +19,7 @@ INCLUDES := -Iinclude -Isrc/vendor/cjson -I../common -I$(SODIUM)/include
 STRICT   := -std=c17 -Wall -Wextra -Werror -O2 $(INCLUDES)
 RELAXED  := -std=c17 -O2 $(INCLUDES)
 TESTCFL  := -std=c17 -Wall -Wextra -O2 $(INCLUDES) -Itests/vendor/unity
-LDFLAGS  := -L$(SODIUM)/lib -lsodium
+LDFLAGS  := -L$(SODIUM)/lib -lsodium -framework Security -framework CoreFoundation
 
 BIN         := vault
 OUR_OBJS    := $(patsubst %.c,%.o,$(wildcard src/*.c))

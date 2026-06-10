@@ -11,6 +11,7 @@
 #include <sys/stat.h>
 
 #include "jsonrpc.h"
+#include "keychain.h"
 #include "parser.h"
 
 void vault_runtime_init(vault_runtime_t *rt) {
@@ -115,6 +116,15 @@ static char *handle_create(vault_runtime_t *rt, const cJSON *params, const cJSON
 
     char vid[33];
     gen_vault_id(vid);
+
+    /* Provision the per-vault master secret in the Keychain (VD-3) — the KEK the unlock engine
+     * will derive from + the item the privileged shim's evict (PURGE Tier-0) destroys. */
+    unsigned char master[VAULT_MASTER_SECRET_LEN];
+    if (vault_keychain_load_or_create(vid, master) != 0) {
+        return jsonrpc_serialize_error(id, -32000, "keychain unavailable", NULL);
+    }
+    memset(master, 0, sizeof(master)); /* not needed past provisioning; derive happens at unlock */
+
     cJSON *reg = load_registry(rt->meta_dir);
     cJSON *entry = cJSON_CreateObject();
     cJSON_AddStringToObject(entry, "vault_id", vid);

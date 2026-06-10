@@ -10,6 +10,7 @@
 #include "cJSON.h"
 
 #include "commands.h"
+#include "tests.h"
 
 /* Point CHIMERA_STATE_DIR at a fresh temp dir so create/list never touch the real state. */
 static char g_tmp_state[256];
@@ -99,6 +100,14 @@ static void test_list_returns_created_vault(void) {
     cJSON_Delete(root);
 }
 
+static void test_create_provisions_keychain_kek(void) {
+    setup_tmp_state(); /* setUp already installed a fresh in-memory keychain */
+    cJSON *params = make_create_params("kektest", "allow_when: hour >= 9 and hour <= 17");
+    cJSON_Delete(dispatch_params("vault.create", params));
+    cJSON_Delete(params);
+    TEST_ASSERT_EQUAL_INT(1, vault_test_keychain_count()); /* create provisioned exactly one KEK */
+}
+
 static void test_unknown_method_is_32601(void) {
     cJSON *root = dispatch("vault.bogus");
     TEST_ASSERT_EQUAL_INT(-32601, error_code(root));
@@ -111,5 +120,6 @@ void run_commands_tests(void) {
     RUN_TEST(test_create_returns_vault_id);
     RUN_TEST(test_create_rejects_bad_policy);
     RUN_TEST(test_list_returns_created_vault);
+    RUN_TEST(test_create_provisions_keychain_kek);
     RUN_TEST(test_unknown_method_is_32601);
 }
