@@ -7,8 +7,10 @@
 
 #include "cJSON.h"
 
+#include "vault.h" /* VaultContext / VaultDecision */
+
 typedef struct {
-    char open_vault_id[64]; /* empty = no vault unlocked (VD-1: always empty) */
+    char open_vault_id[64]; /* empty = no vault unlocked; set on ALLOW (VD-4a) */
     char meta_dir[1024];    /* <state_dir>/vault — where the vault registry persists (VD-2) */
 } vault_runtime_t;
 
@@ -17,5 +19,11 @@ void vault_runtime_init(vault_runtime_t *rt);
 /* Dispatch one vault.* request to a malloc'd JSON-RPC response string (caller frees), or NULL. */
 char *vault_commands_dispatch(vault_runtime_t *rt, const char *method, const cJSON *params,
                               const cJSON *id);
+
+/* The unlock context provider (VD-4a): fills a VaultContext for vault.unlock. Default reads the
+ * clock (module signals unknown); tests inject a fixed context. NULL resets to the default.
+ * Returns the previous provider. */
+typedef void (*vault_context_fn)(VaultContext *out);
+vault_context_fn vault_set_context_provider(vault_context_fn fn);
 
 #endif /* VAULT_COMMANDS_H */

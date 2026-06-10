@@ -22,5 +22,6 @@ int main(void) {
     run_crypto_tests();
     run_commands_tests();
     run_keychain_tests();
+    run_unlock_tests();
     return UNITY_END();
 }

@@ -11,6 +11,7 @@ void run_decide_tests(void);
 void run_crypto_tests(void);
 void run_commands_tests(void);
 void run_keychain_tests(void);
+void run_unlock_tests(void);
 
 /* test_keychain.c — install an in-memory keychain backend (setUp uses it so no test touches the
  * real login Keychain) + introspect how many master secrets it holds. */

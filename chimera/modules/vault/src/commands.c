@@ -9,10 +9,36 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <time.h>
 
 #include "jsonrpc.h"
 #include "keychain.h"
 #include "parser.h"
+
+/* Unlock context provider (VD-4a). Default reads the clock; module signals are unknown (a
+ * not-running module fails closed unless the policy opts in). Tests inject a fixed context. */
+static void default_context(VaultContext *out) {
+    time_t now = time(NULL);
+    struct tm tmv;
+    localtime_r(&now, &tmv);
+    out->hour = tmv.tm_hour;
+    out->weekday = (VaultWeekday)((tmv.tm_wday + 6) % 7); /* tm_wday 0=Sun -> VWD_MON=0 */
+    out->day_of_month = tmv.tm_mday;
+    out->seconds_since_boot = 0; /* VD-4a: real sysctl kern.boottime gathering deferred */
+    out->pulse_mode = VPULSE_UNKNOWN;
+    out->tether = VTETHER_UNKNOWN;
+    out->network_ssid = NULL;
+    out->oracle_score = 0.0;
+    out->oracle_known = false;
+}
+
+static vault_context_fn g_context = default_context;
+
+vault_context_fn vault_set_context_provider(vault_context_fn fn) {
+    vault_context_fn prev = g_context;
+    g_context = fn ? fn : default_context;
+    return prev;
+}
 
 void vault_runtime_init(vault_runtime_t *rt) {
     if (rt == NULL) {
@@ -159,11 +185,68 @@ static char *handle_list(vault_runtime_t *rt, const cJSON *id) {
     return jsonrpc_serialize_response(id, r);
 }
 
-/* The methods whose real behaviour (keychain KEK / policy eval / derive / mount) is not built
- * yet — refuse rather than fake it (MANIFESTO §4). */
+/* Find a vault's policy_dsl in the registry by id; copies into out. 1 if found, else 0. */
+static int find_policy(const char *meta_dir, const char *vault_id, char *out, size_t outsz) {
+    cJSON *reg = load_registry(meta_dir);
+    int found = 0;
+    const cJSON *e = NULL;
+    cJSON_ArrayForEach(e, reg) {
+        const cJSON *vid = cJSON_GetObjectItem(e, "vault_id");
+        const cJSON *dsl = cJSON_GetObjectItem(e, "policy_dsl");
+        if (cJSON_IsString(vid) && strcmp(vid->valuestring, vault_id) == 0 && cJSON_IsString(dsl)) {
+            snprintf(out, outsz, "%s", dsl->valuestring);
+            found = 1;
+            break;
+        }
+    }
+    cJSON_Delete(reg);
+    return found;
+}
+
+static char *denied(const cJSON *id, const char *reason) {
+    cJSON *r = cJSON_CreateObject();
+    cJSON_AddStringToObject(r, "denied", reason);
+    return jsonrpc_serialize_response(id, r);
+}
+
+/* VD-4a: the state-gated unlock DECISION (no crypto/mount yet). ALLOW marks the vault open and
+ * returns {ok}; DEFER -> {defer}; DENY / unknown / another-open -> {denied: reason}. */
+static char *handle_unlock(vault_runtime_t *rt, const cJSON *params, const cJSON *id) {
+    const cJSON *vid = params ? cJSON_GetObjectItem(params, "vault_id") : NULL;
+    if (!cJSON_IsString(vid) || vid->valuestring[0] == '\0') {
+        return jsonrpc_serialize_error(id, -32602, "vault_id required", NULL);
+    }
+    /* Only ONE vault open at a time (§5.6 — bounded memory-dump blast radius). */
+    if (rt->open_vault_id[0] != '\0' && strcmp(rt->open_vault_id, vid->valuestring) != 0) {
+        return denied(id, "another_vault_open");
+    }
+    char policy[4096];
+    if (!find_policy(rt->meta_dir, vid->valuestring, policy, sizeof(policy))) {
+        return denied(id, "no_such_vault");
+    }
+    VaultContext ctx;
+    g_context(&ctx);
+    VaultDecision d = vault_policy_decide(policy, &ctx);
+    if (d.verdict == VAULT_ALLOW) {
+        snprintf(rt->open_vault_id, sizeof(rt->open_vault_id), "%s", vid->valuestring);
+        cJSON *r = cJSON_CreateObject();
+        cJSON_AddBoolToObject(r, "ok", 1);
+        cJSON_AddStringToObject(r, "vault_id", vid->valuestring);
+        return jsonrpc_serialize_response(id, r);
+    }
+    if (d.verdict == VAULT_DEFER) {
+        cJSON *r = cJSON_CreateObject();
+        cJSON_AddNumberToObject(r, "defer", (double)d.defer_seconds);
+        return jsonrpc_serialize_response(id, r);
+    }
+    return denied(id, "policy");
+}
+
+/* The methods whose real behaviour (derive / decrypt / mount) is not built yet — refuse rather
+ * than fake it (MANIFESTO §4). */
 static int is_engine_method(const char *method) {
     static const char *const ENGINE[] = {
-        "vault.unlock", "vault.lock", "vault.policy.update", "vault.add_file", "vault.delete",
+        "vault.lock", "vault.policy.update", "vault.add_file", "vault.delete",
     };
     for (size_t i = 0; i < sizeof(ENGINE) / sizeof(ENGINE[0]); i++) {
         if (strcmp(method, ENGINE[i]) == 0) {
@@ -189,6 +272,9 @@ char *vault_commands_dispatch(vault_runtime_t *rt, const char *method, const cJS
     }
     if (strcmp(method, "vault.list") == 0) {
         return handle_list(rt, id);
+    }
+    if (strcmp(method, "vault.unlock") == 0) {
+        return handle_unlock(rt, params, id);
     }
     if (is_engine_method(method)) {
         return jsonrpc_serialize_error(id, -31004, "vault engine not available", NULL);
