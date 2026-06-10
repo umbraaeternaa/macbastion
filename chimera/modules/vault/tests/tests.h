@@ -9,5 +9,6 @@ void run_fail_closed_tests(void);
 void run_relock_tests(void);
 void run_decide_tests(void);
 void run_crypto_tests(void);
+void run_commands_tests(void);
 
 #endif /* VAULT_TESTS_H */
