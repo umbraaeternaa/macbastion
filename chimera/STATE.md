@@ -75,15 +75,27 @@ Slice 3A react-entrypoint (RED→GREEN) done. CORE: idea #3 Slice 3B anomaly-rel
 (RED→GREEN) done — a NEW core capability. ORACLE: idea #3 Slice 3C anomaly-emit
 (RED→GREEN) done — the real producer. **Idea #3 (Anomaly-Tripwire) COMPLETE** —
 3A+3B+3C wired + e2e-confirmed by 3D.
-Last completed: **reboot real + killall documented no-op — ALL 4 shim ops defined** (commit `e93d43a`)
-— Slice 3c, closing the Slice-3 real-effects arc. `ops_execute(REBOOT)` runs an injectable reboot action
-(`did_noop=0`); default = `/sbin/reboot` (root restart), secret-gated upstream. SH-11 honoured: `setUp`
-swaps in a safe stand-in + the ops test injects a recording reboot, so no autotest ever reboots. killall
-stays an EXPLICIT documented no-op (`did_noop=1`): the GD slice found it redundant (supervisor owns +
-SIGKILLs its own module procs; this parameterless op has no safe self-identifying target — `pkill`-by-name
-would hit unrelated procs); real effect deferred until the design gives it real targets. Privileged action
-layer now COMPLETE: lock/evict/reboot real, killall honest no-op. 1 RED->GREEN Unity (38/38). 926 -> 927.
-NEXT: Slice 3 live verification (reinstall shim + exercise lock/evict via `core.lock`); or a new module arc.
+Last completed: **core Tier-0 executor — first real consumer of the shim** (commit `155bd46`) — PURGE
+T0-a. `core/tier0.py run_tier0(shim, state_dir)`: keys-first — `await shim.evict()` (CHIMERA Keychain
+items, the crown jewels) then wipe the on-disk state DBs (ORACLE baseline / PULSE history / VAULT
+metadata) under `state_dir`. Best-effort: a shim failure is captured but never aborts the state wipe;
+returns `{keychain_evicted, state_files_removed, errors}`. State files are unlinked, NOT secure-overwritten
+(honest re wear-levelled SSD §8 — secrecy rides on the evicted Keychain / Tier-1 crypto-shred). shim param
+is a structural Protocol (typed mock in tests); blocking file I/O via `asyncio.to_thread`. 3 RED->GREEN
+units; ruff + mypy clean. 927 -> 930. NEXT: T0-b — un-gate `purge.trigger` + route it to the core executor
+(PURGE emits the purge event -> core runs run_tier0); then T0-c emergency choreography (in-RAM key zeroing).
+
+Prior milestone — **LIVE-VERIFIED Slice 3** (no commit; reinstalled the daemon): `sudo deploy/install-shim.sh`
+put the new shim + core.req live; `dist/chimera/chimera shim-check` (signed core) vs the real
+`/var/run/chimera-shim.sock` -> `handshake: ok — secret obtained`; `python -m core shim-check` ->
+`-31007 not attested`. The whole channel→peercred→secret→SecCode-attestation chain proven against the
+production root daemon (the old daemon gave -31002). The live daemon now carries real lock/evict/reboot.
+
+Prior milestone: **reboot real + killall documented no-op — ALL 4 shim ops defined** (commit `e93d43a`)
+— Slice 3c. `ops_execute(REBOOT)` runs an injectable reboot action; default = `/sbin/reboot`, secret-gated.
+SH-11 honoured (setUp safe stand-in + recording reboot in tests). killall stays an EXPLICIT documented
+no-op (GD redundancy; no safe self-identifying target). Privileged action layer COMPLETE: lock/evict/reboot
+real, killall honest no-op. 1 RED->GREEN Unity (38/38).
 
 Prior milestone: **evict op performs a real CHIMERA Keychain eviction** (commit `1e014a7`) — Slice 3b,
 the first DESTRUCTIVE real op. `ops_execute(EVICT)` deletes CHIMERA generic-password items (service
@@ -726,7 +738,7 @@ core, as authority, turns the event into a command.) Slices:
 **Tooling:** `pyproject.toml` + `uv.lock` + `.venv` (Python 3.13.9); ruff + mypy (strict) + pytest configured. Direct deps: cryptography, pydantic(-settings), **ollama==0.6.2** (§6-allowed; httpx + anyio/certifi transitive). pytest markers: `integration`, `ollama`. Native C deps (Homebrew, fail-fast in each Makefile, §6 allowlist): openssl@3 + sqlite3 (CHAFF), **libsodium (VAULT crypto — XChaCha20-Poly1305/Argon2id/secure-mem)**.
 
 **Tests:**
-- Python (pytest, default): 587 passing (31 errors + 41 envelope + 36 config + 35 tokens + 36 broker + 63 lifecycle + 60 registry + 86 server [81 + 5 anomaly-relay 3B] + 12 oracle observe-first + 17 oracle Mode B + 10 oracle explainability + 8 oracle time-machine + 8 oracle NL-ask [7 ask + 1 advisory] + 3 oracle anomaly-emit [3C client-unit] + 22 pulse scoring [slice 1] + 24 pulse baseline store [slice 2] + 10 pulse assess [slice 3] + 10 pulse temporal [group B] + 3 pulse emission [EM] + 5 pulse danger-registry [DR] + 5 pulse finishers [PF] + 8 core gate [GE] + 5 core gate-wiring [GW] + 7 core override [OV] + 3 core gate-override + 5 core override.set [OS] + 6 core gate-hardening [GH] + 3 core entry [SV-1] + 8 core supervisor [SV-2] + 8 core CLI [SV-4 + A-4 frozen-plist + shim-check] + 4 core autonomy [SV-5'] (lifecycle owns §7.5 restart) + 3 core mark-lost [CR-1] + 1 core lock [P4c] + 1 core graceful-down [GD])
+- Python (pytest, default): 590 passing (31 errors + 41 envelope + 36 config + 35 tokens + 36 broker + 63 lifecycle + 60 registry + 86 server [81 + 5 anomaly-relay 3B] + 12 oracle observe-first + 17 oracle Mode B + 10 oracle explainability + 8 oracle time-machine + 8 oracle NL-ask [7 ask + 1 advisory] + 3 oracle anomaly-emit [3C client-unit] + 22 pulse scoring [slice 1] + 24 pulse baseline store [slice 2] + 10 pulse assess [slice 3] + 10 pulse temporal [group B] + 3 pulse emission [EM] + 5 pulse danger-registry [DR] + 5 pulse finishers [PF] + 8 core gate [GE] + 5 core gate-wiring [GW] + 7 core override [OV] + 3 core gate-override + 5 core override.set [OS] + 6 core gate-hardening [GH] + 3 core entry [SV-1] + 8 core supervisor [SV-2] + 8 core CLI [SV-4 + A-4 frozen-plist + shim-check] + 4 core autonomy [SV-5'] (lifecycle owns §7.5 restart) + 3 core mark-lost [CR-1] + 1 core lock [P4c] + 1 core graceful-down [GD] + 3 core tier0 [PURGE T0-a: evict via shim + state wipe])
 - Python (integration, marked — `pytest -m integration`): 57 passing (2 core.lock [forwards + LIVE shim] + 8 shim-client [fake + LIVE root shim ping->pong + handshake secret-issuance/caching 2b-iii] + 1 crash-restart [kill echo -> core marks FAILED] + 1 chimera-up [python -m core up brings the organism alive] + 1 supervisor [ECHO+PURGE via dependency waves] + 2 core entry [python -m core serves + clean SIGTERM] + 1 multi-module e2e [ECHO+PURGE+PULSE coexist on one core] + 4 CHAFF + 2 ECHO daemon + 2 PURGE daemon + 4 MIRROR + 5 TETHER + 4 PULSE daemon + 2 PULSE danger + 2 core gate-wiring + 2 anomaly-tripwire e2e [#3 3D: ORACLE+core+TETHER full spin] + 14 ORACLE: 4 observe-first + 3 Mode B hermetic + 2 Time-Machine query + 2 NL-ask + 3 real-Ollama); the 3 real-Ollama skip when Ollama is down. NOTE: real-socket integration needs a short `--basetemp` (AF_UNIX path-too-long, see Open tails)
 - Python (ollama, marked — `pytest -m ollama`): 3 passing (subset of integration; real llama3.2:1b)
 - Native (CHAFF Unity): 46 passing (7 endpoints + 6 schedule + 6 crypto + 6 db + 10 jsonrpc + 6 commands + 5 generation)
@@ -736,7 +748,7 @@ core, as authority, turns the event into a command.) Slices:
 - Native (VAULT C Unity): 44 passing (6 lexer + 6 parser + 9 evaluator + 6 fail_closed + 3 relock + 7 decide + 7 crypto) — separate C suite, NOT in pytest
 - Native (ECHO C Unity): 31 passing (9 shaper — budget + flat-wire invariant + burst + clamps; 7 config — defaults + validation + atomic set + budget bridge; 7 stats — padding ratio + decile histogram + surge; 8 commands — echo.* dispatch over jsonrpc) — separate C suite, NOT in pytest
 - Native (PURGE C Unity): 35 passing (7 dry-run planner — §8 honest-wipe classify + keys-first tier plan; 9 target registry — add/dedup/remove + plan bridge; 7 config — post-action + marker, atomic set; 12 commands — purge.* dispatch, trigger gated -31004) — separate C suite, NOT in pytest
-- Total: 927 passing (587 default [incl 22 pulse scoring + 24 pulse baseline + 10 pulse assess + 10 pulse temporal + 3 pulse emission + 5 pulse danger-registry + 5 pulse finishers + 8 core gate + 5 core gate-wiring + 7 core override + 3 core gate-override + 5 core override.set + 6 core gate-hardening + 3 core entry + 8 core supervisor + 8 core CLI + 4 core autonomy + 3 core mark-lost + 1 core lock + 1 core graceful-down] + 57 integration + 46 CHAFF + 31 ECHO + 35 PURGE + 42 MIRROR + 38 shim + 48 TETHER + 44 VAULT Unity; ollama subset not double-counted)
+- Total: 930 passing (590 default [incl 22 pulse scoring + 24 pulse baseline + 10 pulse assess + 10 pulse temporal + 3 pulse emission + 5 pulse danger-registry + 5 pulse finishers + 8 core gate + 5 core gate-wiring + 7 core override + 3 core gate-override + 5 core override.set + 6 core gate-hardening + 3 core entry + 8 core supervisor + 8 core CLI + 4 core autonomy + 3 core mark-lost + 1 core lock + 1 core graceful-down + 3 core tier0] + 57 integration + 46 CHAFF + 31 ECHO + 35 PURGE + 42 MIRROR + 38 shim + 48 TETHER + 44 VAULT Unity; ollama subset not double-counted)
 
 **Open tails (honest tracking, MANIFESTO §4):**
 - Fernet at-rest: CHAFF (C/OpenSSL) and ORACLE (Python `cryptography.Fernet`) share the format but interop is NOT cross-tested (B1 deferred; format-faithful).
