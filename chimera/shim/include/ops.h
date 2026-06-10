@@ -31,4 +31,12 @@ shim_result_t ops_execute(shim_op_t op, int *did_noop);
 typedef shim_result_t (*ops_lock_fn)(void);
 ops_lock_fn ops_set_lock_action(ops_lock_fn fn);
 
+/* The evict action ops_execute runs for SHIM_OP_EVICT (Slice 3b, destructive, secret-gated).
+ * The default deletes CHIMERA's generic-password Keychain items (service "com.umbra.chimera":
+ * VAULT master secrets, TETHER IRK) from the console operator's login keychain, run in their
+ * session via launchctl asuser — NEVER in autotests. Swappable for a recording / no-op
+ * stand-in. Returns the previous action; NULL resets to the default. */
+typedef shim_result_t (*ops_evict_fn)(void);
+ops_evict_fn ops_set_evict_action(ops_evict_fn fn);
+
 #endif /* SHIM_OPS_H */

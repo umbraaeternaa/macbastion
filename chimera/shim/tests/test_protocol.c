@@ -95,10 +95,13 @@ static void test_destructive_without_secret_is_31007(void) {
     cJSON_Delete(root);
 }
 
-static void test_destructive_with_secret_is_noop(void) {
+static void test_destructive_with_secret_runs(void) {
+    /* Slice 3b: with the secret, evict RUNS (real op) -> noop=false. setUp's safe_evict
+     * stands in, so dispatching here never touches a real keychain. */
     cJSON *root = dispatch_secret("shim.evict", SEC_A, SEC_A);
     cJSON *result = cJSON_GetObjectItemCaseSensitive(root, "result");
     TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(result, "ok")));
+    TEST_ASSERT_FALSE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(result, "noop")));
     cJSON_Delete(root);
 }
 
@@ -156,7 +159,7 @@ void run_protocol_tests(void) {
     RUN_TEST(test_unauthorized_is_31007);
     RUN_TEST(test_unknown_method_is_31002);
     RUN_TEST(test_destructive_without_secret_is_31007);
-    RUN_TEST(test_destructive_with_secret_is_noop);
+    RUN_TEST(test_destructive_with_secret_runs);
     RUN_TEST(test_destructive_wrong_secret_is_31007);
     RUN_TEST(test_lock_needs_no_secret);
     RUN_TEST(test_handshake_attested_returns_secret);

@@ -6,14 +6,19 @@
 #include "shim.h"
 #include "tests.h"
 
-/* Global safety: no test may ever fire the REAL lock (pmset sleeps the display). Before
- * every test, swap the lock action to a harmless stand-in; lock tests inject their own. */
+/* Global safety: no test may ever fire a REAL op effect (pmset sleeps the display; evict
+ * deletes Keychain items). Before every test, swap both actions to harmless stand-ins;
+ * the per-op tests inject their own recording stand-ins. */
 static shim_result_t safe_lock(void) {
+    return SHIM_OK;
+}
+static shim_result_t safe_evict(void) {
     return SHIM_OK;
 }
 
 void setUp(void) {
     ops_set_lock_action(safe_lock);
+    ops_set_evict_action(safe_evict);
 }
 void tearDown(void) {}
 

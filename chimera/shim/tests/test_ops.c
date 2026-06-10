@@ -61,11 +61,22 @@ static void test_execute_lock_is_real(void) {
     ops_set_lock_action(prev);
 }
 
-/* The destructive ops stay logged no-ops until their own slices (3b+). */
-static void test_execute_evict_is_noop(void) {
-    int did_noop = 0;
+/* Slice 3b: EVICT now performs a REAL effect via the injectable evict action — did_noop=0,
+ * and the action is invoked. We inject a recording stand-in so no keychain item is touched. */
+static int g_mock_evict_calls;
+static shim_result_t mock_evict(void) {
+    g_mock_evict_calls++;
+    return SHIM_OK;
+}
+
+static void test_execute_evict_is_real(void) {
+    g_mock_evict_calls = 0;
+    ops_evict_fn prev = ops_set_evict_action(mock_evict);
+    int did_noop = 99;
     TEST_ASSERT_EQUAL_INT(SHIM_OK, ops_execute(SHIM_OP_EVICT, &did_noop));
-    TEST_ASSERT_EQUAL_INT(1, did_noop);
+    TEST_ASSERT_EQUAL_INT(0, did_noop);
+    TEST_ASSERT_EQUAL_INT(1, g_mock_evict_calls);
+    ops_set_evict_action(prev);
 }
 
 static void test_execute_reboot_is_noop(void) {
@@ -89,7 +100,7 @@ void run_ops_tests(void) {
     RUN_TEST(test_method_name_roundtrip);
     RUN_TEST(test_method_name_unknown_is_null);
     RUN_TEST(test_execute_lock_is_real);
-    RUN_TEST(test_execute_evict_is_noop);
+    RUN_TEST(test_execute_evict_is_real);
     RUN_TEST(test_execute_reboot_is_noop);
     RUN_TEST(test_execute_unknown_errors);
 }
