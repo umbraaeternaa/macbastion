@@ -75,12 +75,19 @@ Slice 3A react-entrypoint (RED→GREEN) done. CORE: idea #3 Slice 3B anomaly-rel
 (RED→GREEN) done — a NEW core capability. ORACLE: idea #3 Slice 3C anomaly-emit
 (RED→GREEN) done — the real producer. **Idea #3 (Anomaly-Tripwire) COMPLETE** —
 3A+3B+3C wired + e2e-confirmed by 3D.
-Last completed: **vault.add_file seals content into the open vault** (commit `daf43d2`) — VD-5. The vault
-now holds REAL encrypted content. `vault.add_file {vault_id, source_path}`: requires the vault UNLOCKED,
-re-derives the vault key, XChaCha20-Poly1305-seals the source file (capped 64 KiB), appends
-`{name, nonce, ct}` (hex) to the sealed-file index `<state_dir>/vault/<vault_id>.files.json`. Locked vault
--> refused (-31004). 2 RED->GREEN Unity (62 VAULT). 951 -> 953. NEXT: decrypt-at-unlock + mount tmpfs (now
-buildable — content exists; real tmpfs mount stays manual-tier); then vault.delete / policy.update.
+Last completed: **decrypt-at-unlock — open sealed files with the gated key** (commit `3605bb6`) — VD-6,
+the crypto-round-trip capstone. On ALLOW `vault.unlock` now OPENS the vault's sealed files
+(`vault_open_all`): re-derives the key, hex-decodes each `{nonce, ct}`, `vault_crypto_open`s them
+(Poly1305 tag verified before any plaintext is released). All verify -> `{ok, files:N}`; any
+malformed/failed entry -> `{denied:integrity}` (tamper / wrong key). Decrypted plaintext is verified then
+`sodium_memzero`'d + discarded. Closes the `add_file -> unlock` round-trip end-to-end: the state-gated key
+really decrypts the vault. 1 RED->GREEN Unity (63 VAULT). 953 -> 954. ⚠️ mount-to-tmpfs remains the one
+manual-tier step. NEXT: mount tmpfs (manual-tier) and/or `vault.delete` / `vault.policy.update`.
+
+Prior milestone: **vault.add_file seals content into the open vault** (commit `daf43d2`) — VD-5. The vault
+holds REAL encrypted content. `vault.add_file {vault_id, source_path}`: requires UNLOCKED, re-derives the
+key, XChaCha20-Poly1305-seals the source file (capped 64 KiB), appends `{name, nonce, ct}` to
+`<state_dir>/vault/<vault_id>.files.json`. Locked -> -31004. 2 RED->GREEN Unity.
 
 Prior milestone: **vault.lock + auto-relock timer** (commit `f1c1e57`) — VD-4c. `vault.lock` clears the
 open vault + relock timer; `vault.unlock` arms `relock_at = now + 900s` on ALLOW; `vault_runtime_tick`
@@ -796,10 +803,10 @@ core, as authority, turns the event into a command.) Slices:
 - Native (MIRROR Unity): 42 passing (6 perturb + 6 profile + 5 exclude + 5 stats + 4 rng + 10 jsonrpc + 6 commands)
 - Native (shim Unity): 38 passing (13 ops [incl lock/evict/reboot real via injectable actions + killall documented no-op, Slice 3a/3b/3c] + 6 peercred + 2 server + 11 protocol [incl 4 secret-gating + 3 handshake] + 3 secret + 3 attest [fail-closed seams; positive = manual-tier] — per-boot secret + destructive-op gating + shim.handshake secret issuance to a SecCode-attested peer + real lock (pmset) / evict (Keychain, asuser) / reboot (/sbin/reboot), SS-2/3 / 2b / 3a-3c) — separate C trust-plane suite, NOT in pytest
 - Native (TETHER C++ Unity): 48 passing (4 ewma + 6 presence + 4 classify + 8 escalation + 6 emit + 10 commands + 10 monitor) — separate C++ suite, NOT in pytest
-- Native (VAULT C Unity): 62 passing (6 lexer + 6 parser + 9 evaluator + 6 fail_closed + 3 relock + 7 decide + 7 crypto + 7 commands [VD-1 status + VD-2 create/list + VD-3 create-provisions-KEK + lock gated -31004] + 2 keychain [VD-3 load-or-create] + 9 unlock [VD-4a decision + VD-4b key-derive + VD-4c lock/auto-relock + VD-5 add_file seals/refused]) — separate C suite, NOT in pytest. VAULT is a live daemon (VD-1..5); create provisions a per-vault Keychain KEK -> evict has real targets; unlock state-gated + derives the key; lock/auto-relock close the lifecycle; add_file seals real content (decrypt-at-unlock + mount tmpfs next)
+- Native (VAULT C Unity): 63 passing (6 lexer + 6 parser + 9 evaluator + 6 fail_closed + 3 relock + 7 decide + 7 crypto + 7 commands [VD-1 status + VD-2 create/list + VD-3 create-provisions-KEK + lock gated -31004] + 2 keychain [VD-3 load-or-create] + 10 unlock [VD-4a decision + VD-4b key-derive + VD-4c lock/auto-relock + VD-5 add_file seals + VD-6 decrypt-at-unlock round-trip]) — separate C suite, NOT in pytest. VAULT is a live daemon (VD-1..6): create provisions a per-vault Keychain KEK (-> evict has real targets); unlock is state-gated, derives the key + OPENS the sealed files (full add_file->unlock crypto round-trip); lock/auto-relock close the lifecycle. Only mount-to-tmpfs remains manual-tier
 - Native (ECHO C Unity): 31 passing (9 shaper — budget + flat-wire invariant + burst + clamps; 7 config — defaults + validation + atomic set + budget bridge; 7 stats — padding ratio + decile histogram + surge; 8 commands — echo.* dispatch over jsonrpc) — separate C suite, NOT in pytest
 - Native (PURGE C Unity): 35 passing (7 dry-run planner — §8 honest-wipe classify + keys-first tier plan; 9 target registry — add/dedup/remove + plan bridge; 7 config — post-action + marker, atomic set; 12 commands — purge.* dispatch, trigger gated -31004) — separate C suite, NOT in pytest
-- Total: 953 passing (595 default [incl 22 pulse scoring + 24 pulse baseline + 10 pulse assess + 10 pulse temporal + 3 pulse emission + 5 pulse danger-registry + 5 pulse finishers + 8 core gate + 5 core gate-wiring + 7 core override + 3 core gate-override + 5 core override.set + 6 core gate-hardening + 3 core entry + 10 core supervisor + 8 core CLI + 4 core autonomy + 3 core mark-lost + 1 core lock + 1 core graceful-down + 3 core tier0 + 3 core purge] + 57 integration + 46 CHAFF + 31 ECHO + 35 PURGE + 42 MIRROR + 38 shim + 48 TETHER + 62 VAULT Unity; ollama subset not double-counted)
+- Total: 954 passing (595 default [incl 22 pulse scoring + 24 pulse baseline + 10 pulse assess + 10 pulse temporal + 3 pulse emission + 5 pulse danger-registry + 5 pulse finishers + 8 core gate + 5 core gate-wiring + 7 core override + 3 core gate-override + 5 core override.set + 6 core gate-hardening + 3 core entry + 10 core supervisor + 8 core CLI + 4 core autonomy + 3 core mark-lost + 1 core lock + 1 core graceful-down + 3 core tier0 + 3 core purge] + 57 integration + 46 CHAFF + 31 ECHO + 35 PURGE + 42 MIRROR + 38 shim + 48 TETHER + 63 VAULT Unity; ollama subset not double-counted)
 
 **Open tails (honest tracking, MANIFESTO §4):**
 - Fernet at-rest: CHAFF (C/OpenSSL) and ORACLE (Python `cryptography.Fernet`) share the format but interop is NOT cross-tested (B1 deferred; format-faithful).
