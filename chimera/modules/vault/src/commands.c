@@ -18,6 +18,8 @@
 #include "keychain.h"
 #include "parser.h"
 
+#define VAULT_RELOCK_SECONDS 900 /* auto-relock 15 min after unlock (§5.6 default) */
+
 /* Unlock context provider (VD-4a). Default reads the clock; module signals are unknown (a
  * not-running module fails closed unless the policy opts in). Tests inject a fixed context. */
 static void default_context(VaultContext *out) {
@@ -35,6 +37,13 @@ static void default_context(VaultContext *out) {
     out->oracle_known = false;
 }
 
+void vault_runtime_tick(vault_runtime_t *rt, long now) {
+    if (rt != NULL && rt->relock_at != 0 && now >= rt->relock_at) {
+        rt->open_vault_id[0] = '\0';
+        rt->relock_at = 0;
+    }
+}
+
 static vault_context_fn g_context = default_context;
 
 vault_context_fn vault_set_context_provider(vault_context_fn fn) {
@@ -49,6 +58,7 @@ void vault_runtime_init(vault_runtime_t *rt) {
     }
     vault_crypto_init(); /* idempotent sodium_init — needed for the unlock derive (VD-4b) */
     rt->open_vault_id[0] = '\0';
+    rt->relock_at = 0;
     const char *sd = getenv("CHIMERA_STATE_DIR");
     if (sd != NULL && sd[0] != '\0') {
         snprintf(rt->meta_dir, sizeof(rt->meta_dir), "%s/vault", sd);
@@ -265,6 +275,7 @@ static char *handle_unlock(vault_runtime_t *rt, const cJSON *params, const cJSON
         }
         sodium_memzero(key, sizeof(key)); /* VD-4b: key materialised; decrypt+mount deferred */
         snprintf(rt->open_vault_id, sizeof(rt->open_vault_id), "%s", vid->valuestring);
+        rt->relock_at = (long)time(NULL) + VAULT_RELOCK_SECONDS; /* arm auto-relock (VD-4c) */
         cJSON *r = cJSON_CreateObject();
         cJSON_AddBoolToObject(r, "ok", 1);
         cJSON_AddStringToObject(r, "vault_id", vid->valuestring);
@@ -278,11 +289,28 @@ static char *handle_unlock(vault_runtime_t *rt, const cJSON *params, const cJSON
     return denied(id, "policy");
 }
 
-/* The methods whose real behaviour (derive / decrypt / mount) is not built yet — refuse rather
- * than fake it (MANIFESTO §4). */
+/* vault.lock (VD-4c): clear the open vault + its relock timer. {ok:true} if it locked the open
+ * vault (or the matching one); {ok:false, reason:not_open} if nothing matching is open. */
+static char *handle_lock(vault_runtime_t *rt, const cJSON *params, const cJSON *id) {
+    const cJSON *vid = params ? cJSON_GetObjectItem(params, "vault_id") : NULL;
+    const char *want = cJSON_IsString(vid) ? vid->valuestring : NULL;
+    cJSON *r = cJSON_CreateObject();
+    if (rt->open_vault_id[0] != '\0' && (want == NULL || strcmp(rt->open_vault_id, want) == 0)) {
+        rt->open_vault_id[0] = '\0';
+        rt->relock_at = 0;
+        cJSON_AddBoolToObject(r, "ok", 1);
+    } else {
+        cJSON_AddBoolToObject(r, "ok", 0);
+        cJSON_AddStringToObject(r, "reason", "not_open");
+    }
+    return jsonrpc_serialize_response(id, r);
+}
+
+/* The methods whose real behaviour (decrypt / mount / re-encrypt) is not built yet — refuse
+ * rather than fake it (MANIFESTO §4). */
 static int is_engine_method(const char *method) {
     static const char *const ENGINE[] = {
-        "vault.lock", "vault.policy.update", "vault.add_file", "vault.delete",
+        "vault.policy.update", "vault.add_file", "vault.delete",
     };
     for (size_t i = 0; i < sizeof(ENGINE) / sizeof(ENGINE[0]); i++) {
         if (strcmp(method, ENGINE[i]) == 0) {
@@ -311,6 +339,9 @@ char *vault_commands_dispatch(vault_runtime_t *rt, const char *method, const cJS
     }
     if (strcmp(method, "vault.unlock") == 0) {
         return handle_unlock(rt, params, id);
+    }
+    if (strcmp(method, "vault.lock") == 0) {
+        return handle_lock(rt, params, id);
     }
     if (is_engine_method(method)) {
         return jsonrpc_serialize_error(id, -31004, "vault engine not available", NULL);

@@ -51,8 +51,8 @@ static void test_status_reports_no_open_vault(void) {
     cJSON_Delete(root);
 }
 
-static void test_lock_is_gated_31004(void) {
-    cJSON *root = dispatch("vault.lock"); /* lock engine not built yet (VD-4c) */
+static void test_add_file_is_gated_31004(void) {
+    cJSON *root = dispatch("vault.add_file"); /* content/decrypt engine not built yet (VD-5) */
     TEST_ASSERT_EQUAL_INT(-31004, error_code(root));
     cJSON_Delete(root);
 }
@@ -116,7 +116,7 @@ static void test_unknown_method_is_32601(void) {
 
 void run_commands_tests(void) {
     RUN_TEST(test_status_reports_no_open_vault);
-    RUN_TEST(test_lock_is_gated_31004);
+    RUN_TEST(test_add_file_is_gated_31004);
     RUN_TEST(test_create_returns_vault_id);
     RUN_TEST(test_create_rejects_bad_policy);
     RUN_TEST(test_list_returns_created_vault);

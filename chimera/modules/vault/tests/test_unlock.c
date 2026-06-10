@@ -159,10 +159,58 @@ static void test_unlock_unknown_vault_denied(void) {
     cJSON_Delete(root);
 }
 
+static cJSON *lock_vault(vault_runtime_t *rt, const char *vault_id) {
+    cJSON *p = cJSON_CreateObject();
+    cJSON_AddStringToObject(p, "vault_id", vault_id);
+    cJSON *id = cJSON_CreateNumber(3);
+    char *resp = vault_commands_dispatch(rt, "vault.lock", p, id);
+    cJSON_Delete(p);
+    cJSON_Delete(id);
+    TEST_ASSERT_NOT_NULL(resp);
+    cJSON *root = cJSON_Parse(resp);
+    free(resp);
+    TEST_ASSERT_NOT_NULL(root);
+    return root;
+}
+
+static void test_lock_clears_open(void) {
+    unlock_setup();
+    g_hour = 12;
+    vault_runtime_t rt;
+    vault_runtime_init(&rt);
+    char *vid = create_vault(&rt, "s", "allow_when: hour >= 9 and hour <= 17");
+    cJSON_Delete(unlock(&rt, vid));
+    TEST_ASSERT_NOT_EQUAL(0, rt.open_vault_id[0]); /* opened */
+    cJSON *root = lock_vault(&rt, vid);
+    cJSON *result = cJSON_GetObjectItemCaseSensitive(root, "result");
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(result, "ok")));
+    cJSON_Delete(root);
+    TEST_ASSERT_EQUAL_INT(0, rt.open_vault_id[0]); /* lock cleared the open state */
+    free(vid);
+}
+
+static void test_relock_when_due(void) {
+    unlock_setup();
+    g_hour = 12;
+    vault_runtime_t rt;
+    vault_runtime_init(&rt);
+    char *vid = create_vault(&rt, "s", "allow_when: hour >= 9 and hour <= 17");
+    cJSON_Delete(unlock(&rt, vid));
+    TEST_ASSERT_NOT_EQUAL(0, rt.relock_at); /* unlock armed the relock timer */
+    long deadline = rt.relock_at;
+    vault_runtime_tick(&rt, deadline - 1);
+    TEST_ASSERT_NOT_EQUAL(0, rt.open_vault_id[0]); /* still open before the deadline */
+    vault_runtime_tick(&rt, deadline);
+    TEST_ASSERT_EQUAL_INT(0, rt.open_vault_id[0]); /* auto-relocked at the deadline */
+    free(vid);
+}
+
 void run_unlock_tests(void) {
     RUN_TEST(test_unlock_allows_in_window);
     RUN_TEST(test_unlock_denies_fail_closed);
     RUN_TEST(test_unlock_another_open_refused);
     RUN_TEST(test_unlock_key_unavailable_denied);
     RUN_TEST(test_unlock_unknown_vault_denied);
+    RUN_TEST(test_lock_clears_open);
+    RUN_TEST(test_relock_when_due);
 }

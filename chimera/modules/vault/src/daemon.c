@@ -90,6 +90,7 @@ int vault_daemon_run(int fd, vault_runtime_t *rt) {
             }
         }
         time_t now = time(NULL);
+        vault_runtime_tick(rt, (long)now); /* auto-relock when the timer is due (VD-4c) */
         if (now - heartbeat_at >= HEARTBEAT_INTERVAL_S) {
             heartbeat_at = now;
             char *hb = build_heartbeat();
