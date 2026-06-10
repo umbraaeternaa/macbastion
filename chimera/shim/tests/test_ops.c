@@ -43,10 +43,28 @@ static void test_method_name_unknown_is_null(void) {
     TEST_ASSERT_NULL(ops_method_name(SHIM_OP_UNKNOWN));
 }
 
-/* Slice 1: every op executes as a logged no-op (F3 — zero destructive effect). */
-static void test_execute_is_noop(void) {
-    int did_noop = 0;
+/* Slice 3a: LOCK now performs a REAL effect via the injectable lock action — did_noop=0,
+ * and the action is invoked. We inject a recording stand-in so no display ever sleeps. */
+static int g_mock_lock_calls;
+static shim_result_t mock_lock(void) {
+    g_mock_lock_calls++;
+    return SHIM_OK;
+}
+
+static void test_execute_lock_is_real(void) {
+    g_mock_lock_calls = 0;
+    ops_lock_fn prev = ops_set_lock_action(mock_lock);
+    int did_noop = 99;
     TEST_ASSERT_EQUAL_INT(SHIM_OK, ops_execute(SHIM_OP_LOCK, &did_noop));
+    TEST_ASSERT_EQUAL_INT(0, did_noop);          /* real effect, not a no-op */
+    TEST_ASSERT_EQUAL_INT(1, g_mock_lock_calls); /* the lock action was invoked */
+    ops_set_lock_action(prev);
+}
+
+/* The destructive ops stay logged no-ops until their own slices (3b+). */
+static void test_execute_evict_is_noop(void) {
+    int did_noop = 0;
+    TEST_ASSERT_EQUAL_INT(SHIM_OK, ops_execute(SHIM_OP_EVICT, &did_noop));
     TEST_ASSERT_EQUAL_INT(1, did_noop);
 }
 
@@ -70,7 +88,8 @@ void run_ops_tests(void) {
     RUN_TEST(test_from_method_null);
     RUN_TEST(test_method_name_roundtrip);
     RUN_TEST(test_method_name_unknown_is_null);
-    RUN_TEST(test_execute_is_noop);
+    RUN_TEST(test_execute_lock_is_real);
+    RUN_TEST(test_execute_evict_is_noop);
     RUN_TEST(test_execute_reboot_is_noop);
     RUN_TEST(test_execute_unknown_errors);
 }

@@ -40,11 +40,13 @@ static void test_ping_returns_pong(void) {
     cJSON_Delete(root);
 }
 
-static void test_authorized_op_is_noop(void) {
+static void test_authorized_lock_is_real(void) {
+    /* Slice 3a: lock is a REAL op now -> noop=false. The runner's setUp swaps in a safe
+     * lock action, so dispatching shim.lock here never actually sleeps the display. */
     cJSON *root = dispatch_parse("shim.lock", 1);
     cJSON *result = cJSON_GetObjectItemCaseSensitive(root, "result");
     TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(result, "ok")));
-    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(result, "noop")));
+    TEST_ASSERT_FALSE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(result, "noop")));
     cJSON_Delete(root);
 }
 
@@ -150,7 +152,7 @@ static void test_handshake_unauthorized_is_31007(void) {
 
 void run_protocol_tests(void) {
     RUN_TEST(test_ping_returns_pong);
-    RUN_TEST(test_authorized_op_is_noop);
+    RUN_TEST(test_authorized_lock_is_real);
     RUN_TEST(test_unauthorized_is_31007);
     RUN_TEST(test_unknown_method_is_31002);
     RUN_TEST(test_destructive_without_secret_is_31007);

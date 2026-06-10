@@ -2,9 +2,19 @@
  * run_<x>_tests() group function (declared in tests.h). */
 #include "unity.h"
 
+#include "ops.h"
+#include "shim.h"
 #include "tests.h"
 
-void setUp(void) {}
+/* Global safety: no test may ever fire the REAL lock (pmset sleeps the display). Before
+ * every test, swap the lock action to a harmless stand-in; lock tests inject their own. */
+static shim_result_t safe_lock(void) {
+    return SHIM_OK;
+}
+
+void setUp(void) {
+    ops_set_lock_action(safe_lock);
+}
 void tearDown(void) {}
 
 int main(void) {

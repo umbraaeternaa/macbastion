@@ -24,4 +24,11 @@ const char *ops_method_name(shim_op_t op);
  * SHIM_OK. Returns SHIM_ERR_NOTFOUND for SHIM_OP_UNKNOWN. */
 shim_result_t ops_execute(shim_op_t op, int *did_noop);
 
+/* The lock action ops_execute runs for SHIM_OP_LOCK (Slice 3a). The default sleeps the
+ * display via pmset — a real screen lock (with "require password after sleep" it locks),
+ * NEVER run in autotests. Swappable so tests inject a recording / no-op stand-in. Returns
+ * the previous action; NULL resets to the default. */
+typedef shim_result_t (*ops_lock_fn)(void);
+ops_lock_fn ops_set_lock_action(ops_lock_fn fn);
+
 #endif /* SHIM_OPS_H */

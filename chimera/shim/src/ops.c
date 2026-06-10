@@ -10,9 +10,37 @@
  * real (§5.4). reboot stays stubbed in autotests forever (SH-11). */
 #include "ops.h"
 
+#include <spawn.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/wait.h>
+
+extern char **environ;
+
+/* Slice 3a: the real lock — sleep the display via pmset. With "require password after
+ * sleep" this locks the screen (§8.8 lock / screensaver). Root-direct; no GUI-session
+ * gymnastics. NEVER invoked in autotests (the test runner swaps in a safe stand-in). */
+static shim_result_t lock_screen_real(void) {
+    char *const argv[] = {"/usr/bin/pmset", "displaysleepnow", NULL};
+    pid_t pid;
+    if (posix_spawn(&pid, "/usr/bin/pmset", NULL, NULL, argv, environ) != 0) {
+        return SHIM_ERR;
+    }
+    int status = 0;
+    if (waitpid(pid, &status, 0) < 0) {
+        return SHIM_ERR;
+    }
+    return (WIFEXITED(status) && WEXITSTATUS(status) == 0) ? SHIM_OK : SHIM_ERR;
+}
+
+static ops_lock_fn g_lock = lock_screen_real;
+
+ops_lock_fn ops_set_lock_action(ops_lock_fn fn) {
+    ops_lock_fn prev = g_lock;
+    g_lock = fn ? fn : lock_screen_real;
+    return prev;
+}
 
 /* Whitelist: op enum ↔ canonical wire method name. Indexed by shim_op_t. */
 static const char *const OP_NAMES[] = {
@@ -50,8 +78,15 @@ shim_result_t ops_execute(shim_op_t op, int *did_noop) {
         }
         return SHIM_ERR_NOTFOUND;
     }
-    /* Slice 1: log intent, perform NO real effect (F3). Real ops are Slice 3+. */
-    fprintf(stderr, "chimera-shim: NO-OP %s (skeleton — no real effect)\n", name);
+    /* Slice 3a: LOCK is real (the reversible operator command) — run the lock action. */
+    if (op == SHIM_OP_LOCK) {
+        if (did_noop) {
+            *did_noop = 0;
+        }
+        return g_lock();
+    }
+    /* evict / reboot / killall: still logged no-ops until their own slices (3b+). */
+    fprintf(stderr, "chimera-shim: NO-OP %s (real effect lands in a later slice)\n", name);
     if (did_noop) {
         *did_noop = 1;
     }
