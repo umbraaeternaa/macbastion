@@ -18,7 +18,8 @@
 #include "keychain.h"
 #include "parser.h"
 
-#define VAULT_RELOCK_SECONDS 900 /* auto-relock 15 min after unlock (§5.6 default) */
+#define VAULT_RELOCK_SECONDS 900   /* auto-relock 15 min after unlock (§5.6 default) */
+#define VAULT_MAX_FILE (64 * 1024) /* VD-5: per-file content cap (vaults hold small secrets) */
 
 /* Unlock context provider (VD-4a). Default reads the clock; module signals are unknown (a
  * not-running module fails closed unless the policy opts in). Tests inject a fixed context. */
@@ -306,11 +307,142 @@ static char *handle_lock(vault_runtime_t *rt, const cJSON *params, const cJSON *
     return jsonrpc_serialize_response(id, r);
 }
 
+static char *hex_encode(const unsigned char *b, size_t n) {
+    static const char hexd[] = "0123456789abcdef";
+    char *out = malloc(n * 2 + 1);
+    if (out == NULL) {
+        return NULL;
+    }
+    for (size_t i = 0; i < n; i++) {
+        out[i * 2] = hexd[(b[i] >> 4) & 0x0f];
+        out[i * 2 + 1] = hexd[b[i] & 0x0f];
+    }
+    out[n * 2] = '\0';
+    return out;
+}
+
+static cJSON *load_array_file(const char *path) {
+    FILE *f = fopen(path, "r");
+    if (f == NULL) {
+        return cJSON_CreateArray();
+    }
+    char *buf = malloc(8u << 20); /* 8 MiB — holds the sealed-file index */
+    if (buf == NULL) {
+        fclose(f);
+        return cJSON_CreateArray();
+    }
+    size_t n = fread(buf, 1, (8u << 20) - 1, f);
+    fclose(f);
+    buf[n] = '\0';
+    cJSON *arr = cJSON_Parse(buf);
+    free(buf);
+    if (!cJSON_IsArray(arr)) {
+        cJSON_Delete(arr);
+        return cJSON_CreateArray();
+    }
+    return arr;
+}
+
+static int save_array_file(const char *meta_dir, const char *path, const cJSON *arr) {
+    if (mkdir_p(meta_dir) != 0) {
+        return -1;
+    }
+    char *s = cJSON_PrintUnformatted(arr);
+    if (s == NULL) {
+        return -1;
+    }
+    FILE *f = fopen(path, "w");
+    if (f == NULL) {
+        free(s);
+        return -1;
+    }
+    size_t len = strlen(s);
+    size_t wrote = fwrite(s, 1, len, f);
+    fclose(f);
+    free(s);
+    return (wrote == len) ? 0 : -1;
+}
+
+/* vault.add_file (VD-5): seal a source file into the OPEN vault. Re-derives the vault key,
+ * XChaCha20-Poly1305-seals the content, and appends {name, nonce, ct} (hex) to the vault's
+ * sealed-file index <meta_dir>/<vault_id>.files.json. Requires the vault to be unlocked. */
+static char *handle_add_file(vault_runtime_t *rt, const cJSON *params, const cJSON *id) {
+    const cJSON *vid = params ? cJSON_GetObjectItem(params, "vault_id") : NULL;
+    const cJSON *src = params ? cJSON_GetObjectItem(params, "source_path") : NULL;
+    if (!cJSON_IsString(vid) || !cJSON_IsString(src)) {
+        return jsonrpc_serialize_error(id, -32602, "vault_id and source_path required", NULL);
+    }
+    if (strcmp(rt->open_vault_id, vid->valuestring) != 0) {
+        return jsonrpc_serialize_error(id, -31004, "vault not open", NULL);
+    }
+    char policy[4096];
+    if (!find_policy(rt->meta_dir, vid->valuestring, policy, sizeof(policy))) {
+        return jsonrpc_serialize_error(id, -32602, "no such vault", NULL);
+    }
+    FILE *sf = fopen(src->valuestring, "rb");
+    if (sf == NULL) {
+        return jsonrpc_serialize_error(id, -32602, "cannot read source_path", NULL);
+    }
+    unsigned char *plain = malloc(VAULT_MAX_FILE);
+    if (plain == NULL) {
+        fclose(sf);
+        return jsonrpc_serialize_error(id, -32000, "out of memory", NULL);
+    }
+    size_t plen = fread(plain, 1, VAULT_MAX_FILE, sf);
+    fclose(sf);
+
+    uint8_t key[VAULT_KEY_BYTES];
+    if (vault_derive_key(vid->valuestring, policy, key) != 0) {
+        sodium_memzero(plain, VAULT_MAX_FILE);
+        free(plain);
+        return jsonrpc_serialize_error(id, -31004, "key unavailable", NULL);
+    }
+    uint8_t nonce[VAULT_NONCE_BYTES];
+    unsigned char *ct = malloc(plen + VAULT_TAG_BYTES);
+    size_t ct_len = 0;
+    int sealed = (ct != NULL) && vault_crypto_seal(key, plain, plen, nonce, ct, &ct_len);
+    sodium_memzero(key, sizeof(key));
+    sodium_memzero(plain, VAULT_MAX_FILE);
+    free(plain);
+    if (!sealed) {
+        free(ct);
+        return jsonrpc_serialize_error(id, -32000, "seal failed", NULL);
+    }
+
+    char *nonce_hex = hex_encode(nonce, VAULT_NONCE_BYTES);
+    char *ct_hex = hex_encode(ct, ct_len);
+    free(ct);
+    if (nonce_hex == NULL || ct_hex == NULL) {
+        free(nonce_hex);
+        free(ct_hex);
+        return jsonrpc_serialize_error(id, -32000, "out of memory", NULL);
+    }
+    char fpath[1200];
+    snprintf(fpath, sizeof(fpath), "%s/%s.files.json", rt->meta_dir, vid->valuestring);
+    cJSON *files = load_array_file(fpath);
+    cJSON *entry = cJSON_CreateObject();
+    cJSON_AddStringToObject(entry, "name", src->valuestring);
+    cJSON_AddStringToObject(entry, "nonce", nonce_hex);
+    cJSON_AddStringToObject(entry, "ct", ct_hex);
+    cJSON_AddItemToArray(files, entry);
+    int rc = save_array_file(rt->meta_dir, fpath, files);
+    cJSON_Delete(files);
+    free(nonce_hex);
+    free(ct_hex);
+    if (rc != 0) {
+        return jsonrpc_serialize_error(id, -32000, "persist failed", NULL);
+    }
+    cJSON *r = cJSON_CreateObject();
+    cJSON_AddBoolToObject(r, "ok", 1);
+    cJSON_AddStringToObject(r, "name", src->valuestring);
+    return jsonrpc_serialize_response(id, r);
+}
+
 /* The methods whose real behaviour (decrypt / mount / re-encrypt) is not built yet — refuse
  * rather than fake it (MANIFESTO §4). */
 static int is_engine_method(const char *method) {
     static const char *const ENGINE[] = {
-        "vault.policy.update", "vault.add_file", "vault.delete",
+        "vault.policy.update", "vault.delete",
     };
     for (size_t i = 0; i < sizeof(ENGINE) / sizeof(ENGINE[0]); i++) {
         if (strcmp(method, ENGINE[i]) == 0) {
@@ -342,6 +474,9 @@ char *vault_commands_dispatch(vault_runtime_t *rt, const char *method, const cJS
     }
     if (strcmp(method, "vault.lock") == 0) {
         return handle_lock(rt, params, id);
+    }
+    if (strcmp(method, "vault.add_file") == 0) {
+        return handle_add_file(rt, params, id);
     }
     if (is_engine_method(method)) {
         return jsonrpc_serialize_error(id, -31004, "vault engine not available", NULL);

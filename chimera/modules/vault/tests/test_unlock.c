@@ -205,6 +205,53 @@ static void test_relock_when_due(void) {
     free(vid);
 }
 
+static cJSON *add_file(vault_runtime_t *rt, const char *vault_id, const char *source_path) {
+    cJSON *p = cJSON_CreateObject();
+    cJSON_AddStringToObject(p, "vault_id", vault_id);
+    cJSON_AddStringToObject(p, "source_path", source_path);
+    cJSON *id = cJSON_CreateNumber(4);
+    char *resp = vault_commands_dispatch(rt, "vault.add_file", p, id);
+    cJSON_Delete(p);
+    cJSON_Delete(id);
+    TEST_ASSERT_NOT_NULL(resp);
+    cJSON *root = cJSON_Parse(resp);
+    free(resp);
+    TEST_ASSERT_NOT_NULL(root);
+    return root;
+}
+
+static void test_add_file_seals_when_open(void) {
+    unlock_setup();
+    g_hour = 12;
+    vault_runtime_t rt;
+    vault_runtime_init(&rt);
+    char *vid = create_vault(&rt, "s", "allow_when: hour >= 9 and hour <= 17");
+    cJSON_Delete(unlock(&rt, vid)); /* open */
+    char src[256];
+    snprintf(src, sizeof(src), "/tmp/chimera-vault-src-XXXXXX");
+    int fd = mkstemp(src);
+    TEST_ASSERT_TRUE(fd >= 0);
+    TEST_ASSERT_EQUAL_INT(14, (int)write(fd, "secret-content", 14));
+    close(fd);
+    cJSON *root = add_file(&rt, vid, src);
+    cJSON *result = cJSON_GetObjectItemCaseSensitive(root, "result");
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(result, "ok")));
+    cJSON_Delete(root);
+    unlink(src);
+    free(vid);
+}
+
+static void test_add_file_refused_when_locked(void) {
+    unlock_setup();
+    vault_runtime_t rt;
+    vault_runtime_init(&rt);
+    char *vid = create_vault(&rt, "s", "allow_when: hour >= 9 and hour <= 17"); /* NOT unlocked */
+    cJSON *root = add_file(&rt, vid, "/tmp/does-not-matter");
+    TEST_ASSERT_NOT_NULL(cJSON_GetObjectItemCaseSensitive(root, "error")); /* refused: vault locked */
+    cJSON_Delete(root);
+    free(vid);
+}
+
 void run_unlock_tests(void) {
     RUN_TEST(test_unlock_allows_in_window);
     RUN_TEST(test_unlock_denies_fail_closed);
@@ -213,4 +260,6 @@ void run_unlock_tests(void) {
     RUN_TEST(test_unlock_unknown_vault_denied);
     RUN_TEST(test_lock_clears_open);
     RUN_TEST(test_relock_when_due);
+    RUN_TEST(test_add_file_seals_when_open);
+    RUN_TEST(test_add_file_refused_when_locked);
 }
