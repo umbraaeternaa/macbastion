@@ -79,10 +79,29 @@ static void test_execute_evict_is_real(void) {
     ops_set_evict_action(prev);
 }
 
-static void test_execute_reboot_is_noop(void) {
-    int did_noop = 0;
+/* Slice 3c: REBOOT is real via the injectable action — did_noop=0, action invoked. We inject a
+ * recording stand-in so no autotest EVER reboots the machine (SH-11). */
+static int g_mock_reboot_calls;
+static shim_result_t mock_reboot(void) {
+    g_mock_reboot_calls++;
+    return SHIM_OK;
+}
+
+static void test_execute_reboot_is_real(void) {
+    g_mock_reboot_calls = 0;
+    ops_reboot_fn prev = ops_set_reboot_action(mock_reboot);
+    int did_noop = 99;
     TEST_ASSERT_EQUAL_INT(SHIM_OK, ops_execute(SHIM_OP_REBOOT, &did_noop));
-    TEST_ASSERT_EQUAL_INT(1, did_noop); /* reboot NEVER real in autotests (SH-11) */
+    TEST_ASSERT_EQUAL_INT(0, did_noop);
+    TEST_ASSERT_EQUAL_INT(1, g_mock_reboot_calls);
+    ops_set_reboot_action(prev);
+}
+
+/* killall stays a documented no-op (supervisor owns + SIGKILLs its procs; no safe target). */
+static void test_execute_killall_is_noop(void) {
+    int did_noop = 0;
+    TEST_ASSERT_EQUAL_INT(SHIM_OK, ops_execute(SHIM_OP_KILLALL, &did_noop));
+    TEST_ASSERT_EQUAL_INT(1, did_noop);
 }
 
 static void test_execute_unknown_errors(void) {
@@ -101,6 +120,7 @@ void run_ops_tests(void) {
     RUN_TEST(test_method_name_unknown_is_null);
     RUN_TEST(test_execute_lock_is_real);
     RUN_TEST(test_execute_evict_is_real);
-    RUN_TEST(test_execute_reboot_is_noop);
+    RUN_TEST(test_execute_reboot_is_real);
+    RUN_TEST(test_execute_killall_is_noop);
     RUN_TEST(test_execute_unknown_errors);
 }

@@ -39,4 +39,13 @@ ops_lock_fn ops_set_lock_action(ops_lock_fn fn);
 typedef shim_result_t (*ops_evict_fn)(void);
 ops_evict_fn ops_set_evict_action(ops_evict_fn fn);
 
+/* The reboot action ops_execute runs for SHIM_OP_REBOOT (Slice 3c, destructive, secret-gated).
+ * The default force-reboots via /sbin/reboot — NEVER in autotests (SH-11: reboot stays stubbed
+ * in tests forever; the runner swaps in a stand-in). Swappable. Returns previous; NULL resets.
+ *
+ * NOTE: there is deliberately NO killall action — shim.killall stays a documented no-op (the
+ * supervisor owns and SIGKILLs its own module procs; this parameterless op has no safe target). */
+typedef shim_result_t (*ops_reboot_fn)(void);
+ops_reboot_fn ops_set_reboot_action(ops_reboot_fn fn);
+
 #endif /* SHIM_OPS_H */

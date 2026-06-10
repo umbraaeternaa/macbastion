@@ -82,6 +82,30 @@ ops_evict_fn ops_set_evict_action(ops_evict_fn fn) {
     return prev;
 }
 
+/* Slice 3c: the real reboot — /sbin/reboot (privileged restart; the shim is root). NEVER
+ * invoked in autotests (SH-11: reboot stays stubbed forever; the runner swaps in a stand-in).
+ * On success the system goes down and this does not return. */
+static shim_result_t reboot_real(void) {
+    char *const argv[] = {"/sbin/reboot", NULL};
+    pid_t pid;
+    if (posix_spawn(&pid, "/sbin/reboot", NULL, NULL, argv, environ) != 0) {
+        return SHIM_ERR;
+    }
+    int status = 0;
+    if (waitpid(pid, &status, 0) < 0) {
+        return SHIM_ERR;
+    }
+    return (WIFEXITED(status) && WEXITSTATUS(status) == 0) ? SHIM_OK : SHIM_ERR;
+}
+
+static ops_reboot_fn g_reboot = reboot_real;
+
+ops_reboot_fn ops_set_reboot_action(ops_reboot_fn fn) {
+    ops_reboot_fn prev = g_reboot;
+    g_reboot = fn ? fn : reboot_real;
+    return prev;
+}
+
 /* Whitelist: op enum ↔ canonical wire method name. Indexed by shim_op_t. */
 static const char *const OP_NAMES[] = {
     [SHIM_OP_UNKNOWN] = NULL,
@@ -132,8 +156,16 @@ shim_result_t ops_execute(shim_op_t op, int *did_noop) {
         }
         return g_evict();
     }
-    /* reboot / killall: still logged no-ops until their own slices. */
-    fprintf(stderr, "chimera-shim: NO-OP %s (real effect lands in a later slice)\n", name);
+    /* Slice 3c: REBOOT is real (/sbin/reboot, secret-gated upstream; SH-11 test stub). */
+    if (op == SHIM_OP_REBOOT) {
+        if (did_noop) {
+            *did_noop = 0;
+        }
+        return g_reboot();
+    }
+    /* killall: documented no-op — the supervisor owns and SIGKILLs its own module procs (GD),
+     * and this parameterless op has no safe self-identifying target. Real effect deferred. */
+    fprintf(stderr, "chimera-shim: NO-OP %s (killall redundant — supervisor owns its procs, GD)\n", name);
     if (did_noop) {
         *did_noop = 1;
     }

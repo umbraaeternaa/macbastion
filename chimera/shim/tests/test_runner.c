@@ -15,10 +15,14 @@ static shim_result_t safe_lock(void) {
 static shim_result_t safe_evict(void) {
     return SHIM_OK;
 }
+static shim_result_t safe_reboot(void) {
+    return SHIM_OK;
+}
 
 void setUp(void) {
     ops_set_lock_action(safe_lock);
     ops_set_evict_action(safe_evict);
+    ops_set_reboot_action(safe_reboot);
 }
 void tearDown(void) {}
 
