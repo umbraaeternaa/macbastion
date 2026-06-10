@@ -109,7 +109,9 @@ async def run_up(config: CoreConfig) -> None:
         spawn=_default_spawn(config.socket_dir),
         is_registered=server._registry.is_registered,  # noqa: SLF001 (internal wiring)
     )
-    sub = server._broker.subscribe([Lifecycle.STATE_CHANGED_TOPIC])  # noqa: SLF001
+    sub = server._broker.subscribe(  # noqa: SLF001
+        [Lifecycle.STATE_CHANGED_TOPIC, "purge.imminent"]
+    )
     loop = asyncio.get_running_loop()
     stop = loop.create_future()
 
@@ -118,10 +120,14 @@ async def run_up(config: CoreConfig) -> None:
             stop.set_result(None)
 
     async def _monitor() -> None:
-        # The autonomy link: core's sweep marks a hung module FAILED -> we re-spawn it.
+        # Autonomy link: core's sweep marks a hung module FAILED -> we re-spawn it.
+        # Emergency choreography: core.purge publishes purge.imminent -> SIGKILL the modules.
         while True:
             event = await sub.get()
-            sup.on_state_changed(event.payload, server._lifecycle)  # noqa: SLF001
+            if event.topic == "purge.imminent":
+                await sup.purge_kill()
+            else:
+                sup.on_state_changed(event.payload, server._lifecycle)  # noqa: SLF001
 
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, _request_stop)

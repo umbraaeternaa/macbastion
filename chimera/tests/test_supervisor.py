@@ -130,3 +130,41 @@ async def test_down_graceful_then_force():
     assert procs["a"].terminated and not procs["a"].killed
     # 'b' ignores SIGTERM (hung) -> force-killed after the grace window
     assert procs["b"].terminated and procs["b"].killed
+
+
+async def test_purge_kill_sigkills_all_live_procs():
+    """T0-c emergency choreography: after the grace, SIGKILL every live module proc."""
+    procs = {}
+
+    def spawn(spec):
+        procs[spec.name] = _FakeProc()
+        return procs[spec.name]
+
+    sup = Supervisor(
+        [ModuleSpec("a"), ModuleSpec("b")],
+        spawn=spawn,
+        is_registered=lambda n: True,
+        wave_timeout=1.0,
+    )
+    await sup.up()
+    killed = await sup.purge_kill(grace=0)
+    assert set(killed) == {"a", "b"}
+    assert all(p.killed for p in procs.values())
+
+
+async def test_purge_kill_skips_already_dead():
+    """A proc that has already exited is not force-killed again."""
+    procs = {}
+
+    def spawn(spec):
+        procs[spec.name] = _FakeProc()
+        return procs[spec.name]
+
+    sup = Supervisor(
+        [ModuleSpec("a")], spawn=spawn, is_registered=lambda n: True, wave_timeout=1.0
+    )
+    await sup.up()
+    procs["a"].terminate()  # exits -> poll() == 0 (already dead)
+    killed = await sup.purge_kill(grace=0)
+    assert killed == []
+    assert not procs["a"].killed

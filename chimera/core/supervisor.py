@@ -122,6 +122,20 @@ class Supervisor:
             if self._procs[name].poll() is None:
                 self._procs[name].kill()
 
+    async def purge_kill(self, grace: float = 0.5) -> list[str]:
+        """Emergency choreography (§5.8 step 1): broadcast already sent (core publishes
+        purge.imminent); give modules a brief grace to zero their own keys, then SIGKILL every
+        supervised proc still alive — ack-or-die. Returns the names force-killed. This is the
+        force fallback; modules that zeroed + exited on their own are skipped."""
+        if grace > 0:
+            await asyncio.sleep(grace)
+        killed: list[str] = []
+        for name, proc in self._procs.items():
+            if proc.poll() is None:
+                proc.kill()
+                killed.append(name)
+        return killed
+
     def handle_failure(self, name: str, lifecycle: Lifecycle) -> bool:
         """A supervised module reached FAILED: delegate the restart decision to lifecycle
         (§7.5 budget/backoff/FSM — the single source of truth); if it transitions to
