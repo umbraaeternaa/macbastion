@@ -75,14 +75,21 @@ Slice 3A react-entrypoint (RED→GREEN) done. CORE: idea #3 Slice 3B anomaly-rel
 (RED→GREEN) done — a NEW core capability. ORACLE: idea #3 Slice 3C anomaly-emit
 (RED→GREEN) done — the real producer. **Idea #3 (Anomaly-Tripwire) COMPLETE** —
 3A+3B+3C wired + e2e-confirmed by 3D.
-Last completed: **Supervisor.purge_kill — emergency-choreography SIGKILL** (commit `64d569e`) — PURGE T0-c.
-`Supervisor.purge_kill(grace=0.5)`: after a brief grace for modules to zero their own in-RAM keys, SIGKILL
-every supervised proc still alive (ack-or-die, §5.8 step 1); self-exited procs are skipped; returns the
-names force-killed. Wired in run_up: the monitor now also subscribes to `purge.imminent` and calls
-`sup.purge_kill()` — so the chain is `core.purge` -> publish `purge.imminent` -> supervisor SIGKILLs the
-modules -> Tier-0 runs. The per-module GRACEFUL key-zeroing + ack-sparing (C side) is follow-on; this is
-the core-side force fallback. 2 RED->GREEN units (11 supervisor); ruff + mypy clean. 933 -> 935.
-NEXT: per-module key-zeroing on purge.imminent (C side, ack-sparing); or Tier-1 (crypto-shred VAULT KEKs).
+Last completed: **VAULT daemon skeleton — socket loop + vault.* dispatch** (commit `af35113`) — VD-1, the
+start of the VAULT daemon arc. VAULT was a pure LIBRARY (lexer/parser/evaluator/crypto/policy); now it is
+a live DAEMON: `main` connects OUT to core.sock, registers the `vault.*` surface + events, runs the
+poll(500ms) IPC serve loop with heartbeats (mirrors ECHO/PURGE). `vault_commands_dispatch`: `vault.status`
+real (reports no open vault); engine methods (create/list/unlock/lock/policy.update/add_file/delete) GATED
+-31004 (keychain KEK / policy eval / derive / mount not built — MANIFESTO §4); unknown -32601. Added
+vendored cJSON + shared jsonrpc + a `vault` binary target (libsodium stays for crypto). 4 RED->GREEN Unity
+(48 VAULT); binary -Werror-clean, `vault --version` OK. 935 -> 939. NEXT: VD-2 (`vault.create`/`vault.list`
++ metadata persistence under state_dir); then VD-3 (keychain KEK -> gives evict REAL targets); VD-4 unlock.
+
+Prior milestone: **Supervisor.purge_kill — emergency-choreography SIGKILL** (commit `64d569e`) — PURGE T0-c.
+`Supervisor.purge_kill(grace=0.5)`: after a grace, SIGKILL every supervised proc still alive (ack-or-die,
+§5.8 step 1); self-exited procs skipped. Wired in run_up via a `purge.imminent` subscription, so the chain
+is `core.purge` -> publish `purge.imminent` -> supervisor SIGKILLs modules -> Tier-0. Per-module graceful
+key-zeroing (C side) is follow-on. 2 RED->GREEN units (11 supervisor).
 
 Prior milestone: **core.purge operator command — trigger -> real Tier-0** (commit `b913272`) — PURGE T0-b.
 `core.purge` (operator surface command, like `core.lock`): broadcasts `purge.imminent` then runs
@@ -758,10 +765,10 @@ core, as authority, turns the event into a command.) Slices:
 - Native (MIRROR Unity): 42 passing (6 perturb + 6 profile + 5 exclude + 5 stats + 4 rng + 10 jsonrpc + 6 commands)
 - Native (shim Unity): 38 passing (13 ops [incl lock/evict/reboot real via injectable actions + killall documented no-op, Slice 3a/3b/3c] + 6 peercred + 2 server + 11 protocol [incl 4 secret-gating + 3 handshake] + 3 secret + 3 attest [fail-closed seams; positive = manual-tier] — per-boot secret + destructive-op gating + shim.handshake secret issuance to a SecCode-attested peer + real lock (pmset) / evict (Keychain, asuser) / reboot (/sbin/reboot), SS-2/3 / 2b / 3a-3c) — separate C trust-plane suite, NOT in pytest
 - Native (TETHER C++ Unity): 48 passing (4 ewma + 6 presence + 4 classify + 8 escalation + 6 emit + 10 commands + 10 monitor) — separate C++ suite, NOT in pytest
-- Native (VAULT C Unity): 44 passing (6 lexer + 6 parser + 9 evaluator + 6 fail_closed + 3 relock + 7 decide + 7 crypto) — separate C suite, NOT in pytest
+- Native (VAULT C Unity): 48 passing (6 lexer + 6 parser + 9 evaluator + 6 fail_closed + 3 relock + 7 decide + 7 crypto + 4 commands [VD-1 daemon dispatch: vault.status real, engine gated -31004]) — separate C suite, NOT in pytest. VAULT is now a live daemon (VD-1), not just a library
 - Native (ECHO C Unity): 31 passing (9 shaper — budget + flat-wire invariant + burst + clamps; 7 config — defaults + validation + atomic set + budget bridge; 7 stats — padding ratio + decile histogram + surge; 8 commands — echo.* dispatch over jsonrpc) — separate C suite, NOT in pytest
 - Native (PURGE C Unity): 35 passing (7 dry-run planner — §8 honest-wipe classify + keys-first tier plan; 9 target registry — add/dedup/remove + plan bridge; 7 config — post-action + marker, atomic set; 12 commands — purge.* dispatch, trigger gated -31004) — separate C suite, NOT in pytest
-- Total: 935 passing (595 default [incl 22 pulse scoring + 24 pulse baseline + 10 pulse assess + 10 pulse temporal + 3 pulse emission + 5 pulse danger-registry + 5 pulse finishers + 8 core gate + 5 core gate-wiring + 7 core override + 3 core gate-override + 5 core override.set + 6 core gate-hardening + 3 core entry + 10 core supervisor + 8 core CLI + 4 core autonomy + 3 core mark-lost + 1 core lock + 1 core graceful-down + 3 core tier0 + 3 core purge] + 57 integration + 46 CHAFF + 31 ECHO + 35 PURGE + 42 MIRROR + 38 shim + 48 TETHER + 44 VAULT Unity; ollama subset not double-counted)
+- Total: 939 passing (595 default [incl 22 pulse scoring + 24 pulse baseline + 10 pulse assess + 10 pulse temporal + 3 pulse emission + 5 pulse danger-registry + 5 pulse finishers + 8 core gate + 5 core gate-wiring + 7 core override + 3 core gate-override + 5 core override.set + 6 core gate-hardening + 3 core entry + 10 core supervisor + 8 core CLI + 4 core autonomy + 3 core mark-lost + 1 core lock + 1 core graceful-down + 3 core tier0 + 3 core purge] + 57 integration + 46 CHAFF + 31 ECHO + 35 PURGE + 42 MIRROR + 38 shim + 48 TETHER + 48 VAULT Unity; ollama subset not double-counted)
 
 **Open tails (honest tracking, MANIFESTO §4):**
 - Fernet at-rest: CHAFF (C/OpenSSL) and ORACLE (Python `cryptography.Fernet`) share the format but interop is NOT cross-tested (B1 deferred; format-faithful).
