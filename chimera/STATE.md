@@ -75,16 +75,21 @@ Slice 3A react-entrypoint (RED→GREEN) done. CORE: idea #3 Slice 3B anomaly-rel
 (RED→GREEN) done — a NEW core capability. ORACLE: idea #3 Slice 3C anomaly-emit
 (RED→GREEN) done — the real producer. **Idea #3 (Anomaly-Tripwire) COMPLETE** —
 3A+3B+3C wired + e2e-confirmed by 3D.
-Last completed: **evict op performs a real CHIMERA Keychain eviction** (commit `1e014a7`) — Slice 3b,
-the first DESTRUCTIVE real op. `ops_execute(EVICT)` runs an injectable evict action (`did_noop=0`); the
-default deletes CHIMERA generic-password items (service `com.umbra.chimera`: VAULT master secrets,
-TETHER IRK) from the CONSOLE operator's login keychain — run in their session via `launchctl asuser
-/usr/bin/security delete-generic-password`, looped until none remain (idempotent; root's own keychain is
-NOT the target). Secret-gated upstream, so the real effect fires only on an attested, secret-authed
-request. reboot/killall stay no-ops. Test safety: `setUp` swaps in safe lock+evict stand-ins; the ops
-test injects a recording evict. MANUAL-TIER real deletion; CHIMERA modules don't store these items yet,
-so today it's idempotent (deletes 0). 2 RED->GREEN Unity (37/37, no count change — real-ified). 926.
-NEXT: Slice 3c — reboot (SH-11: STUBBED in autotests forever; real = privileged restart) + killall.
+Last completed: **reboot real + killall documented no-op — ALL 4 shim ops defined** (commit `e93d43a`)
+— Slice 3c, closing the Slice-3 real-effects arc. `ops_execute(REBOOT)` runs an injectable reboot action
+(`did_noop=0`); default = `/sbin/reboot` (root restart), secret-gated upstream. SH-11 honoured: `setUp`
+swaps in a safe stand-in + the ops test injects a recording reboot, so no autotest ever reboots. killall
+stays an EXPLICIT documented no-op (`did_noop=1`): the GD slice found it redundant (supervisor owns +
+SIGKILLs its own module procs; this parameterless op has no safe self-identifying target — `pkill`-by-name
+would hit unrelated procs); real effect deferred until the design gives it real targets. Privileged action
+layer now COMPLETE: lock/evict/reboot real, killall honest no-op. 1 RED->GREEN Unity (38/38). 926 -> 927.
+NEXT: Slice 3 live verification (reinstall shim + exercise lock/evict via `core.lock`); or a new module arc.
+
+Prior milestone: **evict op performs a real CHIMERA Keychain eviction** (commit `1e014a7`) — Slice 3b,
+the first DESTRUCTIVE real op. `ops_execute(EVICT)` deletes CHIMERA generic-password items (service
+`com.umbra.chimera`: VAULT master secrets, TETHER IRK) from the CONSOLE operator's login keychain via
+`launchctl asuser /usr/bin/security delete-generic-password`, looped until none remain (idempotent; root's
+keychain is NOT the target). Secret-gated. MANUAL-TIER; modules don't store these items yet (deletes 0).
 
 Prior milestone: **lock op performs a real screen lock** (commit `057b5a8`) — Slice 3a. `ops_execute(LOCK)`
 runs an injectable lock action (`did_noop=0`); the default sleeps the display via `/usr/bin/pmset
@@ -726,12 +731,12 @@ core, as authority, turns the event into a command.) Slices:
 - Python (ollama, marked — `pytest -m ollama`): 3 passing (subset of integration; real llama3.2:1b)
 - Native (CHAFF Unity): 46 passing (7 endpoints + 6 schedule + 6 crypto + 6 db + 10 jsonrpc + 6 commands + 5 generation)
 - Native (MIRROR Unity): 42 passing (6 perturb + 6 profile + 5 exclude + 5 stats + 4 rng + 10 jsonrpc + 6 commands)
-- Native (shim Unity): 37 passing (12 ops [incl lock-real + evict-real via injectable actions, Slice 3a/3b] + 6 peercred + 2 server + 11 protocol [incl 4 secret-gating + 3 handshake] + 3 secret + 3 attest [fail-closed seams; positive = manual-tier] — per-boot secret + destructive-op gating + shim.handshake secret issuance to a SecCode-attested peer + real lock (pmset) + real evict (Keychain, asuser), SS-2/3 / 2b / 3a/3b) — separate C trust-plane suite, NOT in pytest
+- Native (shim Unity): 38 passing (13 ops [incl lock/evict/reboot real via injectable actions + killall documented no-op, Slice 3a/3b/3c] + 6 peercred + 2 server + 11 protocol [incl 4 secret-gating + 3 handshake] + 3 secret + 3 attest [fail-closed seams; positive = manual-tier] — per-boot secret + destructive-op gating + shim.handshake secret issuance to a SecCode-attested peer + real lock (pmset) / evict (Keychain, asuser) / reboot (/sbin/reboot), SS-2/3 / 2b / 3a-3c) — separate C trust-plane suite, NOT in pytest
 - Native (TETHER C++ Unity): 48 passing (4 ewma + 6 presence + 4 classify + 8 escalation + 6 emit + 10 commands + 10 monitor) — separate C++ suite, NOT in pytest
 - Native (VAULT C Unity): 44 passing (6 lexer + 6 parser + 9 evaluator + 6 fail_closed + 3 relock + 7 decide + 7 crypto) — separate C suite, NOT in pytest
 - Native (ECHO C Unity): 31 passing (9 shaper — budget + flat-wire invariant + burst + clamps; 7 config — defaults + validation + atomic set + budget bridge; 7 stats — padding ratio + decile histogram + surge; 8 commands — echo.* dispatch over jsonrpc) — separate C suite, NOT in pytest
 - Native (PURGE C Unity): 35 passing (7 dry-run planner — §8 honest-wipe classify + keys-first tier plan; 9 target registry — add/dedup/remove + plan bridge; 7 config — post-action + marker, atomic set; 12 commands — purge.* dispatch, trigger gated -31004) — separate C suite, NOT in pytest
-- Total: 926 passing (587 default [incl 22 pulse scoring + 24 pulse baseline + 10 pulse assess + 10 pulse temporal + 3 pulse emission + 5 pulse danger-registry + 5 pulse finishers + 8 core gate + 5 core gate-wiring + 7 core override + 3 core gate-override + 5 core override.set + 6 core gate-hardening + 3 core entry + 8 core supervisor + 8 core CLI + 4 core autonomy + 3 core mark-lost + 1 core lock + 1 core graceful-down] + 57 integration + 46 CHAFF + 31 ECHO + 35 PURGE + 42 MIRROR + 37 shim + 48 TETHER + 44 VAULT Unity; ollama subset not double-counted)
+- Total: 927 passing (587 default [incl 22 pulse scoring + 24 pulse baseline + 10 pulse assess + 10 pulse temporal + 3 pulse emission + 5 pulse danger-registry + 5 pulse finishers + 8 core gate + 5 core gate-wiring + 7 core override + 3 core gate-override + 5 core override.set + 6 core gate-hardening + 3 core entry + 8 core supervisor + 8 core CLI + 4 core autonomy + 3 core mark-lost + 1 core lock + 1 core graceful-down] + 57 integration + 46 CHAFF + 31 ECHO + 35 PURGE + 42 MIRROR + 38 shim + 48 TETHER + 44 VAULT Unity; ollama subset not double-counted)
 
 **Open tails (honest tracking, MANIFESTO §4):**
 - Fernet at-rest: CHAFF (C/OpenSSL) and ORACLE (Python `cryptography.Fernet`) share the format but interop is NOT cross-tested (B1 deferred; format-faithful).
