@@ -9,6 +9,7 @@
 
 typedef struct {
     char open_vault_id[64]; /* empty = no vault unlocked (VD-1: always empty) */
+    char meta_dir[1024];    /* <state_dir>/vault — where the vault registry persists (VD-2) */
 } vault_runtime_t;
 
 void vault_runtime_init(vault_runtime_t *rt);
