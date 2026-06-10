@@ -59,6 +59,7 @@ from core.lifecycle import InvalidTransitionError, Lifecycle
 from core.override import OverrideStore
 from core.registry import Registry
 from core.shim_client import ShimClient, ShimError
+from core.tier0 import run_tier0
 from core.tokens import TokenIssuer
 
 logger = logging.getLogger(__name__)
@@ -93,6 +94,7 @@ class Server:
             "core.subscribe",
             "core.override.set",
             "core.lock",
+            "core.purge",
         }
     )
     # Per-method routing deadlines (§6.8); anything else uses the config default.
@@ -168,6 +170,8 @@ class Server:
                 self._token_issuer.validate(conn.token, method)
                 if method == "core.lock":
                     result = await self._handle_lock()
+                elif method == "core.purge":
+                    result = await self._handle_purge()
                 else:
                     result = self._dispatch_core(method, request.params, conn)
                 return Response(jsonrpc="2.0", id=request.id, result=result)
@@ -207,6 +211,15 @@ class Server:
             return await self._shim_client.lock()
         except ShimError as exc:
             raise RpcError(code=ChimeraError.PRECONDITION_FAILED, message=str(exc)) from exc
+
+    async def _handle_purge(self) -> dict[str, Any]:
+        """core.purge (operator command, §5.8) — broadcast purge.imminent (modules zero their
+        own keys), then run Tier-0: evict CHIMERA Keychain items via the shim + wipe the state
+        DBs. Returns the Tier-0 report {keychain_evicted, state_files_removed, errors}."""
+        if self._shim_client is None:
+            raise RpcError(code=ChimeraError.PRECONDITION_FAILED, message="shim unavailable")
+        self._broker.publish(Event(topic="purge.imminent", payload={}))
+        return await run_tier0(self._shim_client, self._config.state_dir)
 
     def _handle_override_set(
         self, params: dict[str, Any] | list[Any] | None, conn: Connection
