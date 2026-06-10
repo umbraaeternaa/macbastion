@@ -75,14 +75,22 @@ Slice 3A react-entrypoint (RED→GREEN) done. CORE: idea #3 Slice 3B anomaly-rel
 (RED→GREEN) done — a NEW core capability. ORACLE: idea #3 Slice 3C anomaly-emit
 (RED→GREEN) done — the real producer. **Idea #3 (Anomaly-Tripwire) COMPLETE** —
 3A+3B+3C wired + e2e-confirmed by 3D.
-Last completed: **lock op performs a real screen lock** (commit `057b5a8`) — Slice 3a. `ops_execute(LOCK)`
-now runs an injectable lock action (`did_noop=0`); the default sleeps the display via `/usr/bin/pmset
+Last completed: **evict op performs a real CHIMERA Keychain eviction** (commit `1e014a7`) — Slice 3b,
+the first DESTRUCTIVE real op. `ops_execute(EVICT)` runs an injectable evict action (`did_noop=0`); the
+default deletes CHIMERA generic-password items (service `com.umbra.chimera`: VAULT master secrets,
+TETHER IRK) from the CONSOLE operator's login keychain — run in their session via `launchctl asuser
+/usr/bin/security delete-generic-password`, looped until none remain (idempotent; root's own keychain is
+NOT the target). Secret-gated upstream, so the real effect fires only on an attested, secret-authed
+request. reboot/killall stay no-ops. Test safety: `setUp` swaps in safe lock+evict stand-ins; the ops
+test injects a recording evict. MANUAL-TIER real deletion; CHIMERA modules don't store these items yet,
+so today it's idempotent (deletes 0). 2 RED->GREEN Unity (37/37, no count change — real-ified). 926.
+NEXT: Slice 3c — reboot (SH-11: STUBBED in autotests forever; real = privileged restart) + killall.
+
+Prior milestone: **lock op performs a real screen lock** (commit `057b5a8`) — Slice 3a. `ops_execute(LOCK)`
+runs an injectable lock action (`did_noop=0`); the default sleeps the display via `/usr/bin/pmset
 displaysleepnow` (with require-password-after-sleep this locks — the reversible operator command,
-SS-2/§8.8). evict/reboot/killall stay logged no-ops until their slices. Test safety: the runner's
-`setUp` swaps in a harmless lock action so no autotest sleeps the display; the ops test injects a
-recording stand-in to assert the action fires. Real pmset effect is MANUAL-TIER (would lock the screen;
-to try it live: reinstall the shim + trigger `core.lock`). 2 RED->GREEN Unity (37/37). 925 -> 926.
-NEXT: Slice 3b — evict (PURGE Tier-0 Keychain eviction, secret-gated, destructive); then reboot/killall.
+SS-2/§8.8). Test safety: `setUp` swaps in a harmless lock action; the ops test injects a recording
+stand-in. Real pmset effect is MANUAL-TIER (to try live: reinstall the shim + trigger `core.lock`).
 
 Prior milestone: **live 2b attestation PROVEN + shim-check diagnostic** (commit `6698faa`). Added
 `chimera shim-check` (ping + handshake; prints the outcome, never the secret; `CHIMERA_SHIM_SOCKET`
@@ -718,7 +726,7 @@ core, as authority, turns the event into a command.) Slices:
 - Python (ollama, marked — `pytest -m ollama`): 3 passing (subset of integration; real llama3.2:1b)
 - Native (CHAFF Unity): 46 passing (7 endpoints + 6 schedule + 6 crypto + 6 db + 10 jsonrpc + 6 commands + 5 generation)
 - Native (MIRROR Unity): 42 passing (6 perturb + 6 profile + 5 exclude + 5 stats + 4 rng + 10 jsonrpc + 6 commands)
-- Native (shim Unity): 37 passing (12 ops [incl lock-real via injectable action, Slice 3a] + 6 peercred + 2 server + 11 protocol [incl 4 secret-gating + 3 handshake] + 3 secret + 3 attest [fail-closed seams; positive = manual-tier] — per-boot secret + destructive-op gating + shim.handshake secret issuance to a SecCode-attested peer + real lock via pmset, SS-2/3 / 2b / 3a) — separate C trust-plane suite, NOT in pytest
+- Native (shim Unity): 37 passing (12 ops [incl lock-real + evict-real via injectable actions, Slice 3a/3b] + 6 peercred + 2 server + 11 protocol [incl 4 secret-gating + 3 handshake] + 3 secret + 3 attest [fail-closed seams; positive = manual-tier] — per-boot secret + destructive-op gating + shim.handshake secret issuance to a SecCode-attested peer + real lock (pmset) + real evict (Keychain, asuser), SS-2/3 / 2b / 3a/3b) — separate C trust-plane suite, NOT in pytest
 - Native (TETHER C++ Unity): 48 passing (4 ewma + 6 presence + 4 classify + 8 escalation + 6 emit + 10 commands + 10 monitor) — separate C++ suite, NOT in pytest
 - Native (VAULT C Unity): 44 passing (6 lexer + 6 parser + 9 evaluator + 6 fail_closed + 3 relock + 7 decide + 7 crypto) — separate C suite, NOT in pytest
 - Native (ECHO C Unity): 31 passing (9 shaper — budget + flat-wire invariant + burst + clamps; 7 config — defaults + validation + atomic set + budget bridge; 7 stats — padding ratio + decile histogram + surge; 8 commands — echo.* dispatch over jsonrpc) — separate C suite, NOT in pytest
