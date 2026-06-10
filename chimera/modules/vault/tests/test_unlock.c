@@ -12,6 +12,7 @@
 #include "cJSON.h"
 
 #include "commands.h"
+#include "keychain.h"
 
 static int g_hour = 12;
 
@@ -118,6 +119,35 @@ static void test_unlock_another_open_refused(void) {
     free(b);
 }
 
+static int fail_load(const char *v, unsigned char *o) {
+    (void)v;
+    (void)o;
+    return -1;
+}
+static int fail_store(const char *v, const unsigned char *s) {
+    (void)v;
+    (void)s;
+    return -1;
+}
+
+static void test_unlock_key_unavailable_denied(void) {
+    /* VD-4b: on ALLOW the key must DERIVE from the keychain KEK; if the keychain is unreachable,
+     * unlock is denied (key_unavailable) rather than opening keyless. */
+    unlock_setup();
+    g_hour = 12;
+    vault_runtime_t rt;
+    vault_runtime_init(&rt);
+    char *vid = create_vault(&rt, "secrets", "allow_when: hour >= 9 and hour <= 17");
+    vault_keychain_backend_t fb = {fail_load, fail_store};
+    vault_keychain_set_backend(fb); /* keychain now fails -> derive must fail */
+    cJSON *root = unlock(&rt, vid);
+    const char *r = denied_reason(root);
+    TEST_ASSERT_NOT_NULL(r);
+    TEST_ASSERT_EQUAL_STRING("key_unavailable", r);
+    cJSON_Delete(root);
+    free(vid);
+}
+
 static void test_unlock_unknown_vault_denied(void) {
     unlock_setup();
     vault_runtime_t rt;
@@ -133,5 +163,6 @@ void run_unlock_tests(void) {
     RUN_TEST(test_unlock_allows_in_window);
     RUN_TEST(test_unlock_denies_fail_closed);
     RUN_TEST(test_unlock_another_open_refused);
+    RUN_TEST(test_unlock_key_unavailable_denied);
     RUN_TEST(test_unlock_unknown_vault_denied);
 }

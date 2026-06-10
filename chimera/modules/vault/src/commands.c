@@ -11,6 +11,9 @@
 #include <sys/stat.h>
 #include <time.h>
 
+#include <sodium.h>
+
+#include "crypto.h"
 #include "jsonrpc.h"
 #include "keychain.h"
 #include "parser.h"
@@ -44,6 +47,7 @@ void vault_runtime_init(vault_runtime_t *rt) {
     if (rt == NULL) {
         return;
     }
+    vault_crypto_init(); /* idempotent sodium_init — needed for the unlock derive (VD-4b) */
     rt->open_vault_id[0] = '\0';
     const char *sd = getenv("CHIMERA_STATE_DIR");
     if (sd != NULL && sd[0] != '\0') {
@@ -209,8 +213,35 @@ static char *denied(const cJSON *id, const char *reason) {
     return jsonrpc_serialize_response(id, r);
 }
 
-/* VD-4a: the state-gated unlock DECISION (no crypto/mount yet). ALLOW marks the vault open and
- * returns {ok}; DEFER -> {defer}; DENY / unknown / another-open -> {denied: reason}. */
+static void hex_decode16(const char *hex, uint8_t out[16]) {
+    for (int i = 0; i < 16; i++) {
+        char b[3] = {hex[i * 2], hex[i * 2 + 1], '\0'};
+        out[i] = (uint8_t)strtol(b, NULL, 16);
+    }
+}
+
+/* Derive the vault's key (VD-4b): keychain master secret + BLAKE2b(policy_dsl) + salt(vault_id
+ * bytes) -> Argon2id. 0 on success (key filled; caller zeroes), -1 if the keychain or KDF fails.
+ * The key materialises ONLY here, on an ALLOW — it is the state-gated secret. */
+static int vault_derive_key(const char *vault_id, const char *policy_dsl,
+                            uint8_t key[VAULT_KEY_BYTES]) {
+    unsigned char master[VAULT_MASTER_SECRET_LEN];
+    if (vault_keychain_load_or_create(vault_id, master) != 0) {
+        return -1;
+    }
+    uint8_t policy_hash[32];
+    crypto_generichash(policy_hash, sizeof(policy_hash), (const unsigned char *)policy_dsl,
+                       strlen(policy_dsl), NULL, 0);
+    uint8_t salt[VAULT_SALT_BYTES];
+    hex_decode16(vault_id, salt); /* vault_id = 32 hex chars = 16 bytes; stable per vault */
+    int rc = vault_crypto_derive(master, sizeof(master), policy_hash, salt, key) ? 0 : -1;
+    sodium_memzero(master, sizeof(master));
+    return rc;
+}
+
+/* VD-4a decision + VD-4b key derivation. ALLOW derives the gated key (decrypt+mount deferred),
+ * marks the vault open, returns {ok}; a keychain/KDF failure -> {denied:key_unavailable}.
+ * DEFER -> {defer}; DENY / unknown / another-open -> {denied: reason}. */
 static char *handle_unlock(vault_runtime_t *rt, const cJSON *params, const cJSON *id) {
     const cJSON *vid = params ? cJSON_GetObjectItem(params, "vault_id") : NULL;
     if (!cJSON_IsString(vid) || vid->valuestring[0] == '\0') {
@@ -228,6 +259,11 @@ static char *handle_unlock(vault_runtime_t *rt, const cJSON *params, const cJSON
     g_context(&ctx);
     VaultDecision d = vault_policy_decide(policy, &ctx);
     if (d.verdict == VAULT_ALLOW) {
+        uint8_t key[VAULT_KEY_BYTES];
+        if (vault_derive_key(vid->valuestring, policy, key) != 0) {
+            return denied(id, "key_unavailable");
+        }
+        sodium_memzero(key, sizeof(key)); /* VD-4b: key materialised; decrypt+mount deferred */
         snprintf(rt->open_vault_id, sizeof(rt->open_vault_id), "%s", vid->valuestring);
         cJSON *r = cJSON_CreateObject();
         cJSON_AddBoolToObject(r, "ok", 1);
