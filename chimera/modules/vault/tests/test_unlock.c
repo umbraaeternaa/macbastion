@@ -252,6 +252,34 @@ static void test_add_file_refused_when_locked(void) {
     free(vid);
 }
 
+static void test_unlock_opens_sealed_files(void) {
+    /* End-to-end crypto round-trip: add_file seals content; a later unlock derives the same key
+     * and OPENS it (tag verifies) -> {ok, files:1}. Proves the state-gated key decrypts the vault. */
+    unlock_setup();
+    g_hour = 12;
+    vault_runtime_t rt;
+    vault_runtime_init(&rt);
+    char *vid = create_vault(&rt, "s", "allow_when: hour >= 9 and hour <= 17");
+    cJSON_Delete(unlock(&rt, vid)); /* open (empty) */
+    char src[256];
+    snprintf(src, sizeof(src), "/tmp/chimera-vault-rt-XXXXXX");
+    int fd = mkstemp(src);
+    TEST_ASSERT_TRUE(fd >= 0);
+    TEST_ASSERT_EQUAL_INT(18, (int)write(fd, "round-trip-content", 18));
+    close(fd);
+    cJSON_Delete(add_file(&rt, vid, src));
+    unlink(src);
+    cJSON_Delete(lock_vault(&rt, vid)); /* close */
+    cJSON *root = unlock(&rt, vid);     /* reopen -> opens the sealed file */
+    cJSON *result = cJSON_GetObjectItemCaseSensitive(root, "result");
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(result, "ok")));
+    cJSON *files = cJSON_GetObjectItemCaseSensitive(result, "files");
+    TEST_ASSERT_TRUE(cJSON_IsNumber(files));
+    TEST_ASSERT_EQUAL_INT(1, files->valueint); /* the sealed file decrypted */
+    cJSON_Delete(root);
+    free(vid);
+}
+
 void run_unlock_tests(void) {
     RUN_TEST(test_unlock_allows_in_window);
     RUN_TEST(test_unlock_denies_fail_closed);
@@ -262,4 +290,5 @@ void run_unlock_tests(void) {
     RUN_TEST(test_relock_when_due);
     RUN_TEST(test_add_file_seals_when_open);
     RUN_TEST(test_add_file_refused_when_locked);
+    RUN_TEST(test_unlock_opens_sealed_files);
 }

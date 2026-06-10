@@ -21,6 +21,8 @@
 #define VAULT_RELOCK_SECONDS 900   /* auto-relock 15 min after unlock (§5.6 default) */
 #define VAULT_MAX_FILE (64 * 1024) /* VD-5: per-file content cap (vaults hold small secrets) */
 
+static cJSON *load_array_file(const char *path); /* fwd: used by unlock (open) + add_file */
+
 /* Unlock context provider (VD-4a). Default reads the clock; module signals are unknown (a
  * not-running module fails closed unless the policy opts in). Tests inject a fixed context. */
 static void default_context(VaultContext *out) {
@@ -250,9 +252,67 @@ static int vault_derive_key(const char *vault_id, const char *policy_dsl,
     return rc;
 }
 
-/* VD-4a decision + VD-4b key derivation. ALLOW derives the gated key (decrypt+mount deferred),
- * marks the vault open, returns {ok}; a keychain/KDF failure -> {denied:key_unavailable}.
- * DEFER -> {defer}; DENY / unknown / another-open -> {denied: reason}. */
+static int hex_decode(const char *hex, unsigned char *out, size_t max) {
+    size_t hlen = strlen(hex);
+    if (hlen % 2 != 0 || hlen / 2 > max) {
+        return -1;
+    }
+    for (size_t i = 0; i < hlen / 2; i++) {
+        char b[3] = {hex[i * 2], hex[i * 2 + 1], '\0'};
+        char *end = NULL;
+        long v = strtol(b, &end, 16);
+        if (end != b + 2) {
+            return -1;
+        }
+        out[i] = (unsigned char)v;
+    }
+    return (int)(hlen / 2);
+}
+
+/* Open every sealed file in `sealed` with `key` (verifying the Poly1305 tag). 1 if ALL open
+ * (sets *count); 0 if any entry is malformed or fails to verify (tamper / wrong key). The
+ * decrypted plaintext is verified then discarded — mounting it to a tmpfs is manual-tier. */
+static int vault_open_all(const cJSON *sealed, const uint8_t key[VAULT_KEY_BYTES], int *count) {
+    int n = 0;
+    const cJSON *e = NULL;
+    cJSON_ArrayForEach(e, sealed) {
+        const cJSON *nh = cJSON_GetObjectItem(e, "nonce");
+        const cJSON *ch = cJSON_GetObjectItem(e, "ct");
+        if (!cJSON_IsString(nh) || !cJSON_IsString(ch)) {
+            return 0;
+        }
+        uint8_t nonce[VAULT_NONCE_BYTES];
+        if (hex_decode(nh->valuestring, nonce, sizeof(nonce)) != (int)VAULT_NONCE_BYTES) {
+            return 0;
+        }
+        size_t ctlen = strlen(ch->valuestring) / 2;
+        if (ctlen < VAULT_TAG_BYTES) {
+            return 0;
+        }
+        unsigned char *ct = malloc(ctlen);
+        size_t ptcap = ctlen - VAULT_TAG_BYTES + 1;
+        unsigned char *pt = malloc(ptcap);
+        int ok = 0;
+        if (ct != NULL && pt != NULL && hex_decode(ch->valuestring, ct, ctlen) == (int)ctlen) {
+            size_t ptlen = 0;
+            ok = vault_crypto_open(key, nonce, ct, ctlen, pt, &ptlen) ? 1 : 0;
+            sodium_memzero(pt, ptcap);
+        }
+        free(ct);
+        free(pt);
+        if (!ok) {
+            return 0;
+        }
+        n++;
+    }
+    *count = n;
+    return 1;
+}
+
+/* VD-4a decision + VD-4b key derivation + VD-6 decrypt. ALLOW derives the gated key and OPENS
+ * the vault's sealed files (proving the key decrypts the vault), marks it open, returns
+ * {ok, files}; keychain/KDF failure -> {denied:key_unavailable}; a file that won't verify ->
+ * {denied:integrity}. DEFER -> {defer}; DENY / unknown / another-open -> {denied: reason}. */
 static char *handle_unlock(vault_runtime_t *rt, const cJSON *params, const cJSON *id) {
     const cJSON *vid = params ? cJSON_GetObjectItem(params, "vault_id") : NULL;
     if (!cJSON_IsString(vid) || vid->valuestring[0] == '\0') {
@@ -274,12 +334,25 @@ static char *handle_unlock(vault_runtime_t *rt, const cJSON *params, const cJSON
         if (vault_derive_key(vid->valuestring, policy, key) != 0) {
             return denied(id, "key_unavailable");
         }
-        sodium_memzero(key, sizeof(key)); /* VD-4b: key materialised; decrypt+mount deferred */
+        /* VD-6: open the vault's sealed files with the gated key — proves the state-gated key
+         * actually decrypts the vault (the add_file -> unlock round-trip). Plaintext is verified
+         * then discarded; mounting it to a tmpfs is a manual-tier follow-on. */
+        char fpath[1200];
+        snprintf(fpath, sizeof(fpath), "%s/%s.files.json", rt->meta_dir, vid->valuestring);
+        cJSON *sealed = load_array_file(fpath);
+        int files = 0;
+        int integrity_ok = vault_open_all(sealed, key, &files);
+        cJSON_Delete(sealed);
+        sodium_memzero(key, sizeof(key));
+        if (!integrity_ok) {
+            return denied(id, "integrity"); /* a sealed file failed to verify (tamper / wrong key) */
+        }
         snprintf(rt->open_vault_id, sizeof(rt->open_vault_id), "%s", vid->valuestring);
         rt->relock_at = (long)time(NULL) + VAULT_RELOCK_SECONDS; /* arm auto-relock (VD-4c) */
         cJSON *r = cJSON_CreateObject();
         cJSON_AddBoolToObject(r, "ok", 1);
         cJSON_AddStringToObject(r, "vault_id", vid->valuestring);
+        cJSON_AddNumberToObject(r, "files", files);
         return jsonrpc_serialize_response(id, r);
     }
     if (d.verdict == VAULT_DEFER) {
