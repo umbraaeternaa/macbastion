@@ -89,8 +89,14 @@ while enabled posts small humanlike mouse-move perturbations (`perturb_mouse` sc
 `mouse_sigma`) via `CGEventCreateMouseEvent` + `CGEventPost`, jittered gap via `perturb_timing`; stops when
 `mirror.disable` clears `enabled`. Dispatch holds the runtime mutex so the thread can't see a half-state.
 Test replaced (`reports_signing` -> `starts_injector`); 44 MIRROR Unity, count unchanged at 1019. `-Werror`
-clean. NEXT (MIRROR arc): LIVE-VERIFY the injector (grant Accessibility to the mirror binary, observe the
-cursor jitter, confirm `mirror.disable` stops it); then secure-field downgrade wiring + click/key jitter.
+clean.
+✅ **LIVE-VERIFIED on real hardware** (Day 17, throwaway harness): forced the probe granted, enabled, ran the
+injector 6s — **the cursor visibly jittered when run from Terminal.app** (which holds Accessibility), and did
+NOT move when run from VS Code's terminal (Code.app lacks the grant). Same binary, different responsible app
+-> a clean demonstration of TCC's per-app model. `CGEventPost` + `perturb_mouse` + the loop genuinely move
+the cursor with permission; `mirror.disable` stops it. MIRROR's core capability (behavioral-noise injection)
+is PROVEN on hardware. NEXT (MIRROR arc): secure-field downgrade wiring (force light on password fields) +
+click/key jitter; production needs code-signing for a STABLE/grantable Accessibility identity (signing arc).
 
 Prior milestone: **MIRROR arc slice 1 — `mirror.enable` does a REAL Accessibility probe** (AX-1; commit
 `0087170`) — `AXIsProcessTrusted()` behind an injectable seam; honest probe-driven errors.
