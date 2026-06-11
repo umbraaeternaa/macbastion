@@ -1404,6 +1404,31 @@ class TestAnomalyRelay:
         server._resolve_pending(Response(jsonrpc="2.0", id=efwd.id, result={"ok": True}))
         await task
 
+    # Symmetric de-escalation on the MATCHING axis: the anomaly that ramped obfuscation
+    # up clears (ORACLE's all-clear) -> stand the obfuscation organs down. Purer than the
+    # tether.recovered proxy — same signal that raised them now lowers them.
+    async def test_anomaly_cleared_stands_down_obfuscation(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        _cc, cfake = await _attach_registered_module(
+            server, "chaff", ["chaff.generation.stop"]
+        )
+        _ec, efake = await _attach_registered_module(server, "echo", ["echo.stop"])
+        task = asyncio.create_task(
+            server._relay_handle(
+                Event(topic="oracle.anomaly.cleared", payload={"score": 0.4})
+            )
+        )
+        for _ in range(4):
+            await asyncio.sleep(0)
+        assert cfake.frames(), "anomaly cleared should stand down CHAFF"
+        assert efake.frames(), "anomaly cleared should stand down ECHO"
+        cfwd, efwd = cfake.last_request(), efake.last_request()
+        assert cfwd.method == "chaff.generation.stop"
+        assert efwd.method == "echo.stop"
+        server._resolve_pending(Response(jsonrpc="2.0", id=cfwd.id, result={"ok": True}))
+        server._resolve_pending(Response(jsonrpc="2.0", id=efwd.id, result={"ok": True}))
+        await task
+
 
 class TestPulseVaultReflex:
     """Cognitive reflex (the "one mind" reacting to the OPERATOR): entering PULSE's

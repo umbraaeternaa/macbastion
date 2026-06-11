@@ -73,7 +73,12 @@ class OracleClient:
         "oracle.baseline.updated",
         "oracle.error",
         "oracle.anomaly.detected",  # idea #3 3C: advisory anomaly signal (emit-on-classify)
+        "oracle.anomaly.cleared",  # symmetric all-clear: score crossed back down (hysteresis)
     )
+    # Hysteresis band below the threshold: once anomalous, the score must fall below
+    # (threshold - this) to clear — so a score hovering near the threshold can't flap
+    # detected/cleared on every classify.
+    ANOMALY_HYSTERESIS = 0.1
     # D5=b: allow-list of real producers. MIRROR emits nothing yet, so only
     # CHAFF's two topics are subscribed for now.
     SUBSCRIBE_TOPICS: tuple[str, ...] = ("chaff.request.sent", "chaff.error")
@@ -105,6 +110,7 @@ class OracleClient:
         self._req_id = 0
         self._model = "unavailable"  # set by the startup probe (D6 / MD-B-6c)
         self._classifications_today = 0  # in-memory, approximate (no day-rollover)
+        self._anomalous = False  # bidirectional state: have we crossed up & not yet cleared
 
     @property
     def _core_sock(self) -> Path:
@@ -263,13 +269,34 @@ class OracleClient:
         result = await self._detector.classify(event)
         self._classifications_today += 1
         threshold = self._detector.get_threshold()
-        if result["score"] >= threshold:
+        score = result["score"]
+        if score >= threshold:
+            # Upward cross (level-triggered, unchanged): announce the anomaly and arm
+            # the cleared edge. ORACLE never acts — core (3B relay) routes the signal.
+            self._anomalous = True
             await self._send_cmd(
                 Notification(
                     jsonrpc="2.0",
                     method="oracle.anomaly.detected",
                     params={
-                        "score": result["score"],
+                        "score": score,
+                        "threshold": threshold,
+                        "source": event.get("source"),
+                        "type": event.get("type"),
+                        "reasoning": result["reasoning"],
+                    },
+                )
+            )
+        elif self._anomalous and score < threshold - self.ANOMALY_HYSTERESIS:
+            # Downward cross below the hysteresis band: the threat has passed. Emit the
+            # symmetric all-clear ONCE (edge-triggered) so the organism can stand down.
+            self._anomalous = False
+            await self._send_cmd(
+                Notification(
+                    jsonrpc="2.0",
+                    method="oracle.anomaly.cleared",
+                    params={
+                        "score": score,
                         "threshold": threshold,
                         "source": event.get("source"),
                         "type": event.get("type"),

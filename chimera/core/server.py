@@ -129,6 +129,10 @@ class Server:
         # that anomaly ramped up (the reflex web goes down, not only up). The vault is NOT
         # auto-unlocked — re-opening always requires a deliberate unlock (no auto-trust).
         "tether.recovered": ["chaff.generation.stop", "echo.stop"],
+        # Symmetric stand-down on the MATCHING axis: ORACLE's all-clear (the anomaly score
+        # crossed back down through the hysteresis band) relaxes the very obfuscation that
+        # the anomaly raised. Same signal up, same signal down.
+        "oracle.anomaly.cleared": ["chaff.generation.stop", "echo.stop"],
     }
 
     def __init__(

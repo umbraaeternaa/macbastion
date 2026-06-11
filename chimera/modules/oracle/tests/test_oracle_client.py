@@ -109,3 +109,50 @@ async def test_classify_contract_unchanged(tmp_path: Any) -> None:
     result = await client._handle_classify(_EVENT)
     assert result["score"] == 0.95
     assert result["reasoning"] == "suspicious"
+
+
+def _cleared(client: OracleClient) -> list[Notification]:
+    frames = client._cmd_writer.frames()  # type: ignore[union-attr]
+    notes = [parse(f) for f in frames]
+    return [
+        m
+        for m in notes
+        if isinstance(m, Notification) and m.method == "oracle.anomaly.cleared"
+    ]
+
+
+# D — symmetric all-clear: once anomalous (score crossed up through the threshold),
+#     a later score dropping below the hysteresis band emits oracle.anomaly.cleared
+#     ONCE, with the symmetric advisory payload. ORACLE is now bidirectional.
+async def test_anomalous_then_low_emits_cleared(tmp_path: Any) -> None:
+    client = _make_client(tmp_path, score=0.95)
+    await client._handle_classify(_EVENT)  # cross up -> detected, now anomalous
+    client._detector._score = 0.4  # type: ignore[union-attr]  # well below the band
+    await client._handle_classify(_EVENT)  # cross down -> cleared
+    cleared = _cleared(client)
+    assert len(cleared) == 1
+    p = cleared[0].params
+    assert isinstance(p, dict)
+    assert p["score"] == 0.4
+    assert p["threshold"] == 0.7
+    assert p["source"] == "chaff"
+    assert p["type"] == "request.sent"
+
+
+# E — hysteresis holds: after an anomaly, a score that dips below the threshold but
+#     stays INSIDE the band (threshold - margin) does NOT clear — no flapping.
+async def test_in_band_does_not_clear(tmp_path: Any) -> None:
+    client = _make_client(tmp_path, score=0.95)
+    await client._handle_classify(_EVENT)  # anomalous
+    client._detector._score = 0.65  # type: ignore[union-attr]  # < 0.7 but inside the band
+    await client._handle_classify(_EVENT)
+    assert _cleared(client) == []
+
+
+# F — no clear from a cold start: a low score when never anomalous emits nothing
+#     (neither detected nor cleared).
+async def test_cold_low_does_not_clear(tmp_path: Any) -> None:
+    client = _make_client(tmp_path, score=0.1)
+    await client._handle_classify(_EVENT)
+    assert _cleared(client) == []
+    assert _anomalies(client) == []
