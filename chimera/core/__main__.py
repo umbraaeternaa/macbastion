@@ -27,7 +27,7 @@ from core.override import OverrideStore
 from core.registry import Registry
 from core.server import Server
 from core.shim_client import ShimClient, ShimError
-from core.status_view import render_status
+from core.status_view import render_event, render_status
 from core.supervisor import CHIMERA_MODULES, ModuleSpec, Supervisor
 from core.tokens import TokenIssuer
 
@@ -78,6 +78,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "shim-check", help="diagnostic: ping the shim and attempt the per-boot-secret handshake"
     )
     sub.add_parser("status", help="print a live view of the organism (core + modules)")
+    sub.add_parser("watch", help="stream the organism's critical events live (Ctrl-C to stop)")
     return parser.parse_args(argv)
 
 
@@ -248,6 +249,56 @@ async def _status(config: CoreConfig) -> int:
     return 0
 
 
+WATCH_TOPICS = [
+    "tether.absent",
+    "tether.escalation",
+    "tether.recovered",
+    "pulse.mode.changed",
+    "oracle.anomaly.detected",
+    "purge.imminent",
+    "vault.locked",
+    "vault.unlocked",
+    "vault.relocked",
+]
+
+
+async def _watch(config: CoreConfig) -> int:
+    """`chimera watch`: subscribe to the organism's critical events on events.sock and
+    print each as it fires (Ctrl-C to stop). A core that isn't running -> exit 1."""
+    sock = config.socket_dir / "events.sock"
+    try:
+        reader, writer = await asyncio.open_unix_connection(str(sock))
+    except (FileNotFoundError, ConnectionRefusedError, OSError):
+        print(f"core not reachable at {sock} — is `chimera up` running?")
+        return 1
+    try:
+        req = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "core.subscribe",
+                "params": {"topics": WATCH_TOPICS},
+            }
+        )
+        writer.write((req + "\n").encode())
+        await writer.drain()
+        await reader.readline()  # subscribe ack
+        print(f"watching {len(WATCH_TOPICS)} topics — Ctrl-C to stop")
+        while True:
+            raw = await reader.readline()
+            if not raw:
+                break
+            msg = json.loads(raw.decode())
+            method = msg.get("method")
+            if method:  # a pushed Notification (events have a method, no id)
+                print(render_event(method, msg.get("params") or {}))
+    finally:
+        writer.close()
+        with contextlib.suppress(Exception):
+            await writer.wait_closed()
+    return 0
+
+
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     if args.command == "shim-check":  # standalone diagnostic — needs no core config
@@ -255,6 +306,8 @@ def main(argv: list[str] | None = None) -> None:
     config = _config_from_env()
     if args.command == "status":
         raise SystemExit(asyncio.run(_status(config)))
+    if args.command == "watch":
+        raise SystemExit(asyncio.run(_watch(config)))
     if args.command == "plist":
         print(launch_agent_plist(config.socket_dir))
         return

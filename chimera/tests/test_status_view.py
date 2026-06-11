@@ -135,3 +135,68 @@ async def test_status_subcommand_core_down_is_graceful(tmp_path: Any, capsys: An
     out = capsys.readouterr().out
     assert rc == 1
     assert "not reachable" in out
+
+
+# --- render_event: one pushed event -> a concise operator line (chimera watch) ---
+from core.status_view import render_event  # noqa: E402
+
+
+def test_render_event_tether_absent() -> None:
+    out = render_event("tether.absent", {"how": "grace"})
+    assert "TETHER" in out and "absent" in out.lower()
+
+
+def test_render_event_escalation_shows_stage_and_action() -> None:
+    out = render_event(
+        "tether.escalation", {"stage": "L1", "action_requested": "lock_screen"}
+    )
+    assert "L1" in out and "lock_screen" in out
+
+
+def test_render_event_pulse_mode_shows_mode() -> None:
+    out = render_event("pulse.mode.changed", {"new_mode": "exhausted"})
+    assert "PULSE" in out and "exhausted" in out
+
+
+def test_render_event_purge_imminent() -> None:
+    out = render_event("purge.imminent", {})
+    assert "PURGE" in out
+
+
+def test_render_event_generic_unknown_topic() -> None:
+    out = render_event("chaff.decoy.sent", {"bytes": 512})
+    assert "chaff.decoy.sent" in out  # falls back to topic (+ payload)
+
+
+@pytest.mark.integration
+async def test_watch_subcommand_streams_events(tmp_path: Any, capsys: Any) -> None:
+    import asyncio
+    import contextlib
+
+    from core.__main__ import _watch
+    from core.broker import Event, EventBroker
+    from core.config import CoreConfig
+    from core.lifecycle import Lifecycle
+    from core.registry import Registry
+    from core.server import Server
+    from core.tokens import TokenIssuer
+
+    config = CoreConfig.model_validate({"socket_dir": str(tmp_path)})
+    broker = EventBroker()
+    lifecycle = Lifecycle(config, broker)
+    registry = Registry(lifecycle, broker)
+    server = Server(config, registry, lifecycle, broker, TokenIssuer())
+    await server.start()
+    task = asyncio.create_task(_watch(config))
+    try:
+        await asyncio.sleep(0.2)  # let watch connect + subscribe
+        broker.publish(Event(topic="tether.absent", payload={"how": "grace"}))
+        await asyncio.sleep(0.2)  # let the push reach watch + print
+    finally:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+        await server.stop()
+    out = capsys.readouterr().out
+    assert "watching" in out  # the subscribe banner
+    assert "TETHER" in out  # the streamed event was rendered

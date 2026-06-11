@@ -7,6 +7,30 @@ from __future__ import annotations
 from typing import Any
 
 
+def render_event(topic: str, payload: dict[str, Any]) -> str:
+    """Render one pushed event (topic + payload) as a concise operator line for
+    `chimera watch`. Known critical topics get a friendly summary; anything else
+    falls back to the raw topic (+ payload)."""
+    p = payload or {}
+    if topic == "tether.absent":
+        return "TETHER: paired device absent (dead-man tripped)"
+    if topic == "tether.escalation":
+        return (
+            f"TETHER: escalation {p.get('stage', '?')} -> {p.get('action_requested', '?')}"
+        )
+    if topic == "tether.recovered":
+        return "TETHER: paired device recovered"
+    if topic == "pulse.mode.changed":
+        return f"PULSE: mode -> {p.get('new_mode', '?')}"
+    if topic == "oracle.anomaly.detected":
+        return f"ORACLE: anomaly detected (score {p.get('score', '?')})"
+    if topic == "purge.imminent":
+        return "PURGE: imminent — modules zeroing keys"
+    if topic in ("vault.locked", "vault.unlocked", "vault.relocked"):
+        return f"VAULT: {topic.split('.', 1)[1]}"
+    return f"{topic} {p}" if p else topic
+
+
 def render_status(payload: dict[str, Any]) -> str:
     """Render the core.status payload as a readable organism view: a core header
     (version + uptime) and one row per registered module (status, version, method
