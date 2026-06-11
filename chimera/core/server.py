@@ -36,6 +36,7 @@ from typing import Any, ClassVar
 
 from pydantic import ValidationError
 
+from core.audit import AuditLog
 from core.broker import Event, EventBroker, Subscription, SubscriptionClosedError
 from core.config import CoreConfig
 from core.envelope import (
@@ -144,6 +145,7 @@ class Server:
         token_issuer: TokenIssuer,
         override_store: OverrideStore | None = None,
         shim_client: ShimClient | None = None,
+        audit_log: AuditLog | None = None,
     ) -> None:
         self._config = config
         self._registry = registry
@@ -152,6 +154,10 @@ class Server:
         self._token_issuer = token_issuer
         self._override_store = override_store
         self._shim_client = shim_client
+        # Reflex audit trail (AD-1): every reflex core actuates is recorded here, so the
+        # operator can answer "why did my vault lock?" post-hoc. Always on — defaults to
+        # audit.jsonl beside the sockets when not injected.
+        self._audit_log = audit_log or AuditLog(config.socket_dir / "audit.jsonl")
         self._core_path = config.socket_dir / "core.sock"
         self._events_path = config.socket_dir / "events.sock"
         self._core_server: asyncio.Server | None = None
@@ -439,21 +445,36 @@ class Server:
         return await self._issue_to_module(method, params)
 
     async def _relay_one(self, topic: str, target: str) -> None:
-        """Issue one relay target on core's authority, isolating every failure mode."""
+        """Issue one relay target on core's authority, isolating every failure mode.
+
+        Every actuation is recorded to the audit trail (AD-1) with its outcome — ok or a
+        short failure string — so the operator can review what the organism did and why.
+        """
         try:
             reply = await self._dispatch_internal(target, None)
         except RpcError as exc:
             logger.warning("anomaly relay %s -> %s failed: %s", topic, target, exc)
+            self._audit(topic, target, f"error: {exc}")
             return
-        except Exception:  # noqa: BLE001 — relay must never crash the consume loop
+        except Exception as exc:  # noqa: BLE001 — relay must never crash the consume loop
             logger.exception("anomaly relay %s -> %s raised", topic, target)
+            self._audit(topic, target, f"error: {exc}")
             return
         if reply.error is not None:
             logger.warning(
                 "anomaly relay %s -> %s returned error: %s", topic, target, reply.error
             )
+            self._audit(topic, target, f"error: {reply.error.get('message', reply.error)}")
         else:
             logger.info("anomaly relay %s -> %s ok", topic, target)
+            self._audit(topic, target, "ok")
+
+    def _audit(self, topic: str, target: str, outcome: str) -> None:
+        """Record one actuated reflex; a failing audit write must never break a reflex."""
+        try:
+            self._audit_log.record(topic=topic, commands=[target], outcome=outcome)
+        except OSError:
+            logger.exception("audit write failed for %s -> %s", topic, target)
 
     async def _relay_handle(self, event: Event) -> None:
         """Relay one broker event to ALL its mapped module commands (RELAY_RULES).

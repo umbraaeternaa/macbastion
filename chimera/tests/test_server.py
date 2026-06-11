@@ -1430,6 +1430,40 @@ class TestAnomalyRelay:
         await task
 
 
+class TestReflexAudit:
+    """AD-1: every reflex core actuates is recorded to the audit trail with its outcome,
+    so the operator can answer "why did my vault lock?" post-hoc."""
+
+    async def test_successful_reflex_is_audited_ok(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        _vc, vfake = await _attach_registered_module(server, "vault", ["vault.lock"])
+        task = asyncio.create_task(
+            server._relay_handle(Event(topic="tether.absent", payload={}))
+        )
+        for _ in range(4):
+            await asyncio.sleep(0)
+        forwarded = vfake.last_request()
+        server._resolve_pending(
+            Response(jsonrpc="2.0", id=forwarded.id, result={"ok": True})
+        )
+        await task
+        recent = server._audit_log.recent()
+        assert len(recent) == 1
+        assert recent[0]["topic"] == "tether.absent"
+        assert recent[0]["commands"] == ["vault.lock"]
+        assert recent[0]["outcome"] == "ok"
+
+    async def test_offline_reflex_is_audited_as_error(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        # No module attached -> vault.lock target is offline -> the reflex fails,
+        # but the failure is recorded (the audit trail captures what did NOT happen too).
+        await server._relay_handle(Event(topic="tether.absent", payload={}))
+        recent = server._audit_log.recent()
+        assert len(recent) == 1
+        assert recent[0]["topic"] == "tether.absent"
+        assert "error" in recent[0]["outcome"]
+
+
 class TestPulseVaultReflex:
     """Cognitive reflex (the "one mind" reacting to the OPERATOR): entering PULSE's
     'exhausted' mode — the operator is critically fatigued — auto-locks the vault.
