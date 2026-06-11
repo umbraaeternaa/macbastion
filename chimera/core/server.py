@@ -124,6 +124,11 @@ class Server:
         # plaintext RAM mount is torn down (VD-9b). vault.lock with no params locks
         # whatever vault is currently open.
         "tether.absent": ["vault.lock"],
+        # De-escalation — the threat has passed: the paired phone is back in range, so the
+        # operator is present and the posture relaxes. Stand DOWN the obfuscation organs
+        # that anomaly ramped up (the reflex web goes down, not only up). The vault is NOT
+        # auto-unlocked — re-opening always requires a deliberate unlock (no auto-trust).
+        "tether.recovered": ["chaff.generation.stop", "echo.stop"],
     }
 
     def __init__(

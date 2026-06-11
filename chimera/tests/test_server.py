@@ -1381,6 +1381,29 @@ class TestAnomalyRelay:
         )
         await task  # completes without raising
 
+    # De-escalation (the missing direction): when the threat passes — the paired phone
+    # returns (tether.recovered) — the organism STANDS DOWN the obfuscation organs it
+    # ramped up on threat. The reflex web can now go down, not only up.
+    async def test_tether_recovered_stands_down_obfuscation(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        _cc, cfake = await _attach_registered_module(
+            server, "chaff", ["chaff.generation.stop"]
+        )
+        _ec, efake = await _attach_registered_module(server, "echo", ["echo.stop"])
+        task = asyncio.create_task(
+            server._relay_handle(Event(topic="tether.recovered", payload={}))
+        )
+        for _ in range(4):
+            await asyncio.sleep(0)
+        assert cfake.frames(), "tether.recovered should stand down CHAFF"
+        assert efake.frames(), "tether.recovered should stand down ECHO"
+        cfwd, efwd = cfake.last_request(), efake.last_request()
+        assert cfwd.method == "chaff.generation.stop"
+        assert efwd.method == "echo.stop"
+        server._resolve_pending(Response(jsonrpc="2.0", id=cfwd.id, result={"ok": True}))
+        server._resolve_pending(Response(jsonrpc="2.0", id=efwd.id, result={"ok": True}))
+        await task
+
 
 class TestPulseVaultReflex:
     """Cognitive reflex (the "one mind" reacting to the OPERATOR): entering PULSE's
