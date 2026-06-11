@@ -83,8 +83,11 @@ offline/timeout/error so a sibling reflex survives. `oracle.anomaly.detected` no
 depth). D7 wire guard untouched; anomaly-tripwire e2e still green. 1 RED->GREEN (597 default). 966 -> 967.
 
 Current cross-module reflexes (`RELAY_RULES`): `oracle.anomaly.detected -> [tether.heighten, vault.lock]`;
-`tether.absent -> [vault.lock]` (dead-man auto-lock, commit `696e2e8`). NEXT: more reflexes (PULSE-fatigue
-gating, etc.), live-wire the tether->vault chain e2e, or a new module slice.
+`tether.absent -> [vault.lock]` (dead-man auto-lock, commit `696e2e8`). ✅ **LIVE-WIRE-VERIFIED e2e** (core
+in-process + the real VAULT daemon + a real hdiutil RAM mount): create -> unlock (mount up) -> publish
+`tether.absent` -> the relay issued `vault.lock` -> the daemon locked + unmounted (vault_open False,
+/Volumes mount gone) -> clean. The "one mind" runs on real hardware. NEXT: more reflexes (PULSE-fatigue
+gating, etc.) or a new module slice.
 
 Prior milestone: **TETHER-loss auto-locks the open vault** (commit `696e2e8`) — first cross-module reflex;
 `tether.absent -> vault.lock` on the relay path (the paired phone leaving range locks the open vault + tears
