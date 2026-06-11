@@ -51,10 +51,59 @@ static void test_status_reports_no_open_vault(void) {
     cJSON_Delete(root);
 }
 
-static void test_policy_update_is_gated_31004(void) {
-    cJSON *root = dispatch("vault.policy.update"); /* policy.update engine not built yet */
-    TEST_ASSERT_EQUAL_INT(-31004, error_code(root));
-    cJSON_Delete(root);
+static cJSON *make_create_params(const char *name, const char *dsl); /* fwd */
+
+static char *create_get_id(char *id_out, size_t sz) {
+    cJSON *cp = make_create_params("p", "allow_when: hour >= 9 and hour <= 17");
+    cJSON *croot = dispatch_params("vault.create", cp);
+    cJSON *vid = cJSON_GetObjectItemCaseSensitive(
+        cJSON_GetObjectItemCaseSensitive(croot, "result"), "vault_id");
+    snprintf(id_out, sz, "%s", vid->valuestring);
+    cJSON_Delete(croot);
+    cJSON_Delete(cp);
+    return id_out;
+}
+
+static void test_policy_update_changes_policy(void) {
+    setup_tmp_state();
+    char id[64];
+    create_get_id(id, sizeof(id));
+    cJSON *up = cJSON_CreateObject();
+    cJSON_AddStringToObject(up, "vault_id", id);
+    cJSON_AddStringToObject(up, "policy_dsl", "allow_when: hour >= 0 and hour <= 23");
+    cJSON *uroot = dispatch_params("vault.policy.update", up);
+    cJSON_Delete(up);
+    cJSON *result = cJSON_GetObjectItemCaseSensitive(uroot, "result");
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(result, "ok")));
+    cJSON_Delete(uroot);
+}
+
+static void test_policy_update_unknown_denied(void) {
+    setup_tmp_state();
+    cJSON *up = cJSON_CreateObject();
+    cJSON_AddStringToObject(up, "vault_id", "0123456789abcdef0123456789abcdef");
+    cJSON_AddStringToObject(up, "policy_dsl", "allow_when: hour >= 9 and hour <= 17");
+    cJSON *uroot = dispatch_params("vault.policy.update", up);
+    cJSON_Delete(up);
+    cJSON *result = cJSON_GetObjectItemCaseSensitive(uroot, "result");
+    TEST_ASSERT_TRUE(cJSON_IsFalse(cJSON_GetObjectItemCaseSensitive(result, "ok")));
+    TEST_ASSERT_EQUAL_STRING(
+        "no_such_vault",
+        cJSON_GetObjectItemCaseSensitive(result, "reason")->valuestring);
+    cJSON_Delete(uroot);
+}
+
+static void test_policy_update_rejects_bad_dsl(void) {
+    setup_tmp_state();
+    char id[64];
+    create_get_id(id, sizeof(id));
+    cJSON *up = cJSON_CreateObject();
+    cJSON_AddStringToObject(up, "vault_id", id);
+    cJSON_AddStringToObject(up, "policy_dsl", "this is not valid dsl !!!");
+    cJSON *uroot = dispatch_params("vault.policy.update", up);
+    cJSON_Delete(up);
+    TEST_ASSERT_EQUAL_INT(-32602, error_code(uroot)); /* fail-closed on an unparsable policy */
+    cJSON_Delete(uroot);
 }
 
 static cJSON *make_create_params(const char *name, const char *dsl) {
@@ -161,7 +210,9 @@ static void test_unknown_method_is_32601(void) {
 
 void run_commands_tests(void) {
     RUN_TEST(test_status_reports_no_open_vault);
-    RUN_TEST(test_policy_update_is_gated_31004);
+    RUN_TEST(test_policy_update_changes_policy);
+    RUN_TEST(test_policy_update_unknown_denied);
+    RUN_TEST(test_policy_update_rejects_bad_dsl);
     RUN_TEST(test_create_returns_vault_id);
     RUN_TEST(test_create_rejects_bad_policy);
     RUN_TEST(test_list_returns_created_vault);

@@ -138,7 +138,7 @@ static void test_unlock_key_unavailable_denied(void) {
     vault_runtime_t rt;
     vault_runtime_init(&rt);
     char *vid = create_vault(&rt, "secrets", "allow_when: hour >= 9 and hour <= 17");
-    vault_keychain_backend_t fb = {fail_load, fail_store};
+    vault_keychain_backend_t fb = {fail_load, fail_store, NULL};
     vault_keychain_set_backend(fb); /* keychain now fails -> derive must fail */
     cJSON *root = unlock(&rt, vid);
     const char *r = denied_reason(root);
@@ -280,6 +280,67 @@ static void test_unlock_opens_sealed_files(void) {
     free(vid);
 }
 
+static cJSON *policy_update(vault_runtime_t *rt, const char *vault_id, const char *dsl) {
+    cJSON *p = cJSON_CreateObject();
+    cJSON_AddStringToObject(p, "vault_id", vault_id);
+    cJSON_AddStringToObject(p, "policy_dsl", dsl);
+    cJSON *id = cJSON_CreateNumber(9);
+    char *resp = vault_commands_dispatch(rt, "vault.policy.update", p, id);
+    cJSON_Delete(p);
+    cJSON_Delete(id);
+    TEST_ASSERT_NOT_NULL(resp);
+    cJSON *root = cJSON_Parse(resp);
+    free(resp);
+    TEST_ASSERT_NOT_NULL(root);
+    return root;
+}
+
+static void test_policy_update_refused_with_content(void) {
+    /* Changing the policy changes the derived key, which would orphan sealed ciphertext —
+     * policy.update must refuse a non-empty vault (MANIFESTO §4: no silent data loss). */
+    unlock_setup();
+    g_hour = 12;
+    vault_runtime_t rt;
+    vault_runtime_init(&rt);
+    char *vid = create_vault(&rt, "s", "allow_when: hour >= 9 and hour <= 17");
+    cJSON_Delete(unlock(&rt, vid)); /* open */
+    char src[256];
+    snprintf(src, sizeof(src), "/tmp/chimera-vault-pu-XXXXXX");
+    int fd = mkstemp(src);
+    TEST_ASSERT_TRUE(fd >= 0);
+    TEST_ASSERT_EQUAL_INT(6, (int)write(fd, "secret", 6));
+    close(fd);
+    cJSON_Delete(add_file(&rt, vid, src));
+    unlink(src);
+    cJSON_Delete(lock_vault(&rt, vid));
+    cJSON *root = policy_update(&rt, vid, "allow_when: hour >= 0 and hour <= 23");
+    cJSON *result = cJSON_GetObjectItemCaseSensitive(root, "result");
+    TEST_ASSERT_TRUE(cJSON_IsFalse(cJSON_GetObjectItemCaseSensitive(result, "ok")));
+    TEST_ASSERT_EQUAL_STRING(
+        "vault_not_empty",
+        cJSON_GetObjectItemCaseSensitive(result, "reason")->valuestring);
+    cJSON_Delete(root);
+    free(vid);
+}
+
+static void test_policy_update_changes_decision(void) {
+    /* create with an ALLOW-now policy, re-policy to a fail-closed DENY, then unlock must be
+     * denied — proving the policy was genuinely rewritten in the registry. */
+    unlock_setup();
+    g_hour = 12;
+    vault_runtime_t rt;
+    vault_runtime_init(&rt);
+    char *vid = create_vault(&rt, "s", "allow_when: hour >= 9 and hour <= 17");
+    cJSON *uroot = policy_update(&rt, vid, "allow_when: tether == present");
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(
+        cJSON_GetObjectItemCaseSensitive(uroot, "result"), "ok")));
+    cJSON_Delete(uroot);
+    cJSON *root = unlock(&rt, vid); /* now evaluated under the NEW policy -> denied */
+    TEST_ASSERT_NOT_NULL(denied_reason(root));
+    cJSON_Delete(root);
+    free(vid);
+}
+
 void run_unlock_tests(void) {
     RUN_TEST(test_unlock_allows_in_window);
     RUN_TEST(test_unlock_denies_fail_closed);
@@ -291,4 +352,6 @@ void run_unlock_tests(void) {
     RUN_TEST(test_add_file_seals_when_open);
     RUN_TEST(test_add_file_refused_when_locked);
     RUN_TEST(test_unlock_opens_sealed_files);
+    RUN_TEST(test_policy_update_refused_with_content);
+    RUN_TEST(test_policy_update_changes_decision);
 }

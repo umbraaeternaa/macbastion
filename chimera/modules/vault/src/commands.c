@@ -560,18 +560,69 @@ static char *handle_delete(vault_runtime_t *rt, const cJSON *params, const cJSON
     return jsonrpc_serialize_response(id, r);
 }
 
-/* The methods whose real behaviour (decrypt / mount / re-encrypt) is not built yet — refuse
- * rather than fake it (MANIFESTO §4). */
-static int is_engine_method(const char *method) {
-    static const char *const ENGINE[] = {
-        "vault.policy.update",
-    };
-    for (size_t i = 0; i < sizeof(ENGINE) / sizeof(ENGINE[0]); i++) {
-        if (strcmp(method, ENGINE[i]) == 0) {
-            return 1;
+/* vault.policy.update (VD-8): replace a vault's access policy. Validates the new DSL (fail-closed),
+ * then — because the key derives from master||policy_hash — REFUSES a vault that holds sealed
+ * content (changing the policy changes the key, which would orphan the ciphertext; MANIFESTO §4:
+ * no silent data loss). An empty vault's policy is rewritten in place + the vault closed if open.
+ * {ok:true}; {ok:false, reason:no_such_vault|vault_not_empty}; -32602 on an unparsable DSL. */
+static char *handle_policy_update(vault_runtime_t *rt, const cJSON *params, const cJSON *id) {
+    const cJSON *vid = cJSON_GetObjectItem(params, "vault_id");
+    const cJSON *dsl = cJSON_GetObjectItem(params, "policy_dsl");
+    if (!cJSON_IsString(vid) || !cJSON_IsString(dsl)) {
+        return jsonrpc_serialize_error(id, -32602, "vault_id and policy_dsl required", NULL);
+    }
+    char errbuf[256];
+    VaultPolicy *pol = vault_parse(dsl->valuestring, errbuf, sizeof(errbuf));
+    if (pol == NULL) {
+        return jsonrpc_serialize_error(id, -32602, "invalid policy_dsl", NULL);
+    }
+    vault_policy_free(pol);
+
+    cJSON *reg = load_registry(rt->meta_dir);
+    cJSON *entry = NULL;
+    cJSON *e = NULL;
+    cJSON_ArrayForEach(e, reg) {
+        const cJSON *eid = cJSON_GetObjectItem(e, "vault_id");
+        if (cJSON_IsString(eid) && strcmp(eid->valuestring, vid->valuestring) == 0) {
+            entry = e;
+            break;
         }
     }
-    return 0;
+    if (entry == NULL) {
+        cJSON_Delete(reg);
+        cJSON *r = cJSON_CreateObject();
+        cJSON_AddBoolToObject(r, "ok", 0);
+        cJSON_AddStringToObject(r, "reason", "no_such_vault");
+        return jsonrpc_serialize_response(id, r);
+    }
+    /* refuse if the vault holds sealed content — re-keying it would orphan the ciphertext */
+    char fpath[1200];
+    snprintf(fpath, sizeof(fpath), "%s/%s.files.json", rt->meta_dir, vid->valuestring);
+    cJSON *sealed = load_array_file(fpath);
+    int has_content = cJSON_GetArraySize(sealed) > 0;
+    cJSON_Delete(sealed);
+    if (has_content) {
+        cJSON_Delete(reg);
+        cJSON *r = cJSON_CreateObject();
+        cJSON_AddBoolToObject(r, "ok", 0);
+        cJSON_AddStringToObject(r, "reason", "vault_not_empty");
+        return jsonrpc_serialize_response(id, r);
+    }
+    cJSON_ReplaceItemInObject(entry, "policy_dsl", cJSON_CreateString(dsl->valuestring));
+    int rc = save_registry(rt->meta_dir, reg);
+    cJSON_Delete(reg);
+    if (rc != 0) {
+        return jsonrpc_serialize_error(id, -32000, "persist failed", NULL);
+    }
+    /* the policy (and thus the derived key) changed — close the vault so the next unlock
+     * re-evaluates from scratch under the new policy. */
+    if (strcmp(rt->open_vault_id, vid->valuestring) == 0) {
+        rt->open_vault_id[0] = '\0';
+        rt->relock_at = 0;
+    }
+    cJSON *r = cJSON_CreateObject();
+    cJSON_AddBoolToObject(r, "ok", 1);
+    return jsonrpc_serialize_response(id, r);
 }
 
 char *vault_commands_dispatch(vault_runtime_t *rt, const char *method, const cJSON *params,
@@ -603,8 +654,8 @@ char *vault_commands_dispatch(vault_runtime_t *rt, const char *method, const cJS
     if (strcmp(method, "vault.delete") == 0) {
         return handle_delete(rt, params, id);
     }
-    if (is_engine_method(method)) {
-        return jsonrpc_serialize_error(id, -31004, "vault engine not available", NULL);
+    if (strcmp(method, "vault.policy.update") == 0) {
+        return handle_policy_update(rt, params, id);
     }
     return jsonrpc_serialize_error(id, -32601, "method not found", NULL);
 }
