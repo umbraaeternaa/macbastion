@@ -490,6 +490,47 @@ class TestCoreStatus:
         resp = await server.handle_command(_req("core.status"), conn)
         assert resp.result["reactive"]["pulse_mode"] == "tired"
 
+
+# ---------------------------------------------------------------------------
+# core.audit handler — the reflex trail over the socket (AD-3)
+# ---------------------------------------------------------------------------
+
+
+class TestCoreAudit:
+    """core.audit exposes the reflex audit trail over core.sock, so connected clients
+    (swiftbar, remote tools) can query it through the same JSON-RPC surface as everything
+    else — not only the local file-reading CLI."""
+
+    async def test_returns_recorded_entries(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        server._audit_log.record(
+            topic="tether.absent", commands=["vault.lock"], outcome="ok"
+        )
+        conn = server.new_connection()
+        resp = await server.handle_command(_req("core.audit"), conn)
+        assert resp.error is None, resp.error  # method is recognized
+        entries = resp.result["entries"]
+        assert len(entries) == 1
+        assert entries[0]["topic"] == "tether.absent"
+        assert entries[0]["commands"] == ["vault.lock"]
+
+    async def test_empty_when_nothing_recorded(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        conn = server.new_connection()
+        resp = await server.handle_command(_req("core.audit"), conn)
+        assert resp.error is None, resp.error
+        assert resp.result["entries"] == []
+
+    async def test_respects_n_param(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        for i in range(5):
+            server._audit_log.record(topic=f"t{i}", commands=["x"], outcome="ok")
+        conn = server.new_connection()
+        resp = await server.handle_command(_req("core.audit", n=2), conn)
+        assert resp.error is None, resp.error
+        topics = [e["topic"] for e in resp.result["entries"]]
+        assert topics == ["t3", "t4"]  # the last 2, in chronological order
+
     async def test_reactive_section_lists_armed_reflexes(self, tmp_path: Any) -> None:
         server = _make_server(tmp_path)
         conn = server.new_connection()

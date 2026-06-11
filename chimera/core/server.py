@@ -92,6 +92,7 @@ class Server:
             "core.deregister",
             "core.capabilities",
             "core.status",
+            "core.audit",
             "core.subscribe",
             "core.override.set",
             "core.lock",
@@ -226,6 +227,8 @@ class Server:
             return self._registry.capabilities()
         if method == "core.status":
             return self._handle_status()
+        if method == "core.audit":
+            return self._handle_audit(params)
         if method == "core.subscribe":
             return self._handle_subscribe(params, conn)
         if method == "core.override.set":
@@ -334,6 +337,21 @@ class Server:
             "modules": modules,
             "reactive": {"pulse_mode": self._pulse_mode or "normal", "reflexes": reflexes},
         }
+
+    def _handle_audit(
+        self, params: dict[str, Any] | list[Any] | None
+    ) -> dict[str, Any]:
+        """core.audit (operator/surface query, AD-3) — the reflex audit trail over the
+        socket: {entries: [...]}, the last n actuations in chronological order. Lets
+        connected clients read WHAT the core actuated WHEN through the same JSON-RPC
+        surface as everything else, not only the local file-reading CLI. Optional `n`
+        (default 50) caps how many to return."""
+        n = 50
+        if isinstance(params, dict):
+            raw = params.get("n")
+            if isinstance(raw, int) and not isinstance(raw, bool) and raw > 0:
+                n = raw
+        return {"entries": self._audit_log.recent(n)}
 
     def _handle_subscribe(
         self, params: dict[str, Any] | list[Any] | None, conn: Connection
