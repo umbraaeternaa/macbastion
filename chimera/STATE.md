@@ -7,16 +7,16 @@
 
 ## Completed module specifications
 
-| Module | Lang  | Commit    | Notes                          |
-|--------|-------|-----------|--------------------------------|
-| CHAFF  | C     | `e0c8116` | §5.1 — background traffic gen  |
-| ECHO   | C     | `a64f7d9` | §5.2                           |
-| ORACLE | Py    | `2f753cb` | §5.3 — local LLM anomaly detect|
-| MIRROR | C     | `a951c92` | §5.4 — behavioral noise inject |
-| PULSE  | C+Py  | `5f5b64a` | §5.5 — cognitive load monitor  |
-| VAULT  | C     | `1fdc517` | §5.6 — time-locked storage     |
-| TETHER | C++   | `3b5fca9` | §5.7 — proximity dead-man      |
-| PURGE  | C+Asm | `4a3c9df` | §5.8 — secure erasure (panic)  |
+| Module | Lang  | Commit    | Notes                           |
+|--------|-------|-----------|---------------------------------|
+| CHAFF  | C     | `e0c8116` | §5.1 — background traffic gen   |
+| ECHO   | C     | `a64f7d9` | §5.2                            |
+| ORACLE | Py    | `2f753cb` | §5.3 — local LLM anomaly detect |
+| MIRROR | C     | `a951c92` | §5.4 — behavioral noise inject  |
+| PULSE  | C+Py  | `5f5b64a` | §5.5 — cognitive load monitor   |
+| VAULT  | C     | `1fdc517` | §5.6 — time-locked storage      |
+| TETHER | C++   | `3b5fca9` | §5.7 — proximity dead-man       |
+| PURGE  | C+Asm | `4a3c9df` | §5.8 — secure erasure (panic)   |
 
 All 8 of 8 module specifications complete. Part 2 (§5) closed.
 
@@ -24,13 +24,13 @@ Genesis commit (manifesto + architecture Part 1): `f229751`
 
 ## Completed design records
 
-| Record | Commit    | Notes                                            |
-|--------|-----------|--------------------------------------------------|
-| UX     | `cb10247` | UX surface decision — CLI + swiftbar + event stream (`chimera/docs/UX.md`) |
-| OPSEC  | `a3ae3ad` | Operator security discipline — companion to §8 (`chimera/docs/OPSEC.md`) |
-| SHIM   | `7092f8e` | Privileged shim decisions SH-1…12 + secret-handoff SS-0…7 + SH-5 staged amendment (`chimera/docs/SHIM.md`) |
-| ORACLE_EXPLAIN | `ea10e5e` | Explainability design EP-1…9 (`chimera/docs/ORACLE_EXPLAIN.md`) |
-| ORACLE_TIMEMACHINE | `e1c3cbc` | Time-machine design TM-1…11 (`chimera/docs/ORACLE_TIMEMACHINE.md`) |
+| Record             | Commit    | Notes                                                                                                      |
+|--------------------|-----------|------------------------------------------------------------------------------------------------------------|
+| UX                 | `cb10247` | UX surface decision — CLI + swiftbar + event stream (`chimera/docs/UX.md`)                                 |
+| OPSEC              | `a3ae3ad` | Operator security discipline — companion to §8 (`chimera/docs/OPSEC.md`)                                   |
+| SHIM               | `7092f8e` | Privileged shim decisions SH-1…12 + secret-handoff SS-0…7 + SH-5 staged amendment (`chimera/docs/SHIM.md`) |
+| ORACLE_EXPLAIN     | `ea10e5e` | Explainability design EP-1…9 (`chimera/docs/ORACLE_EXPLAIN.md`)                                            |
+| ORACLE_TIMEMACHINE | `e1c3cbc` | Time-machine design TM-1…11 (`chimera/docs/ORACLE_TIMEMACHINE.md`)                                         |
 
 ---
 
@@ -39,6 +39,7 @@ Genesis commit (manifesto + architecture Part 1): `f229751`
 Last completed section: **§8** (Part 5 of 5). Part 1 (§1–§4) also complete.
 
 Done:
+
 - §5 — Detailed module specs (Part 2) — **DONE** (8/8: `4a3c9df` closes it)
 - §6 — IPC protocol: JSON-RPC schemas (Part 3) — **DONE** (`3daa138`)
 - §7 — Module lifecycle (Part 4) — **DONE** (`1863057`)
@@ -57,6 +58,7 @@ the architectural document is whole and authoritative. No spec work remains.
 - **7 design documents total** — 5 ARCHITECTURE parts + UX.md + OPSEC.md
 
 **Next — code phase begins:**
+
 - Core skeleton, targeted at chimera **v0.2.0** — socket server, router, broker,
   registry, capability-token issuer, privileged shim
 
@@ -139,13 +141,13 @@ subscribes to `tether.escalation` (`_escalation_loop` / `_on_tether_escalation`)
 action per stage: **L1 `lock_screen` -> `shim.lock`** (physically lock the Mac via the privileged shim);
 **L2 `lock_vaults` -> `vault.lock`**; **L3 `trigger_purge` -> NEVER auto-run** (irreversible; PURGE stays
 operator opt-in via `core.purge`, only logged). Each action isolated. Graduated dead-man: brief absence ->
-screen, longer -> vaults, longest -> (opt-in) PURGE. 3 RED->GREEN (603 default). 970 -> 973. mypy --strict
-+ ruff clean. NEXT: a new module slice, or harden/extend reflexes.
+screen, longer -> vaults, longest -> (opt-in) PURGE. 3 RED->GREEN (603 default). 970 -> 973. mypy --strict + ruff clean. NEXT: a new module slice, or harden/extend reflexes.
 
 Prior milestone: **PULSE-exhaustion auto-locks the vault** (commit `b5d31af`) — the reflex TRIAD's operator
 arm; `_apply_pulse_mode` issues `vault.lock` on the transition into `exhausted`. 3 RED->GREEN.
 
 The reflex TRIAD — the "one mind" secures the vault from three angles:
+
 - **Environment**: `tether.absent -> [vault.lock]` (dead-man — paired phone left range; commit `696e2e8`).
 - **Threat**: `oracle.anomaly.detected -> [tether.heighten, vault.lock, chaff.generation.start, echo.start]` (fan-out + active obfuscation: CHAFF volume + ECHO timing; commits `ae3f405`, `837a739`, `5cfe243`).
 - **Stand-down**: `tether.recovered -> [chaff.generation.stop, echo.stop]` (de-escalation — the reflex web's down direction; threat passed -> obfuscation organs relax; vault stays locked, no auto-unlock; commit `f51bdf0`).
@@ -355,8 +357,7 @@ killall) talks to it over JSON-RPC — verified against a fake shim AND the LIVE
 peercred-authorized). 5 RED->GREEN integration; ruff + mypy clean. 897 -> 902. NOTE: code-signing
 keystone done the local way — sign.sh auto-uses a VALID keychain identity (self-signed needs GUI
 trust; Keychain Access is hidden behind the Passwords app on this macOS — created via Certificate
-Assistant if no Apple cert). NEXT: P4c — wire a real op into core logic (e.g. gate/TETHER -> shim.lock)
-+ shim Slice 2 per-boot secret (the destructive ops stay no-op until then).
+Assistant if no Apple cert). NEXT: P4c — wire a real op into core logic (e.g. gate/TETHER -> shim.lock) + shim Slice 2 per-boot secret (the destructive ops stay no-op until then).
 
 Prior milestone: **crash-restart** (commit `6f43c72`) — CR-1. Closed the self-heal gap: an abruptly
 killed module (socket drops, no graceful core.deregister) used to stay REGISTERED forever (the sweep
@@ -391,8 +392,7 @@ Prior milestone: **restart policy** (commit `9481c1f`) — SV-3, day-14 supervis
 prunes old) + `Supervisor.restart(name, now)` — respawns within budget, returns the backoff delay,
 and after MAX_RESTARTS (5/hour) gives up -> PERMANENTLY_FAILED (`dead`). Pure + DI (injected now /
 fake spawn), fully unit-tested. 7 RED->GREEN; ruff + mypy --strict clean. 883 -> 890. NEXT: SV-4
-chimera up/down CLI + LaunchAgent plist (the visible payoff: one command brings the organism alive)
-+ wiring restart into a live heartbeat monitor.
+chimera up/down CLI + LaunchAgent plist (the visible payoff: one command brings the organism alive) + wiring restart into a live heartbeat monitor.
 
 Prior milestone: **module supervisor** (commit `e8102c9`) — SV-2, day-14 supervisor arc. `core/
 supervisor.py`: `topological_waves(specs)` layers modules into dependency waves (§7.3; rejects
@@ -486,8 +486,7 @@ NOTHING: `purge_classify(encrypted)` → SHRED if encrypted, else SKIP_UNENCRYPT
 to pretend-wipe unencrypted SSD — no security theatre); `purge_build_plan(...)` builds the
 keys-first tier report (Tier 0 + Tier 3 always-on, Tier 1 configurable, Tier 2 classified only
 when enabled). 7 Unity RED->GREEN; added to check.sh. ⚠️ DEFERRED/GATED: ALL real destruction —
-Keychain eviction, Mach VM, ARM64 dc zva, libsodium/explicit_bzero, the daemon + purge.arm/trigger
-+ emergency choreography.
+Keychain eviction, Mach VM, ARM64 dc zva, libsodium/explicit_bzero, the daemon + purge.arm/trigger + emergency choreography.
 
 Prior milestone: **ECHO stats core** (commit `a0a8014`) — §5.2 §5, ET-1…5. ECHO's accounting:
 `stats.{h,c}` — `echo_stats_t` accumulates per-tick (real, padding) into totals + a 10-bin decile
@@ -585,7 +584,7 @@ Prior milestone: **PULSE mode.changed emission** (commit `76e9955`) — §5.5, E
 now EMITS `pulse.mode.changed` on a mode transition: a tick-loop computes `_compute(now)`
 (temporal_signal -> assess; primary_signal='temporal' — the only present group this slice), and
 on a real mode change emits {old_mode, new_mode, score, primary_signal} as an advisory
-Notification (announce ≠ act; core relays per §5). The first tick establishes _last_mode (no
+Notification (announce ≠ act; core relays per §5). The first tick establishes `_last_mode` (no
 emit). 3 hermetic client-unit RED->GREEN (FakeWriter + seeded store + injected now); ruff + mypy
 --strict clean. 748 -> 751 (+3). ⚠️ emission is DORMANT during calibration (baseline_ready False
 -> mode always 'normal' -> no transitions); it fires once calibrated / with live signals.
@@ -593,7 +592,7 @@ pulse.error not yet emitted.
 
 Prior milestone: **PULSE daemon** (commit `44280d2`) — §5.5, PULSE becomes a LIVE module.
 `client.py` (module-only, mirrors ORACLE's command connection): opens core.sock, core.register
-(pulse.* + 2 events, depends_on=[]), serves pulse.* via the 4A router, heartbeats. `pulse.status`
+(`pulse.*` + 2 events, depends_on=[]), serves `pulse.*` via the 4A router, heartbeats. `pulse.status`
 composes the live edge — temporal_signal(now) feeds the empty `temporal` slot of assess(store,…)
 -> {score, mode, baseline_ready, session_minutes}; advisory + fail-OPEN (uncalibrated -> mode
 'normal', §8). pulse.weights.set (sum=1.0 validated) / enable / disable. `__main__.py` = `python -m
@@ -671,6 +670,7 @@ chaff 46, mirror 42, shim 23, tether 48, vault 44.
 Prior milestone: **VAULT crypto engine** (commit `e82f69b`) — the FIFTH native
 module gets real cryptography via libsodium (the first VAULT external dependency;
 the pure-C phase ends here, deliberately). Three primitives:
+
 - `vault_crypto_derive` — Argon2id MODERATE (crypto_pwhash, OPSLIMIT/MEMLIMIT_MODERATE,
   ALG_ARGON2ID13); password = master_secret ‖ policy_hash (binds the key to the
   policy). The combined buffer holds the RAW master secret → it lives in sodium_malloc
@@ -706,6 +706,7 @@ etc.); its Slice 1 NO-OP skeleton is now done (`e60e8ae`), with the per-boot
 secret (Slice 2) gated on code-signing (§5.5) and real ops deferred to Slice 3+.
 
 **`chimera/core/` — 8 of 8 modules implemented:**
+
 - `errors` (§6.5) — JSON-RPC + CHIMERA error codes, RpcError — DONE (`f284891`)
 - `envelope` (§6.4) — JSON-RPC 2.0 wire format, parse/serialize, NDJSON — DONE (`6ed8e77`)
 - `config` (§6.3, §7, §8) — CoreConfig: paths, defaults, env > toml > defaults hierarchy — DONE (`a6eed2a`)
@@ -718,6 +719,7 @@ secret (Slice 2) gated on code-signing (§5.5) and real ops deferred to Slice 3+
 No scaffold remains — all 8 core modules implemented.
 
 **Native modules (`chimera/modules/`) — 4 of 8 started:**
+
 - `chaff` (§5.1) — first native module, working daemon. C17 + ARM64 (Make +
   vendored Unity/cJSON); connects to core, registers + heartbeats, serves chaff.*
   via the 4A router, emits events, generates decoy HTTPS traffic (two pthread
@@ -745,8 +747,7 @@ No scaffold remains — all 8 core modules implemented.
   D11 self-loop guard (oracle.* ignored). BaselineStore = SQLite (events +
   baseline_meta) + Fernet (payload/ctx encrypted at rest), thread-safe
   (check_same_thread=False + RLock), blocking writes off-loaded via
-  asyncio.to_thread. advisory-only (D4): no acting methods. Mode B: oracle.classify
-  + oracle.threshold.set via 4A run a real local LLM (llama3.2:1b Q8_0 via Ollama)
+  asyncio.to_thread. advisory-only (D4): no acting methods. Mode B: oracle.classify + oracle.threshold.set via 4A run a real local LLM (llama3.2:1b Q8_0 via Ollama)
   with structured output (format=schema); detector.py + llm.py + prompt.py; context
   = recent_events + summary (baseline-aware); D6 gate (-31004 if Ollama down, Mode A
   survives); malformed → INTERNAL_ERROR (no fake 0.5); threshold meta-backed (0.7);
@@ -778,7 +779,7 @@ No scaffold remains — all 8 core modules implemented.
   escalation ladder (grace→L1→L2→L3). Daemon: Monitor.step composes the engine
   units (EWMA→FSM→classify→escalation), emits transition events (present/fringe/
   absent+class/recovered/suspicious) + escalation-on-stage-change while absent;
-  daemon_run does core.register (tether.* + 6 real events, depends_on=[]) → inline
+  daemon_run does core.register (`tether.*` + 6 real events, depends_on=[]) → inline
   poll loop (serve via 4A, TICK→Monitor.step→emit, 10s heartbeat); make_source
   env-gated (TETHER_SYNTHETIC_RSSI→SyntheticSource else CoreBluetoothSource, gated/
   empty — §4 never fabricates presence). Escalation is EMIT-ONLY — engine evaluate()
@@ -786,8 +787,7 @@ No scaffold remains — all 8 core modules implemented.
   (VAULT) / L3 (PURGE) per spec §5. L3 opt-in, default DISABLED; INSTANT_DROP shifts
   the schedule later (anti-weaponization). Slice 3A react-entrypoint (idea #3):
   tether.heighten/relax + effective_grace_ms(base, heightened) with HEIGHTEN_FACTOR=2
-  (grace halved → escalation REQUESTED sooner), shared by commands (status/dry-run)
-  + Monitor; relax is an exact idempotent restore (base grace_ms never mutated);
+  (grace halved → escalation REQUESTED sooner), shared by commands (status/dry-run) + Monitor; relax is an exact idempotent restore (base grace_ms never mutated);
   Monitor.set_heightened re-arms the ladder with the effective grace (real sync,
   engine class untouched). EMIT-ONLY holds — more sensitive, never more active.
   3A = grace-only (near_threshold-heighten deferred — PresenceMachine not re-armed).
@@ -805,8 +805,7 @@ No scaffold remains — all 8 core modules implemented.
   when an operator-authored policy evaluates ALLOW against the current context (time
   / presence / module-state) — not key-gated (§2). Slice 1 = the PURE policy DSL
   engine: lexer (idents/numbers/"strings"/operators/punct) + recursive-descent
-  parser (or>and>not>primary → AST: allow_when expression + optional relock_after)
-  + typed evaluator (numeric < <= > >= == != between; enum/string == != in;
+  parser (or>and>not>primary → AST: allow_when expression + optional relock_after) + typed evaluator (numeric < <= > >= == != between; enum/string == != in;
   and/or/not/parens). ⚠️ fail-closed tri-state {TRUE,FALSE,ERROR}: NULL policy /
   unknown variable / type mismatch / not-running-module value (no explicit `unknown`
   opt-out) → ERROR, propagates through not/and/or, NEVER → ALLOW; not-TRUE = DENY
@@ -822,8 +821,7 @@ No scaffold remains — all 8 core modules implemented.
   XChaCha20-Poly1305 seal/open (192-bit random nonce, fail-closed verify+wipe), sodium
   secure memory (guard+canary+mlock). catch 1 RESOLVED (libsodium; §6 amended). Spec
   amended: XChaCha20 over AES-GCM (catch B) + stable key_salt (catch A).
-  44 C Unity (6 lexer + 6 parser + 9 evaluator + 6 fail_closed + 3 relock + 7 decide
-  + 7 crypto), `make all` -Werror clean. GATED/deferred: Keychain/Secure-Enclave
+  44 C Unity (6 lexer + 6 parser + 9 evaluator + 6 fail_closed + 3 relock + 7 decide + 7 crypto), `make all` -Werror clean. GATED/deferred: Keychain/Secure-Enclave
   master secret (entitlements), mount_tmpfs (catch 2 — root), kqueue relock, IPC/daemon
   (catch 3 — jsonrpc). vault.lock (§6) is the TETHER L2 escalation target.
   — slice 1 `655f183` + DEFER `165a1de` + crypto `e82f69b`
@@ -833,8 +831,7 @@ No scaffold remains — all 8 core modules implemented.
   (chaff/mirror/shim/tether) link it, compiled per-consumer with that module's
   STRICT flags (cJSON-agnostic — the consumer's -I supplies cJSON). VAULT daemon =
   next (first NEW) consumer. — JE-1 done (24cf41f/611c16c/c25dfec/2245f09)
-- `pulse` (`modules/pulse/`) — STARTED (NOT complete): scoring slice 1 (`d9b0a42`) + baseline store slice 2 (`bef89a6`)
-  + assess wiring slice 3 (`54b2751`) + temporal group B (`abd2bf3`) + daemon (`44280d2`) + mode.changed emission (`76e9955`) + danger-registry (`b87be5a`) + §6 finishers calibrate/pulse.error (`53547ad`). §5.5 Cognitive Load Monitor — the operator-facing cognitive gate
+- `pulse` (`modules/pulse/`) — STARTED (NOT complete): scoring slice 1 (`d9b0a42`) + baseline store slice 2 (`bef89a6`) + assess wiring slice 3 (`54b2751`) + temporal group B (`abd2bf3`) + daemon (`44280d2`) + mode.changed emission (`76e9955`) + danger-registry (`b87be5a`) + §6 finishers calibrate/pulse.error (`53547ad`). §5.5 Cognitive Load Monitor — the operator-facing cognitive gate
   ("idea #4"), the only module watching the OPERATOR not the system. pure-Python
   (like ORACLE): `scoring.py` weighted-sum + renorm-to-1.0 + mode `[lo,hi)` + clamp +
   delta-normalize; weights validated (Σ=1.0 else ValueError). ⚠️ fail-safe -> `normal`
@@ -865,6 +862,7 @@ topology stays clean. (A — TETHER subscribing oracle.anomaly.detected — was
 rejected despite the existing ORACLE←chaff.* event-subscription precedent, because
 it couples TETHER to ORACLE's topic. The D7 command-plane guard is preserved: only
 core, as authority, turns the event into a command.) Slices:
+
 - **3A — TETHER react-entrypoint** — DONE (`994a5c4`): tether.heighten/relax +
   Monitor sync, EMIT-ONLY (sensitivity, not actuation), engine untouched.
 - **3B — CORE relay** — DONE (`666794d`): core-internal broker-subscription on
@@ -885,6 +883,7 @@ core, as authority, turns the event into a command.) Slices:
   (pass-on-write; 0 production code). 2 tests (happy + threshold-gate negative).
 
 **Privileged shim (`chimera/shim/`) — trust-plane, NOT one of the 8 organs:**
+
 - Top-level `chimera/shim/` (§8.8 / §7.10) — a root LaunchDaemon doing EXACTLY 4
   ops, distinct from the 8 module organs AND from the Python `core/`. C17 (Make +
   vendored Unity/cJSON; jsonrpc copied from the CHAFF/MIRROR lineage). Slice 1
@@ -903,6 +902,7 @@ core, as authority, turns the event into a command.) Slices:
 **Tooling:** `pyproject.toml` + `uv.lock` + `.venv` (Python 3.13.9); ruff + mypy (strict) + pytest configured. Direct deps: cryptography, pydantic(-settings), **ollama==0.6.2** (§6-allowed; httpx + anyio/certifi transitive). pytest markers: `integration`, `ollama`. Native C deps (Homebrew, fail-fast in each Makefile, §6 allowlist): openssl@3 + sqlite3 (CHAFF), **libsodium (VAULT crypto — XChaCha20-Poly1305/Argon2id/secure-mem)**.
 
 **Tests:**
+
 - Python (pytest, default): 595 passing (31 errors + 41 envelope + 36 config + 35 tokens + 36 broker + 63 lifecycle + 60 registry + 86 server [81 + 5 anomaly-relay 3B] + 12 oracle observe-first + 17 oracle Mode B + 10 oracle explainability + 8 oracle time-machine + 8 oracle NL-ask [7 ask + 1 advisory] + 3 oracle anomaly-emit [3C client-unit] + 22 pulse scoring [slice 1] + 24 pulse baseline store [slice 2] + 10 pulse assess [slice 3] + 10 pulse temporal [group B] + 3 pulse emission [EM] + 5 pulse danger-registry [DR] + 5 pulse finishers [PF] + 8 core gate [GE] + 5 core gate-wiring [GW] + 7 core override [OV] + 3 core gate-override + 5 core override.set [OS] + 6 core gate-hardening [GH] + 3 core entry [SV-1] + 10 core supervisor [SV-2 + T0-c purge_kill] + 8 core CLI [SV-4 + A-4 frozen-plist + shim-check] + 4 core autonomy [SV-5'] (lifecycle owns §7.5 restart) + 3 core mark-lost [CR-1] + 1 core lock [P4c] + 1 core graceful-down [GD] + 3 core tier0 [PURGE T0-a: evict via shim + state wipe] + 3 core purge [T0-b: core.purge -> broadcast + Tier-0])
 - Python (integration, marked — `pytest -m integration`): 57 passing (2 core.lock [forwards + LIVE shim] + 8 shim-client [fake + LIVE root shim ping->pong + handshake secret-issuance/caching 2b-iii] + 1 crash-restart [kill echo -> core marks FAILED] + 1 chimera-up [python -m core up brings the organism alive] + 1 supervisor [ECHO+PURGE via dependency waves] + 2 core entry [python -m core serves + clean SIGTERM] + 1 multi-module e2e [ECHO+PURGE+PULSE coexist on one core] + 4 CHAFF + 2 ECHO daemon + 2 PURGE daemon + 4 MIRROR + 5 TETHER + 4 PULSE daemon + 2 PULSE danger + 2 core gate-wiring + 2 anomaly-tripwire e2e [#3 3D: ORACLE+core+TETHER full spin] + 14 ORACLE: 4 observe-first + 3 Mode B hermetic + 2 Time-Machine query + 2 NL-ask + 3 real-Ollama); the 3 real-Ollama skip when Ollama is down. NOTE: real-socket integration needs a short `--basetemp` (AF_UNIX path-too-long, see Open tails)
 - Python (ollama, marked — `pytest -m ollama`): 3 passing (subset of integration; real llama3.2:1b)
@@ -916,6 +916,7 @@ core, as authority, turns the event into a command.) Slices:
 - Total: 1017 passing (645 default [incl 22 pulse scoring + 24 pulse baseline + 10 pulse assess + 10 pulse temporal + 3 pulse emission + 5 pulse danger-registry + 5 pulse finishers + 8 core gate + 5 core gate-wiring + 7 core override + 3 core gate-override + 5 core override.set + 6 core gate-hardening + 3 core entry + 10 core supervisor + 8 core CLI + 4 core autonomy + 3 core mark-lost + 1 core lock + 1 core graceful-down + 3 core tier0 + 3 core purge + 1 core tether->vault relay + 1 core fan-out relay + 2 core anomaly-obfuscation (chaff+echo) + 1 core de-escalation (recovered stand-down) + 3 ORACLE all-clear (anomaly.cleared hysteresis) + 1 core anomaly-cleared stand-down + 6 core audit store + 2 core audit wiring + 6 core audit surface (render+CLI) + 2 core shim-escalation audit + 3 core pulse->vault reflex + 3 core tether-escalation actuation + 19 core status-view/watch] + 59 integration + 46 CHAFF + 31 ECHO + 35 PURGE + 42 MIRROR + 38 shim + 48 TETHER + 74 VAULT Unity; ollama subset not double-counted)
 
 **Open tails (honest tracking, MANIFESTO §4):**
+
 - Fernet at-rest: CHAFF (C/OpenSSL) and ORACLE (Python `cryptography.Fernet`) share the format but interop is NOT cross-tested (B1 deferred; format-faithful).
 - No supervisor — CHAFF, MIRROR, and ORACLE all exit on core-disconnect (graceful, no module auto-restart yet). Core auto-restart is launchd's job (a LaunchAgent KeepAlive plist), which is SEPARATE from the §8.8 privileged-ops shim — §7.10 prose conflates the two.
 - Privileged shim (§8.8) — Slice 1 NO-OP skeleton DONE (`e60e8ae`): socket SERVER + peercred (LOCAL_PEERCRED) + 4-op enum + ping/pong; peercred-only (SS-6, no secret); all 4 ops no-op (F3 — ZERO destructive effect). Scope is EXACTLY 4 root ops: lock screen (TETHER L1), evict CHIMERA Keychain (PURGE Tier 0), force-reboot (PURGE post-action), force-killall (Core §7.7 shutdown). §8.8 explicitly never opens sockets, reads files, or runs operator code; only core talks to it (per-boot shared secret — Slice 2).
@@ -928,7 +929,7 @@ core, as authority, turns the event into a command.) Slices:
 - Anomaly-Tripwire e2e test (test_anomaly_tripwire_integration.py, #3 3D) — FULL spin (core + ORACLE in-process + the TETHER C++ binary subprocess) over real sockets; proves the chain by observing tether.status heightened false→true after a high-score oracle.classify. The only seam is FakeDetector score (no Ollama, deterministic). A confirmation test (pass-on-write), NOT RED→GREEN — pure test, 0 production code (all links were already done). Negative test covers the threshold gate (low score → no heighten).
 - CORE-initiated command is a NEW capability (idea #3 3B, `666794d`): before, core only forwarded operator commands via `_route`; now `_dispatch_internal` lets core issue a command to a module on its OWN authority. ⚠️ D7 is preserved — `_dispatch_internal` is in-process only, NOT wire-reachable (no JSON-RPC method maps to it), so a module-over-the-wire invoking another module still gets -31007 (NOT_AUTHORIZED). The relay loop is the only caller; resilient (try/except → log, never crashes the consume loop).
 - RELAY_RULES is declarative {event_topic → module.method}, a Server ClassVar (METHOD_TIMEOUTS precedent). One rule now: oracle.anomaly.detected → tether.heighten. Adding a tripwire = adding a row, not code. Param-mapping deferred — v1 issues the command with NO params (tether.heighten needs none); a payload→params mapper lands only when a future rule requires it.
-- ⚠️ config.set → Monitor grace-sync gap (PRE-EXISTING, not introduced by 3A): tether.config.set mutates rt.escalation.grace_ms (+ presence.near_threshold), but the Monitor holds its OWN ec_ — only l3_armed is mirrored to the live Monitor (set_l3_armed). So a grace change via config.set does NOT reach the running ladder. Slice 3A heighten DOES its part correctly (set_heightened is mirrored after dispatch, beside the l3 sync); config.set's grace/near_threshold sync is a separate tail to fix (mirror config.set → Monitor too, or have Monitor read live config).
+- ⚠️ config.set → Monitor grace-sync gap (PRE-EXISTING, not introduced by 3A): tether.config.set mutates rt.escalation.grace_ms (+ presence.near_threshold), but the Monitor holds its OWN `ec_` — only `l3_armed` is mirrored to the live Monitor (set_l3_armed). So a grace change via config.set does NOT reach the running ladder. Slice 3A heighten DOES its part correctly (set_heightened is mirrored after dispatch, beside the l3 sync); config.set's grace/near_threshold sync is a separate tail to fix (mirror config.set → Monitor too, or have Monitor read live config).
 - TETHER near_threshold-heighten deferred — Slice 3A is grace-only (the escalation ladder is re-armed per ABSENT, so an effective grace applies naturally). Heightening near_threshold would need the PresenceMachine (constructed once, NOT re-armed) to read live config or be reconstructed — a later tail if anomaly-reaction should also detect absence sooner.
 - TETHER GATED / out of slice: CoreBluetooth .mm BLE source (Bluetooth HW + TCC) — make_source returns an EMPTY gated CoreBluetoothSource in production (no synthetic fallback off TETHER_SYNTHETIC_RSSI — §4 never fabricates presence); IRK/companion pairing in Keychain/Secure Enclave (the SAME entitlement blocker as VAULT); real L1/L2/L3 effects (core-enforced downstream — L2 needs VAULT, L3 needs PURGE, neither built). The escalation L1/L2/L3 events have no live consumer until shim ops / VAULT / PURGE exist.
 - ✅ TE-7b (4 jsonrpc copies, chaff→mirror→shim→tether) — RESOLVED by the JE-1 extract (chaff `24cf41f` pilot + mirror `611c16c` + shim `c25dfec` + tether `2245f09`). The 4 copies are now ONE canonical `modules/common/jsonrpc.{h,c}`; drift eliminated (each was byte-identical modulo its `<MOD>_result_t` namespace — proven per migration by normalized-diff = only the top comment). C++ tether links the C unit via the common header's `extern "C"` (compiled C `clang -std=c17`, linked clang++). No longer a debt.
@@ -943,7 +944,7 @@ core, as authority, turns the event into a command.) Slices:
 - ⭐ VAULT tamper-test assertion corrected (`e82f69b`) — NOT test-fitting (same class as TETHER's test_present_from_fringe: impl design-correct, the test encoded the wrong post-condition). The RED test asserted a specific sentinel byte survived after a failed open (out[0]==0xAA), but the agreed defensive active-wipe (design-pass nuance 3) zeroes pt_out on failure. The real invariant is "no plaintext leak", not a sentinel — corrected to `memcmp(out, pt, ptlen) != 0` (impl-agnostic: holds whether wiped to 0 or left untouched).
 - ✅ VAULT catch 3 — jsonrpc 5th copy — RESOLVED: `modules/common/jsonrpc` now EXISTS (JE-1 extract). VAULT's daemon-slice will LINK common as the FIRST new consumer (D1=C done), never a 5th copy. The trigger fired ahead of VAULT — the extract was done proactively across the existing 4 modules.
 - vault.lock (§6) is the TETHER L2 escalation target — when VAULT's daemon + vault.lock land, core can enforce TETHER L2 (tether.escalation → vault.lock), giving #3's L2 a live consumer (currently L2/L3 escalation events have none). Nuance: vault.lock takes {vault_id}; routing an escalation to it means "lock the currently-open vault" — a downstream wiring detail for that slice.
-- 0 of 8 native modules NOT started — ALL 8 ORGANS UNDERWAY. CHAFF + MIRROR + ORACLE done; PURGE started (dry-run planner `1481d6d` + target registry `aea7b86` + config `811a261` + command dispatch `76b7b10` + socket loop `3acf1f7` — LIVE registered module (honest-wipe classify + tier plan + Tier-2 list + serves purge.* over the wire); ⚠️ real destruction (trigger -31004; Keychain/Mach VM/dc zva/libsodium) gated); ECHO started (shaper `ca06b25` + config `2f381ce` + stats `a0a8014` + command dispatch `c89844d` + socket loop `b223236` — LIVE registered module (register + serve echo.* over the wire); ⚠️ real pf/BPF shaping still gated); TETHER started (engine + daemon-wiring + Slice 3A); VAULT started (policy + DEFER + crypto; Keychain/mount/daemon gated); PULSE started (scoring slice 1 `d9b0a42` + baseline store slice 2 `bef89a6` + assess wiring slice 3 `54b2751` + temporal group B `abd2bf3` + daemon `44280d2` + mode.changed emission `76e9955` + danger-registry `b87be5a`; ⚠️ NOT complete — LIVE module (registers, serves pulse.* incl danger-registry, emits pulse.mode.changed) but live signal collection (MIRROR group-A / kqueue idle / ORACLE drift) STILL gated (§6 method surface COMPLETE incl calibrate + pulse.error `53547ad`) + core gate-enforcement — DECISION (`core/gate.py` `7d6c8fa`) + LIVE WIRING (`fbe64cc`: block/delay in `_route` + mode-track + danger-refresh) done + override-phrase storage (`3564968`: PBKDF2 store, gate honors `_override`, secret stripped) done + operator set-phrase (`22aebc7`: core.override.set, surface-only) done; ⚠️ confirm-dialog (surface) + external-OS gating (CLI/shell) + live registry-refresh still deferred; change-requires-current DONE `db19bd5`).
+- 0 of 8 native modules NOT started — ALL 8 ORGANS UNDERWAY. CHAFF + MIRROR + ORACLE done; PURGE started (dry-run planner `1481d6d` + target registry `aea7b86` + config `811a261` + command dispatch `76b7b10` + socket loop `3acf1f7` — LIVE registered module (honest-wipe classify + tier plan + Tier-2 list + serves `purge.*` over the wire); ⚠️ real destruction (trigger -31004; Keychain/Mach VM/dc zva/libsodium) gated); ECHO started (shaper `ca06b25` + config `2f381ce` + stats `a0a8014` + command dispatch `c89844d` + socket loop `b223236` — LIVE registered module (register + serve `echo.*` over the wire); ⚠️ real pf/BPF shaping still gated); TETHER started (engine + daemon-wiring + Slice 3A); VAULT started (policy + DEFER + crypto; Keychain/mount/daemon gated); PULSE started (scoring slice 1 `d9b0a42` + baseline store slice 2 `bef89a6` + assess wiring slice 3 `54b2751` + temporal group B `abd2bf3` + daemon `44280d2` + mode.changed emission `76e9955` + danger-registry `b87be5a`; ⚠️ NOT complete — LIVE module (registers, serves pulse.* incl danger-registry, emits pulse.mode.changed) but live signal collection (MIRROR group-A / kqueue idle / ORACLE drift) STILL gated (§6 method surface COMPLETE incl calibrate + pulse.error `53547ad`) + core gate-enforcement — DECISION (`core/gate.py` `7d6c8fa`) + LIVE WIRING (`fbe64cc`: block/delay in `_route` + mode-track + danger-refresh) done + override-phrase storage (`3564968`: PBKDF2 store, gate honors `_override`, secret stripped) done + operator set-phrase (`22aebc7`: core.override.set, surface-only) done; ⚠️ confirm-dialog (surface) + external-OS gating (CLI/shell) + live registry-refresh still deferred; change-requires-current DONE `db19bd5`).
 - MIRROR CGEventTap install — GATED on code-signing + Accessibility TCC (§6/§9); mirror.enable returns -31004 until then. The code-signing tail is now shared across MIRROR (tap), shim Slice 2 (secret in hardened-runtime memory), and TETHER (CoreBluetooth TCC + IRK in Keychain).
 - MIRROR no event producer yet — daemon wiring done, but drain_events is only a forward-compat seam (queue empty); events ship when the tap lands.
 - MIRROR → PULSE aggregate-event gap (D8) — PULSE expects a periodic aggregate event MIRROR doesn't yet define; address at PULSE time.
@@ -962,5 +963,5 @@ core, as authority, turns the event into a command.) Slices:
 - ORACLE first core touch: core/server.py METHOD_TIMEOUTS += oracle.ask:15.0 (NL-12a, data-driven cold ~4.4s).
 - ORACLE baseline.export (§5.3 spec-debt) explicitly deferred (TM-9b) — separate slice.
 - ORACLE real event input is CHAFF only — MIRROR emits nothing yet, so chaff.* is the sole live source feeding the baseline.
-- ORACLE standalone `python -m oracle` needs modules/oracle on PYTHONPATH (proper editable-package install is a follow-up; __main__ cannot self-fix the import path).
+- ORACLE standalone `python -m oracle` needs modules/oracle on PYTHONPATH (proper editable-package install is a follow-up; `__main__` cannot self-fix the import path).
 - ORACLE client.py (D1=c, Python) carries a TODO to extract a shared Python module-client at the 2nd Python module (mirror of the C D1=C duplication).
