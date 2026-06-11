@@ -63,8 +63,14 @@ class AuditLog:
         self._path.write_text("\n".join(lines[-self._max:]) + "\n", encoding="utf-8")
         self._path.chmod(0o600)
 
-    def recent(self, n: int = 50) -> list[dict[str, Any]]:
+    def recent(
+        self, n: int = 50, *, failures_only: bool = False
+    ) -> list[dict[str, Any]]:
         """The last n actuations in chronological order; [] if nothing recorded.
+
+        failures_only — keep only entries whose outcome isn't "ok" ("what FAILED?").
+        Filtering scans the whole (capped) trail before taking the last n, so a failure
+        isn't missed just because successful actuations followed it.
 
         A corrupt/half-written line is skipped, never raised — the trail must remain
         readable even after an unclean shutdown."""
@@ -75,11 +81,16 @@ class AuditLog:
         except OSError:
             return []
         out: list[dict[str, Any]] = []
-        for line in lines[-n:]:
+        # Filtering must look at the whole trail; the unfiltered path keeps the cheap
+        # last-n-lines window (behaviour unchanged).
+        for line in lines if failures_only else lines[-n:]:
             try:
                 parsed = json.loads(line)
             except ValueError:
                 continue
-            if isinstance(parsed, dict):
-                out.append(parsed)
-        return out
+            if not isinstance(parsed, dict):
+                continue
+            if failures_only and parsed.get("outcome") == "ok":
+                continue
+            out.append(parsed)
+        return out[-n:] if failures_only else out

@@ -531,6 +531,27 @@ class TestCoreAudit:
         topics = [e["topic"] for e in resp.result["entries"]]
         assert topics == ["t3", "t4"]  # the last 2, in chronological order
 
+    async def test_failures_only_filters_to_failures(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        server._audit_log.record(
+            topic="tether.absent", commands=["vault.lock"], outcome="ok"
+        )
+        server._audit_log.record(
+            topic="oracle.anomaly", commands=["vault.lock"], outcome="error: module offline"
+        )
+        server._audit_log.record(
+            topic="tether.recovered", commands=["echo.stop"], outcome="ok"
+        )
+        conn = server.new_connection()
+        resp = await server.handle_command(
+            _req("core.audit", failures_only=True), conn
+        )
+        assert resp.error is None, resp.error
+        entries = resp.result["entries"]
+        assert len(entries) == 1  # only the failed reflex
+        assert entries[0]["topic"] == "oracle.anomaly"
+        assert "offline" in entries[0]["outcome"]
+
     async def test_reactive_section_lists_armed_reflexes(self, tmp_path: Any) -> None:
         server = _make_server(tmp_path)
         conn = server.new_connection()

@@ -61,6 +61,19 @@ def test_record_caps_to_max_entries(tmp_path: Any) -> None:
     assert len(lines) == 5
 
 
+def test_recent_failures_only(tmp_path: Any) -> None:
+    # "what reflexes FAILED?" — recent(failures_only=True) keeps only non-ok outcomes,
+    # scanning the whole trail so a failure isn't missed just because OK events followed it.
+    log = AuditLog(tmp_path / "audit.jsonl")
+    log.record(topic="tether.absent", commands=["vault.lock"], outcome="ok")
+    log.record(topic="oracle.anomaly", commands=["vault.lock"], outcome="error: module offline")
+    log.record(topic="tether.recovered", commands=["echo.stop"], outcome="ok")
+    fails = log.recent(failures_only=True)
+    assert [e["topic"] for e in fails] == ["oracle.anomaly"]  # only the failure
+    assert "offline" in fails[0]["outcome"]
+    assert len(log.recent()) == 3  # unfiltered still returns all three
+
+
 def test_file_is_owner_only(tmp_path: Any) -> None:
     path = Path(tmp_path / "audit.jsonl")
     log = AuditLog(path)

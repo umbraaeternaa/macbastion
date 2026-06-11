@@ -345,13 +345,16 @@ class Server:
         socket: {entries: [...]}, the last n actuations in chronological order. Lets
         connected clients read WHAT the core actuated WHEN through the same JSON-RPC
         surface as everything else, not only the local file-reading CLI. Optional `n`
-        (default 50) caps how many to return."""
+        (default 50) caps how many to return; optional `failures_only` keeps only the
+        actuations that did NOT succeed ("did any reflex fail?")."""
         n = 50
+        failures_only = False
         if isinstance(params, dict):
             raw = params.get("n")
             if isinstance(raw, int) and not isinstance(raw, bool) and raw > 0:
                 n = raw
-        return {"entries": self._audit_log.recent(n)}
+            failures_only = bool(params.get("failures_only"))
+        return {"entries": self._audit_log.recent(n, failures_only=failures_only)}
 
     def _handle_subscribe(
         self, params: dict[str, Any] | list[Any] | None, conn: Connection
