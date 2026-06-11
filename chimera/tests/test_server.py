@@ -1356,3 +1356,59 @@ class TestPulseVaultReflex:
         server._pulse_mode = "exhausted"  # already there — no fresh transition
         await server._apply_pulse_mode("exhausted")
         assert vfake.frames() == []
+
+
+class _FakeShim:
+    """Minimal ShimClient stand-in capturing screen-lock requests."""
+
+    def __init__(self) -> None:
+        self.locked = 0
+
+    async def lock(self) -> dict[str, Any]:
+        self.locked += 1
+        return {"ok": True}
+
+
+class TestTetherEscalationReflex:
+    """The dead-man's graduated teeth: core actuates TETHER's escalation requests
+    (EMIT-ONLY in TETHER). L1 -> screen-lock (shim); L2 -> vault.lock; L3 (PURGE) is
+    opt-in and NEVER auto-run.
+    """
+
+    def _esc(self, stage: str, action: str) -> Event:
+        return Event(
+            topic="tether.escalation",
+            payload={"stage": stage, "action_requested": action, "grace_remaining": 0},
+        )
+
+    async def test_l1_locks_screen_via_shim(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        shim = _FakeShim()
+        server._shim_client = shim  # type: ignore[assignment]
+        await server._on_tether_escalation(self._esc("L1", "lock_screen"))
+        assert shim.locked == 1
+
+    async def test_l2_locks_vault(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        _vc, vfake = await _attach_registered_module(server, "vault", ["vault.lock"])
+        task = asyncio.create_task(
+            server._on_tether_escalation(self._esc("L2", "lock_vaults"))
+        )
+        for _ in range(4):
+            await asyncio.sleep(0)
+        assert vfake.frames(), "L2 should lock the vault"
+        forwarded = vfake.last_request()
+        assert forwarded.method == "vault.lock"
+        server._resolve_pending(
+            Response(jsonrpc="2.0", id=forwarded.id, result={"ok": True})
+        )
+        await task
+
+    async def test_l3_never_auto_purges(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        shim = _FakeShim()
+        server._shim_client = shim  # type: ignore[assignment]
+        _vc, vfake = await _attach_registered_module(server, "vault", ["vault.lock"])
+        await server._on_tether_escalation(self._esc("L3", "trigger_purge"))
+        assert shim.locked == 0  # PURGE is opt-in — no screen lock, no vault lock, no wipe
+        assert vfake.frames() == []

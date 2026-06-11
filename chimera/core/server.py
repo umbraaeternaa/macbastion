@@ -158,6 +158,9 @@ class Server:
         self._gate_sub: Subscription | None = None
         self._gate_task: asyncio.Task[None] | None = None
         self._refresh_task: asyncio.Task[None] | None = None
+        # Dead-man actuation: react to TETHER's graduated escalation requests.
+        self._escalation_sub: Subscription | None = None
+        self._escalation_task: asyncio.Task[None] | None = None
 
     # -- connections ------------------------------------------------------
 
@@ -517,6 +520,38 @@ class Server:
         if new_mode == "exhausted" and prev != "exhausted":
             await self._relay_one("pulse.mode.changed", "vault.lock")
 
+    async def _on_tether_escalation(self, event: Event) -> None:
+        """Actuate TETHER's graduated dead-man escalation (EMIT-ONLY in TETHER — the
+        Monitor only REQUESTS; core acts). L1 -> screen-lock via the privileged shim;
+        L2 -> vault.lock; L3 (PURGE) is opt-in and is NEVER auto-run from a reflex.
+        Each action is isolated so a failure never crashes the consume loop.
+        """
+        action = event.payload.get("action_requested")
+        if action == "lock_screen":
+            if self._shim_client is not None:
+                try:
+                    await self._shim_client.lock()
+                except Exception:  # noqa: BLE001 — reflex must never crash the loop
+                    logger.exception("tether escalation: shim screen-lock failed")
+        elif action == "lock_vaults":
+            await self._relay_one("tether.escalation", "vault.lock")
+        elif action == "trigger_purge":
+            # L3 is the nuclear option — irreversible. Auto-running it from a reflex is
+            # unsafe; PURGE stays operator opt-in (core.purge), never an automatic effect.
+            logger.warning(
+                "tether escalation requested PURGE (L3) — opt-in only, not auto-run"
+            )
+
+    async def _escalation_loop(self) -> None:
+        """Consume tether.escalation events and actuate each (errors isolated)."""
+        assert self._escalation_sub is not None
+        try:
+            while True:
+                event = await self._escalation_sub.get()
+                await self._on_tether_escalation(event)
+        except SubscriptionClosedError:
+            return
+
     async def _refresh_danger(self) -> None:
         """Query pulse.danger.list and cache the danger set (GW-3).
 
@@ -600,6 +635,9 @@ class Server:
         # GW-2: track PULSE's mode via pulse.mode.changed.
         self._gate_sub = self._broker.subscribe(["pulse.mode.changed"])
         self._gate_task = asyncio.create_task(self._gate_loop())
+        # Dead-man actuation: react to TETHER's graduated escalation ladder.
+        self._escalation_sub = self._broker.subscribe(["tether.escalation"])
+        self._escalation_task = asyncio.create_task(self._escalation_loop())
 
     async def stop(self) -> None:
         """Stop accepting, close both sockets, unlink them, cancel the sweep."""
@@ -620,7 +658,7 @@ class Server:
         if self._relay_sub is not None:
             self._relay_sub.close()
             self._relay_sub = None
-        for task in (self._gate_task, self._refresh_task):
+        for task in (self._gate_task, self._refresh_task, self._escalation_task):
             if task is not None:
                 task.cancel()
                 try:
@@ -629,9 +667,13 @@ class Server:
                     pass
         self._gate_task = None
         self._refresh_task = None
+        self._escalation_task = None
         if self._gate_sub is not None:
             self._gate_sub.close()
             self._gate_sub = None
+        if self._escalation_sub is not None:
+            self._escalation_sub.close()
+            self._escalation_sub = None
         for server in (self._core_server, self._events_server):
             if server is not None:
                 server.close()
