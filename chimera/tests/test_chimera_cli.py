@@ -24,6 +24,18 @@ def test_parse_args_shim_check():
     assert parse_args(["shim-check"]).command == "shim-check"
 
 
+def test_parse_args_audit_defaults():
+    args = parse_args(["audit"])
+    assert args.command == "audit"
+    assert args.n == 50
+    assert args.failures is False  # show all by default
+
+
+def test_parse_args_audit_failures_flag():
+    # `chimera audit --failures` — mirror the core.audit failures-only filter locally.
+    assert parse_args(["audit", "--failures"]).failures is True
+
+
 def test_module_binary_path():
     p = module_binary("echo")
     assert isinstance(p, Path)

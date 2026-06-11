@@ -86,6 +86,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     audit_p.add_argument(
         "-n", type=int, default=50, help="how many recent actuations to show (default 50)"
     )
+    audit_p.add_argument(
+        "--failures",
+        action="store_true",
+        help="show only actuations that did NOT succeed (did any reflex fail?)",
+    )
     return parser.parse_args(argv)
 
 
@@ -306,12 +311,13 @@ async def _watch(config: CoreConfig) -> int:
     return 0
 
 
-def _audit(config: CoreConfig, n: int) -> int:
+def _audit(config: CoreConfig, n: int, failures_only: bool = False) -> int:
     """`chimera audit`: print the reflex audit trail. Reads audit.jsonl straight off
-    disk — no core socket needed, so it works even when core is down. Always exit 0
+    disk — no core socket needed, so it works even when core is down. With
+    failures_only, show only actuations that did NOT succeed. Always exit 0
     (an empty/absent trail is a friendly notice, not an error)."""
     log = AuditLog(config.socket_dir / "audit.jsonl")
-    print(render_audit(log.recent(n)))
+    print(render_audit(log.recent(n, failures_only=failures_only)))
     return 0
 
 
@@ -325,7 +331,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "watch":
         raise SystemExit(asyncio.run(_watch(config)))
     if args.command == "audit":
-        raise SystemExit(_audit(config, args.n))
+        raise SystemExit(_audit(config, args.n, args.failures))
     if args.command == "plist":
         print(launch_agent_plist(config.socket_dir))
         return
