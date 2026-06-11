@@ -501,9 +501,21 @@ class Server:
                 event = await self._gate_sub.get()
                 new_mode = event.payload.get("new_mode")
                 if isinstance(new_mode, str):
-                    self._pulse_mode = new_mode
+                    await self._apply_pulse_mode(new_mode)
         except SubscriptionClosedError:
             return
+
+    async def _apply_pulse_mode(self, new_mode: str) -> None:
+        """Adopt PULSE's new mode (GW-2) and run the cognitive reflex (the "one mind"
+        reacting to the OPERATOR): the transition INTO 'exhausted' — the operator is
+        critically fatigued — auto-locks the vault, securing the data when the human is
+        not sharp. Issued once per entry on core's authority (like the relay), errors
+        isolated; lower-friction modes (caution/tired) are left to the gate, not a lock.
+        """
+        prev = self._pulse_mode
+        self._pulse_mode = new_mode
+        if new_mode == "exhausted" and prev != "exhausted":
+            await self._relay_one("pulse.mode.changed", "vault.lock")
 
     async def _refresh_danger(self) -> None:
         """Query pulse.danger.list and cache the danger set (GW-3).

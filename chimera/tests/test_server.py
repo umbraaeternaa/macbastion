@@ -1321,3 +1321,38 @@ class TestAnomalyRelay:
             Response(jsonrpc="2.0", id=forwarded.id, result={"ok": True})
         )
         await task  # completes without raising
+
+
+class TestPulseVaultReflex:
+    """Cognitive reflex (the "one mind" reacting to the OPERATOR): entering PULSE's
+    'exhausted' mode — the operator is critically fatigued — auto-locks the vault.
+    Fired once on the transition INTO exhausted, on core's authority, errors isolated.
+    """
+
+    async def test_exhausted_locks_vault(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        _vc, vfake = await _attach_registered_module(server, "vault", ["vault.lock"])
+        task = asyncio.create_task(server._apply_pulse_mode("exhausted"))
+        for _ in range(4):  # let the reflex forward + register its pending future
+            await asyncio.sleep(0)
+        assert vfake.frames(), "entering exhausted should lock the vault"
+        forwarded = vfake.last_request()
+        assert forwarded.method == "vault.lock"
+        server._resolve_pending(
+            Response(jsonrpc="2.0", id=forwarded.id, result={"ok": True})
+        )
+        await task
+
+    async def test_tired_does_not_lock(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        _vc, vfake = await _attach_registered_module(server, "vault", ["vault.lock"])
+        await server._apply_pulse_mode("tired")  # friction mode, not a lock
+        assert vfake.frames() == []
+        assert server._pulse_mode == "tired"  # mode still tracked
+
+    async def test_no_relock_when_already_exhausted(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        _vc, vfake = await _attach_registered_module(server, "vault", ["vault.lock"])
+        server._pulse_mode = "exhausted"  # already there — no fresh transition
+        await server._apply_pulse_mode("exhausted")
+        assert vfake.frames() == []
