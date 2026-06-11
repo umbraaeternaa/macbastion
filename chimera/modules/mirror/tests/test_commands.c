@@ -159,6 +159,19 @@ static void test_enable_with_accessibility_starts_injector(void) {
     mirror_set_injector(NULL);
 }
 
+/* AX-3: on a secure (password) field the per-tick injection params downgrade to light, so
+ * MIRROR never jitters sensitive input. */
+static void test_tick_params_downgrades_on_secure_field(void) {
+    mirror_runtime_t rt = {0};
+    mirror_runtime_init(&rt);
+    rt.profile = MIRROR_PROFILE_HEAVY;
+    mirror_profile_params_t full = mirror_tick_params(&rt, 0); /* not secure -> heavy */
+    mirror_profile_params_t down = mirror_tick_params(&rt, 1); /* secure   -> light */
+    TEST_ASSERT_EQUAL_DOUBLE(profile_params(MIRROR_PROFILE_HEAVY).mouse_sigma, full.mouse_sigma);
+    TEST_ASSERT_EQUAL_DOUBLE(profile_params(MIRROR_PROFILE_LIGHT).mouse_sigma, down.mouse_sigma);
+    TEST_ASSERT_TRUE(down.mouse_sigma < full.mouse_sigma);
+}
+
 void run_commands_tests(void) {
     RUN_TEST(test_runtime_init_defaults);
     RUN_TEST(test_status_dispatch);
@@ -168,4 +181,5 @@ void run_commands_tests(void) {
     RUN_TEST(test_enable_deferred);
     RUN_TEST(test_enable_without_accessibility_reports_accessibility);
     RUN_TEST(test_enable_with_accessibility_starts_injector);
+    RUN_TEST(test_tick_params_downgrades_on_secure_field);
 }

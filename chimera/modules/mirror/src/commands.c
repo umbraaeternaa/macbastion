@@ -30,6 +30,11 @@ void mirror_set_injector(int (*start)(mirror_runtime_t *rt)) {
     g_injector_start = start ? start : mirror_injector_start_real;
 }
 
+/* Secure-field probe (AX-3) — declared before the injector loop, which consults it each
+ * tick to downgrade to "light" on password fields. Real backend + setter below. */
+static int mirror_secure_field_real(void);
+static int (*g_secure_field_check)(void) = mirror_secure_field_real;
+
 /* Real injector (manual-tier — needs a live Accessibility grant; not exercised by the
  * unit suite, which injects a stub). While enabled, post small humanlike mouse-move
  * perturbations: read the cursor, add a Gaussian delta (perturb_mouse) scaled by the
@@ -39,9 +44,10 @@ static void *mirror_injector_loop(void *arg) {
     mirror_runtime_t *rt = (mirror_runtime_t *)arg;
     CGEventSourceRef src = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
     for (;;) {
+        int secure = g_secure_field_check(); /* OS query — outside the lock */
         pthread_mutex_lock(&rt->mutex);
         int on = rt->enabled;
-        mirror_profile_params_t pp = profile_params(rt->profile);
+        mirror_profile_params_t pp = mirror_tick_params(rt, secure); /* light on secure fields */
         double dx = 0.0, dy = 0.0;
         perturb_mouse(&dx, &dy, pp.mouse_sigma, &rt->rng_state);
         int gap = perturb_timing(40, pp.flight_delta, &rt->rng_state);
@@ -79,6 +85,44 @@ static int mirror_injector_start_real(mirror_runtime_t *rt) {
     }
     pthread_detach(t);
     return 0;
+}
+
+void mirror_set_secure_field_check(int (*fn)(void)) {
+    g_secure_field_check = fn ? fn : mirror_secure_field_real;
+}
+
+/* Real secure-field probe (AX-3; manual-tier — needs Accessibility). Inspects the
+ * system-wide focused UI element's subrole; nonzero iff it is a secure text field. */
+static int mirror_secure_field_real(void) {
+    AXUIElementRef sys = AXUIElementCreateSystemWide();
+    if (!sys) {
+        return 0;
+    }
+    CFTypeRef focused = NULL;
+    int secure = 0;
+    if (AXUIElementCopyAttributeValue(sys, kAXFocusedUIElementAttribute, &focused) ==
+            kAXErrorSuccess &&
+        focused) {
+        CFTypeRef sub = NULL;
+        if (AXUIElementCopyAttributeValue((AXUIElementRef)focused, kAXSubroleAttribute,
+                                          &sub) == kAXErrorSuccess &&
+            sub) {
+            if (CFGetTypeID(sub) == CFStringGetTypeID() &&
+                CFStringCompare((CFStringRef)sub, CFSTR("AXSecureTextField"), 0) ==
+                    kCFCompareEqualTo) {
+                secure = 1;
+            }
+            CFRelease(sub);
+        }
+        CFRelease(focused);
+    }
+    CFRelease(sys);
+    return secure;
+}
+
+mirror_profile_params_t mirror_tick_params(const mirror_runtime_t *rt, int is_secure_field) {
+    mirror_profile_t base = rt ? rt->profile : MIRROR_PROFILE_DEFAULT;
+    return profile_params(profile_downgrade(base, is_secure_field != 0));
 }
 
 void mirror_runtime_init(mirror_runtime_t *rt) {

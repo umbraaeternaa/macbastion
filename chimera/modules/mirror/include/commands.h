@@ -63,4 +63,14 @@ void mirror_set_accessibility_check(int (*fn)(void));
  * Returns 0 on success, nonzero on failure. Pass NULL to reset to the real injector. */
 void mirror_set_injector(int (*start)(mirror_runtime_t *rt));
 
+/* Effective per-tick perturbation params: the runtime's active profile, downgraded to
+ * "light" when the focused field is secure (a password field) so MIRROR never jitters
+ * sensitive input. Pure + testable. */
+mirror_profile_params_t mirror_tick_params(const mirror_runtime_t *rt, int is_secure_field);
+
+/* Secure-field probe seam (AX-3). Real default inspects the focused AXUIElement (manual-tier
+ * — needs Accessibility); tests inject a stub. Returns nonzero when a secure field is
+ * focused. Pass NULL to reset to the real probe. */
+void mirror_set_secure_field_check(int (*fn)(void));
+
 #endif /* MIRROR_COMMANDS_H */
