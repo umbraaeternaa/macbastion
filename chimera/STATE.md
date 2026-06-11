@@ -77,7 +77,19 @@ Slice 3A react-entrypoint (RED→GREEN) done. CORE: idea #3 Slice 3B anomaly-rel
 (RED→GREEN) done — a NEW core capability. ORACLE: idea #3 Slice 3C anomaly-emit
 (RED→GREEN) done — the real producer. **Idea #3 (Anomaly-Tripwire) COMPLETE** —
 3A+3B+3C wired + e2e-confirmed by 3D.
-Last completed: **reflex audit trail — COMPLETE: readable surface + full coverage** (AD-1; commits `a64ee7d`
+Last completed: **MIRROR arc slice 1 — `mirror.enable` does a REAL Accessibility probe** (AX-1; commit
+`0087170`). MIRROR is the last organ whose core capability (behavioral-noise injection) is gated; this is the
+first concrete step to unlock it. `mirror.enable` used to return ONE blanket `-31004` "signing infra not
+built" for everyone. It now consults the real OS Accessibility state (`AXIsProcessTrusted()` via the
+already-linked ApplicationServices framework) behind an injectable seam (`mirror_set_accessibility_check`;
+tests inject a deterministic stub, `NULL` resets to real). Two HONEST probe-driven states, both still `-31004`
+(enable genuinely can't proceed yet) but with a TRUE reason: NOT granted -> `required_capability:
+"accessibility"` + "grant it in System Settings > Privacy & Security > Accessibility"; granted ->
+`accessibility_granted: true`, `required_capability: "code_signing"` (next gate — event-tap signing, still
+unbuilt). 2 RED->GREEN (44 MIRROR Unity, 0 fail). 1017 -> 1019. `-Werror` clean; no new dependency.
+NEXT (MIRROR arc): code-signing gate for the CGEventTap, then the real tap install + perturbation wiring.
+
+Prior milestone: **reflex audit trail — COMPLETE: readable surface + full coverage** (AD-1; commits `a64ee7d`
 `chimera audit` CLI + `6465ed5` shim-tail audit). The audit trail is now end-to-end usable. New
 `render_audit(entries)` -> readable lines (local time, firing topic -> command(s), `[outcome]`); new
 **`chimera audit [-n N]`** subcommand reads `audit.jsonl` straight off disk (no core socket — works even when
@@ -913,7 +925,7 @@ core, as authority, turns the event into a command.) Slices:
 - Native (VAULT C Unity): 74 passing (6 lexer + 6 parser + 9 evaluator + 6 fail_closed + 3 relock + 7 decide + 7 crypto + 11 commands [VD-1 status + VD-2 create/list + VD-3 create-provisions-KEK + VD-7 delete-removes/no_such_vault + VD-8 policy.update changes/unknown/bad-dsl] + 2 keychain [VD-3 load-or-create] + 15 unlock/mount [VD-4a decision + VD-4b key-derive + VD-4c lock/auto-relock + VD-5 add_file seals + VD-6 decrypt-at-unlock round-trip + VD-8 policy.update refused-with-content/changes-decision + VD-9a unlock-mounts-plaintext + VD-9b lock/relock-unmount] + 2 mount-seam [VD-9a begin/put/end roundtrip + put-without-begin]) — separate C suite, NOT in pytest. VAULT is a live daemon (VD-1..9): create provisions a per-vault Keychain KEK (-> evict has real targets); unlock is state-gated, derives the key, OPENS the sealed files + materialises plaintext into a RAM-backed mount; lock/auto-relock/delete/policy.update unmount (plaintext vanishes); delete drops the vault + evicts its KEK; policy.update re-policies an empty vault. EVERY vault.* method is real; decrypted plaintext is RAM-only. Lone manual-tier path: the real hdiutil RAM-disk mount backend
 - Native (ECHO C Unity): 31 passing (9 shaper — budget + flat-wire invariant + burst + clamps; 7 config — defaults + validation + atomic set + budget bridge; 7 stats — padding ratio + decile histogram + surge; 8 commands — echo.* dispatch over jsonrpc) — separate C suite, NOT in pytest
 - Native (PURGE C Unity): 35 passing (7 dry-run planner — §8 honest-wipe classify + keys-first tier plan; 9 target registry — add/dedup/remove + plan bridge; 7 config — post-action + marker, atomic set; 12 commands — purge.* dispatch, trigger gated -31004) — separate C suite, NOT in pytest
-- Total: 1017 passing (645 default [incl 22 pulse scoring + 24 pulse baseline + 10 pulse assess + 10 pulse temporal + 3 pulse emission + 5 pulse danger-registry + 5 pulse finishers + 8 core gate + 5 core gate-wiring + 7 core override + 3 core gate-override + 5 core override.set + 6 core gate-hardening + 3 core entry + 10 core supervisor + 8 core CLI + 4 core autonomy + 3 core mark-lost + 1 core lock + 1 core graceful-down + 3 core tier0 + 3 core purge + 1 core tether->vault relay + 1 core fan-out relay + 2 core anomaly-obfuscation (chaff+echo) + 1 core de-escalation (recovered stand-down) + 3 ORACLE all-clear (anomaly.cleared hysteresis) + 1 core anomaly-cleared stand-down + 6 core audit store + 2 core audit wiring + 6 core audit surface (render+CLI) + 2 core shim-escalation audit + 3 core pulse->vault reflex + 3 core tether-escalation actuation + 19 core status-view/watch] + 59 integration + 46 CHAFF + 31 ECHO + 35 PURGE + 42 MIRROR + 38 shim + 48 TETHER + 74 VAULT Unity; ollama subset not double-counted)
+- Total: 1019 passing (645 default [incl 22 pulse scoring + 24 pulse baseline + 10 pulse assess + 10 pulse temporal + 3 pulse emission + 5 pulse danger-registry + 5 pulse finishers + 8 core gate + 5 core gate-wiring + 7 core override + 3 core gate-override + 5 core override.set + 6 core gate-hardening + 3 core entry + 10 core supervisor + 8 core CLI + 4 core autonomy + 3 core mark-lost + 1 core lock + 1 core graceful-down + 3 core tier0 + 3 core purge + 1 core tether->vault relay + 1 core fan-out relay + 2 core anomaly-obfuscation (chaff+echo) + 1 core de-escalation (recovered stand-down) + 3 ORACLE all-clear (anomaly.cleared hysteresis) + 1 core anomaly-cleared stand-down + 6 core audit store + 2 core audit wiring + 6 core audit surface (render+CLI) + 2 core shim-escalation audit + 3 core pulse->vault reflex + 3 core tether-escalation actuation + 19 core status-view/watch] + 59 integration + 46 CHAFF + 31 ECHO + 35 PURGE + 44 MIRROR + 38 shim + 48 TETHER + 74 VAULT Unity; ollama subset not double-counted)
 
 **Open tails (honest tracking, MANIFESTO §4):**
 
