@@ -127,20 +127,36 @@ static void test_enable_without_accessibility_reports_accessibility(void) {
     mirror_set_accessibility_check(NULL);
 }
 
-static void test_enable_with_accessibility_reports_signing(void) {
-    char *resp = NULL;
-    cJSON *parsed = enable_error_data(ax_granted, &resp);
-    cJSON *data = cJSON_GetObjectItem(cJSON_GetObjectItem(parsed, "error"), "data");
-    TEST_ASSERT_NOT_NULL(data);
-    cJSON *cap = cJSON_GetObjectItem(data, "required_capability");
-    TEST_ASSERT_NOT_NULL(cap);
-    TEST_ASSERT_EQUAL_STRING("code_signing", cap->valuestring);
-    cJSON *granted = cJSON_GetObjectItem(data, "accessibility_granted");
-    TEST_ASSERT_NOT_NULL(granted);
-    TEST_ASSERT_TRUE(cJSON_IsTrue(granted));
+/* AX-2: with Accessibility granted, enable now STARTS the injector (via the seam) and
+ * flips enabled=1 — no longer a code_signing wall. */
+static int g_fake_injector_called;
+static int fake_injector(mirror_runtime_t *rt) {
+    (void)rt;
+    g_fake_injector_called = 1;
+    return 0;
+}
+
+static void test_enable_with_accessibility_starts_injector(void) {
+    mirror_set_accessibility_check(ax_granted);
+    g_fake_injector_called = 0;
+    mirror_set_injector(fake_injector);
+    mirror_runtime_t rt = {0};
+    mirror_runtime_init(&rt);
+    cJSON *id = cJSON_CreateNumber(8);
+    char *resp = commands_dispatch(&rt, "mirror.enable", NULL, id);
+    TEST_ASSERT_NOT_NULL(resp);
+    cJSON *parsed = cJSON_Parse(resp);
+    TEST_ASSERT_NOT_NULL(parsed);
+    cJSON *result = cJSON_GetObjectItem(parsed, "result");
+    TEST_ASSERT_NOT_NULL(result); /* success, not an error */
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItem(result, "ok")));
+    TEST_ASSERT_EQUAL_INT(1, rt.enabled);     /* injector running -> enabled */
+    TEST_ASSERT_TRUE(g_fake_injector_called); /* the seam was invoked */
     cJSON_Delete(parsed);
+    cJSON_Delete(id);
     free(resp);
     mirror_set_accessibility_check(NULL);
+    mirror_set_injector(NULL);
 }
 
 void run_commands_tests(void) {
@@ -151,5 +167,5 @@ void run_commands_tests(void) {
     RUN_TEST(test_stats_dispatch);
     RUN_TEST(test_enable_deferred);
     RUN_TEST(test_enable_without_accessibility_reports_accessibility);
-    RUN_TEST(test_enable_with_accessibility_reports_signing);
+    RUN_TEST(test_enable_with_accessibility_starts_injector);
 }

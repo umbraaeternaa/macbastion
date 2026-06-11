@@ -57,4 +57,10 @@ char *commands_dispatch(mirror_runtime_t *rt, const char *method, const cJSON *p
  * "not built" error. The function returns nonzero when the process IS trusted. */
 void mirror_set_accessibility_check(int (*fn)(void));
 
+/* Input-injector seam (AX-2, MIRROR signing arc). Once Accessibility is granted,
+ * mirror.enable starts the injector through this seam. The real default runs the CGEvent
+ * posting loop (manual-tier — needs a live Accessibility grant); tests inject a stub.
+ * Returns 0 on success, nonzero on failure. Pass NULL to reset to the real injector. */
+void mirror_set_injector(int (*start)(mirror_runtime_t *rt));
+
 #endif /* MIRROR_COMMANDS_H */

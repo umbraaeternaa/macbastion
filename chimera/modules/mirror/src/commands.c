@@ -7,8 +7,10 @@
 #include <ApplicationServices/ApplicationServices.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 
 #include "jsonrpc.h"
+#include "perturb.h"
 
 /* Accessibility-permission probe (AX-1). Real default asks the OS via the public TCC
  * API; tests inject a deterministic stub through mirror_set_accessibility_check. */
@@ -17,6 +19,66 @@ static int (*g_ax_check)(void) = mirror_ax_trusted_real;
 
 void mirror_set_accessibility_check(int (*fn)(void)) {
     g_ax_check = fn ? fn : mirror_ax_trusted_real;
+}
+
+/* Input injector (AX-2). Real backend = the CGEvent posting loop (GREEN step; manual-tier).
+ * Returns 0 on success, nonzero on failure. */
+static int mirror_injector_start_real(mirror_runtime_t *rt);
+static int (*g_injector_start)(mirror_runtime_t *) = mirror_injector_start_real;
+
+void mirror_set_injector(int (*start)(mirror_runtime_t *rt)) {
+    g_injector_start = start ? start : mirror_injector_start_real;
+}
+
+/* Real injector (manual-tier — needs a live Accessibility grant; not exercised by the
+ * unit suite, which injects a stub). While enabled, post small humanlike mouse-move
+ * perturbations: read the cursor, add a Gaussian delta (perturb_mouse) scaled by the
+ * active profile, and CGEventPost it; sleep a jittered gap (perturb_timing) between
+ * events. Stops when rt->enabled is cleared (mirror.disable). */
+static void *mirror_injector_loop(void *arg) {
+    mirror_runtime_t *rt = (mirror_runtime_t *)arg;
+    CGEventSourceRef src = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+    for (;;) {
+        pthread_mutex_lock(&rt->mutex);
+        int on = rt->enabled;
+        mirror_profile_params_t pp = profile_params(rt->profile);
+        double dx = 0.0, dy = 0.0;
+        perturb_mouse(&dx, &dy, pp.mouse_sigma, &rt->rng_state);
+        int gap = perturb_timing(40, pp.flight_delta, &rt->rng_state);
+        pthread_mutex_unlock(&rt->mutex);
+        if (!on) {
+            break;
+        }
+        CGEventRef probe = CGEventCreate(NULL);
+        CGPoint p = probe ? CGEventGetLocation(probe) : CGPointMake(0, 0);
+        if (probe) {
+            CFRelease(probe);
+        }
+        CGEventRef mv = CGEventCreateMouseEvent(src, kCGEventMouseMoved,
+                                                CGPointMake(p.x + dx, p.y + dy),
+                                                kCGMouseButtonLeft);
+        if (mv) {
+            CGEventPost(kCGHIDEventTap, mv);
+            CFRelease(mv);
+        }
+        usleep((useconds_t)(gap < 10 ? 10 : gap) * 1000);
+    }
+    if (src) {
+        CFRelease(src);
+    }
+    return NULL;
+}
+
+static int mirror_injector_start_real(mirror_runtime_t *rt) {
+    if (!rt) {
+        return -1;
+    }
+    pthread_t t;
+    if (pthread_create(&t, NULL, mirror_injector_loop, rt) != 0) {
+        return -1;
+    }
+    pthread_detach(t);
+    return 0;
 }
 
 void mirror_runtime_init(mirror_runtime_t *rt) {
@@ -131,14 +193,12 @@ char *commands_dispatch(mirror_runtime_t *rt, const char *method, const cJSON *p
     }
 
     if (strcmp(method, "mirror.enable") == 0) {
-        /* AX-1: consult the REAL Accessibility permission first, so the operator gets an
-         * honest, specific next step instead of one blanket "not built" wall. Both states
-         * still return -31004 (enable can't proceed yet) — but the REASON is now true. */
-        int ax_ok = g_ax_check();
-        cJSON *data = cJSON_CreateObject();
-        cJSON_AddStringToObject(data, "spec", "\xc2\xa7""6/\xc2\xa7""9");
-        cJSON_AddBoolToObject(data, "accessibility_granted", ax_ok);
-        if (!ax_ok) {
+        /* AX-1/AX-2: consult the REAL Accessibility permission. Not granted -> honest,
+         * actionable error. Granted -> start the input injector and go live. */
+        if (!g_ax_check()) {
+            cJSON *data = cJSON_CreateObject();
+            cJSON_AddStringToObject(data, "spec", "\xc2\xa7""6/\xc2\xa7""9");
+            cJSON_AddBoolToObject(data, "accessibility_granted", 0);
             cJSON_AddStringToObject(data, "required_capability", "accessibility");
             return jsonrpc_serialize_error(
                 id, MIRROR_RPC_PRECONDITION_FAILED,
@@ -146,13 +206,24 @@ char *commands_dispatch(mirror_runtime_t *rt, const char *method, const cJSON *p
                 "Settings > Privacy & Security > Accessibility)",
                 data);
         }
-        /* Accessibility IS granted; the remaining gate is code-signing for the event tap,
-         * which is not built yet — the next stage of this arc. */
-        cJSON_AddStringToObject(data, "required_capability", "code_signing");
+        /* Accessibility granted: mark enabled, then start the injector (it reads
+         * rt->enabled, so set it first — dispatch holds the runtime mutex throughout, so
+         * the injector thread can't observe a half-state). Roll back if it fails to start. */
+        if (rt) {
+            rt->enabled = 1;
+        }
+        if (rt && g_injector_start(rt) == 0) {
+            return ok_result(id);
+        }
+        if (rt) {
+            rt->enabled = 0;
+        }
+        cJSON *data = cJSON_CreateObject();
+        cJSON_AddBoolToObject(data, "accessibility_granted", 1);
+        cJSON_AddStringToObject(data, "required_capability", "injector");
         return jsonrpc_serialize_error(
             id, MIRROR_RPC_PRECONDITION_FAILED,
-            "mirror.enable: Accessibility granted; code-signing for the event tap is not "
-            "built yet",
+            "mirror.enable: Accessibility granted but the input injector failed to start",
             data);
     }
 
