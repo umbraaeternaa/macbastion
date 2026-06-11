@@ -75,19 +75,21 @@ Slice 3A react-entrypoint (RED→GREEN) done. CORE: idea #3 Slice 3B anomaly-rel
 (RED→GREEN) done — a NEW core capability. ORACLE: idea #3 Slice 3C anomaly-emit
 (RED→GREEN) done — the real producer. **Idea #3 (Anomaly-Tripwire) COMPLETE** —
 3A+3B+3C wired + e2e-confirmed by 3D.
-Last completed: **fan-out relay — one event drives multiple reflexes** (commit `ae3f405`). Deepens the
-"one mind": `RELAY_RULES` generalised `dict[str,str] -> dict[str,list[str]]`; `_relay_handle` issues ALL
-mapped commands concurrently (`asyncio.gather`), each via `_relay_one` which isolates its own
-offline/timeout/error so a sibling reflex survives. `oracle.anomaly.detected` now fans out to
-`[tether.heighten, vault.lock]` — a detected anomaly both heightens TETHER AND locks the vault (defense in
-depth). D7 wire guard untouched; anomaly-tripwire e2e still green. 1 RED->GREEN (597 default). 966 -> 967.
+Last completed: **PULSE-exhaustion auto-locks the vault — the organism reacts to the operator** (commit
+`b5d31af`). Completes the reflex TRIAD. `_gate_loop` routes `pulse.mode.changed` through
+`_apply_pulse_mode`, which on the transition INTO `exhausted` (operator critically fatigued) issues
+`vault.lock` via `_relay_one` (core authority, errors isolated, once per entry). Lower modes
+(caution/tired) stay with the cognitive gate; only the severest locks. 3 RED->GREEN (600 default). 967 ->
+970. mypy --strict + ruff clean; gate-wiring still green. NEXT: a new module slice, or harden/extend
+reflexes.
 
-Current cross-module reflexes (`RELAY_RULES`): `oracle.anomaly.detected -> [tether.heighten, vault.lock]`;
-`tether.absent -> [vault.lock]` (dead-man auto-lock, commit `696e2e8`). ✅ **LIVE-WIRE-VERIFIED e2e** (core
-in-process + the real VAULT daemon + a real hdiutil RAM mount): create -> unlock (mount up) -> publish
-`tether.absent` -> the relay issued `vault.lock` -> the daemon locked + unmounted (vault_open False,
-/Volumes mount gone) -> clean. The "one mind" runs on real hardware. NEXT: more reflexes (PULSE-fatigue
-gating, etc.) or a new module slice.
+The reflex TRIAD — the "one mind" secures the vault from three angles:
+- **Environment**: `tether.absent -> [vault.lock]` (dead-man — paired phone left range; commit `696e2e8`).
+- **Threat**: `oracle.anomaly.detected -> [tether.heighten, vault.lock]` (fan-out; commit `ae3f405`).
+- **Operator**: PULSE `exhausted` -> `vault.lock` (cognitive reflex in the gate; commit `b5d31af`).
+✅ **LIVE-WIRE-VERIFIED e2e** (core + real VAULT daemon + real hdiutil RAM mount): unlock -> publish
+`tether.absent` -> relay issued `vault.lock` -> daemon locked + unmounted (vault_open False, /Volumes gone)
+-> clean. The "one mind" runs on real hardware.
 
 Prior milestone: **TETHER-loss auto-locks the open vault** (commit `696e2e8`) — first cross-module reflex;
 `tether.absent -> vault.lock` on the relay path (the paired phone leaving range locks the open vault + tears
@@ -841,7 +843,7 @@ core, as authority, turns the event into a command.) Slices:
 - Native (VAULT C Unity): 74 passing (6 lexer + 6 parser + 9 evaluator + 6 fail_closed + 3 relock + 7 decide + 7 crypto + 11 commands [VD-1 status + VD-2 create/list + VD-3 create-provisions-KEK + VD-7 delete-removes/no_such_vault + VD-8 policy.update changes/unknown/bad-dsl] + 2 keychain [VD-3 load-or-create] + 15 unlock/mount [VD-4a decision + VD-4b key-derive + VD-4c lock/auto-relock + VD-5 add_file seals + VD-6 decrypt-at-unlock round-trip + VD-8 policy.update refused-with-content/changes-decision + VD-9a unlock-mounts-plaintext + VD-9b lock/relock-unmount] + 2 mount-seam [VD-9a begin/put/end roundtrip + put-without-begin]) — separate C suite, NOT in pytest. VAULT is a live daemon (VD-1..9): create provisions a per-vault Keychain KEK (-> evict has real targets); unlock is state-gated, derives the key, OPENS the sealed files + materialises plaintext into a RAM-backed mount; lock/auto-relock/delete/policy.update unmount (plaintext vanishes); delete drops the vault + evicts its KEK; policy.update re-policies an empty vault. EVERY vault.* method is real; decrypted plaintext is RAM-only. Lone manual-tier path: the real hdiutil RAM-disk mount backend
 - Native (ECHO C Unity): 31 passing (9 shaper — budget + flat-wire invariant + burst + clamps; 7 config — defaults + validation + atomic set + budget bridge; 7 stats — padding ratio + decile histogram + surge; 8 commands — echo.* dispatch over jsonrpc) — separate C suite, NOT in pytest
 - Native (PURGE C Unity): 35 passing (7 dry-run planner — §8 honest-wipe classify + keys-first tier plan; 9 target registry — add/dedup/remove + plan bridge; 7 config — post-action + marker, atomic set; 12 commands — purge.* dispatch, trigger gated -31004) — separate C suite, NOT in pytest
-- Total: 967 passing (597 default [incl 22 pulse scoring + 24 pulse baseline + 10 pulse assess + 10 pulse temporal + 3 pulse emission + 5 pulse danger-registry + 5 pulse finishers + 8 core gate + 5 core gate-wiring + 7 core override + 3 core gate-override + 5 core override.set + 6 core gate-hardening + 3 core entry + 10 core supervisor + 8 core CLI + 4 core autonomy + 3 core mark-lost + 1 core lock + 1 core graceful-down + 3 core tier0 + 3 core purge + 1 core tether->vault relay + 1 core fan-out relay] + 57 integration + 46 CHAFF + 31 ECHO + 35 PURGE + 42 MIRROR + 38 shim + 48 TETHER + 74 VAULT Unity; ollama subset not double-counted)
+- Total: 970 passing (600 default [incl 22 pulse scoring + 24 pulse baseline + 10 pulse assess + 10 pulse temporal + 3 pulse emission + 5 pulse danger-registry + 5 pulse finishers + 8 core gate + 5 core gate-wiring + 7 core override + 3 core gate-override + 5 core override.set + 6 core gate-hardening + 3 core entry + 10 core supervisor + 8 core CLI + 4 core autonomy + 3 core mark-lost + 1 core lock + 1 core graceful-down + 3 core tier0 + 3 core purge + 1 core tether->vault relay + 1 core fan-out relay + 3 core pulse->vault reflex] + 57 integration + 46 CHAFF + 31 ECHO + 35 PURGE + 42 MIRROR + 38 shim + 48 TETHER + 74 VAULT Unity; ollama subset not double-counted)
 
 **Open tails (honest tracking, MANIFESTO §4):**
 - Fernet at-rest: CHAFF (C/OpenSSL) and ORACLE (Python `cryptography.Fernet`) share the format but interop is NOT cross-tested (B1 deferred; format-faithful).
