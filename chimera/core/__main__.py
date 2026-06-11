@@ -20,6 +20,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from core.audit import AuditLog
 from core.broker import EventBroker
 from core.config import CoreConfig
 from core.lifecycle import Lifecycle
@@ -27,7 +28,7 @@ from core.override import OverrideStore
 from core.registry import Registry
 from core.server import Server
 from core.shim_client import ShimClient, ShimError
-from core.status_view import render_event, render_status
+from core.status_view import render_audit, render_event, render_status
 from core.supervisor import CHIMERA_MODULES, ModuleSpec, Supervisor
 from core.tokens import TokenIssuer
 
@@ -79,6 +80,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     sub.add_parser("status", help="print a live view of the organism (core + modules)")
     sub.add_parser("watch", help="stream the organism's critical events live (Ctrl-C to stop)")
+    audit_p = sub.add_parser(
+        "audit", help="print the reflex audit trail (what the organism actuated, and why)"
+    )
+    audit_p.add_argument(
+        "-n", type=int, default=50, help="how many recent actuations to show (default 50)"
+    )
     return parser.parse_args(argv)
 
 
@@ -299,6 +306,15 @@ async def _watch(config: CoreConfig) -> int:
     return 0
 
 
+def _audit(config: CoreConfig, n: int) -> int:
+    """`chimera audit`: print the reflex audit trail. Reads audit.jsonl straight off
+    disk — no core socket needed, so it works even when core is down. Always exit 0
+    (an empty/absent trail is a friendly notice, not an error)."""
+    log = AuditLog(config.socket_dir / "audit.jsonl")
+    print(render_audit(log.recent(n)))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     if args.command == "shim-check":  # standalone diagnostic — needs no core config
@@ -308,6 +324,8 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(asyncio.run(_status(config)))
     if args.command == "watch":
         raise SystemExit(asyncio.run(_watch(config)))
+    if args.command == "audit":
+        raise SystemExit(_audit(config, args.n))
     if args.command == "plist":
         print(launch_agent_plist(config.socket_dir))
         return

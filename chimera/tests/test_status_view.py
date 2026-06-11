@@ -168,6 +168,75 @@ def test_render_event_generic_unknown_topic() -> None:
     assert "chaff.decoy.sent" in out  # falls back to topic (+ payload)
 
 
+# --- render_audit: the reflex audit trail -> readable operator lines (chimera audit) ---
+from core.status_view import render_audit  # noqa: E402
+
+_AUDIT = [
+    {"ts": 1_700_000_000.0, "topic": "tether.absent", "commands": ["vault.lock"], "outcome": "ok"},
+    {
+        "ts": 1_700_000_050.0,
+        "topic": "oracle.anomaly.detected",
+        "commands": ["chaff.generation.start"],
+        "outcome": "error: module offline",
+    },
+]
+
+
+def test_render_audit_shows_topic_command_and_outcome() -> None:
+    out = render_audit(_AUDIT)
+    assert "tether.absent" in out
+    assert "vault.lock" in out
+    assert "ok" in out
+    assert "oracle.anomaly.detected" in out
+    assert "module offline" in out  # the failure outcome is visible
+
+
+def test_render_audit_formats_timestamp() -> None:
+    out = render_audit(_AUDIT)
+    assert "2023" in out  # ts 1_700_000_000 -> a 2023 wall-clock date, not a raw float
+
+
+def test_render_audit_one_line_per_entry() -> None:
+    out = render_audit(_AUDIT)
+    body = [ln for ln in out.splitlines() if "->" in ln]
+    assert len(body) == 2  # one rendered line per actuation
+
+
+def test_render_audit_empty_does_not_crash() -> None:
+    out = render_audit([])
+    assert isinstance(out, str)
+    assert "audit" in out.lower()  # a friendly header/empty notice, never a traceback
+
+
+def test_audit_subcommand_prints_trail(tmp_path: Any, capsys: Any) -> None:
+    # The `chimera audit` surface reads audit.jsonl off disk (no core socket needed —
+    # works even when core is down) and prints the rendered trail.
+    from core.__main__ import _audit
+    from core.audit import AuditLog
+    from core.config import CoreConfig
+
+    AuditLog(tmp_path / "audit.jsonl").record(
+        topic="tether.absent", commands=["vault.lock"], outcome="ok"
+    )
+    config = CoreConfig.model_validate({"socket_dir": str(tmp_path)})
+    rc = _audit(config, 50)
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "tether.absent" in out
+    assert "vault.lock" in out
+
+
+def test_audit_subcommand_empty_when_no_trail(tmp_path: Any, capsys: Any) -> None:
+    from core.__main__ import _audit
+    from core.config import CoreConfig
+
+    config = CoreConfig.model_validate({"socket_dir": str(tmp_path)})  # no audit.jsonl
+    rc = _audit(config, 50)
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "no reflexes" in out.lower()  # friendly empty notice, exit 0
+
+
 @pytest.mark.integration
 async def test_watch_subcommand_streams_events(tmp_path: Any, capsys: Any) -> None:
     import asyncio

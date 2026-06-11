@@ -4,6 +4,7 @@ subcommand fetches core.status and prints render_status(result)."""
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 
@@ -29,6 +30,29 @@ def render_event(topic: str, payload: dict[str, Any]) -> str:
     if topic in ("vault.locked", "vault.unlocked", "vault.relocked"):
         return f"VAULT: {topic.split('.', 1)[1]}"
     return f"{topic} {p}" if p else topic
+
+
+def render_audit(entries: list[dict[str, Any]]) -> str:
+    """Render the reflex audit trail (AuditLog.recent()) as readable operator lines —
+    the `chimera audit` surface. One line per actuation: local time, the firing topic ->
+    the command(s) core issued, and the outcome (ok / error: ...). Empty -> a friendly
+    notice, never a traceback."""
+    lines = [f"CHIMERA — reflex audit ({len(entries)} entr{'y' if len(entries) == 1 else 'ies'})"]
+    if not entries:
+        lines.append("  (no reflexes actuated yet)")
+        return "\n".join(lines)
+    for e in entries:
+        ts = e.get("ts")
+        when = (
+            time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts))
+            if isinstance(ts, (int, float))
+            else "?"
+        )
+        topic = e.get("topic", "?")
+        cmds = ", ".join(e.get("commands", []) or []) or "-"
+        outcome = e.get("outcome", "?")
+        lines.append(f"  {when}  {topic} -> {cmds}  [{outcome}]")
+    return "\n".join(lines)
 
 
 def render_status(payload: dict[str, Any]) -> str:
