@@ -50,4 +50,11 @@ void mirror_runtime_init(mirror_runtime_t *rt);
 char *commands_dispatch(mirror_runtime_t *rt, const char *method, const cJSON *params,
                         const cJSON *id);
 
+/* Accessibility-permission probe seam (AX-1, MIRROR signing arc). The real default
+ * queries AXIsProcessTrusted(); tests inject a deterministic stub. Pass NULL to reset
+ * to the real probe. mirror.enable consults this to give an HONEST, specific reason
+ * (Accessibility not granted vs. code-signing not yet built) instead of one blanket
+ * "not built" error. The function returns nonzero when the process IS trusted. */
+void mirror_set_accessibility_check(int (*fn)(void));
+
 #endif /* MIRROR_COMMANDS_H */

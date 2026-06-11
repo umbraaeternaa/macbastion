@@ -4,10 +4,20 @@
  * (§6/§9, Sub-M1). */
 #include "commands.h"
 
+#include <ApplicationServices/ApplicationServices.h>
 #include <string.h>
 #include <time.h>
 
 #include "jsonrpc.h"
+
+/* Accessibility-permission probe (AX-1). Real default asks the OS via the public TCC
+ * API; tests inject a deterministic stub through mirror_set_accessibility_check. */
+static int mirror_ax_trusted_real(void) { return AXIsProcessTrusted() ? 1 : 0; }
+static int (*g_ax_check)(void) = mirror_ax_trusted_real;
+
+void mirror_set_accessibility_check(int (*fn)(void)) {
+    g_ax_check = fn ? fn : mirror_ax_trusted_real;
+}
 
 void mirror_runtime_init(mirror_runtime_t *rt) {
     if (!rt) {
@@ -121,12 +131,29 @@ char *commands_dispatch(mirror_runtime_t *rt, const char *method, const cJSON *p
     }
 
     if (strcmp(method, "mirror.enable") == 0) {
+        /* AX-1: consult the REAL Accessibility permission first, so the operator gets an
+         * honest, specific next step instead of one blanket "not built" wall. Both states
+         * still return -31004 (enable can't proceed yet) — but the REASON is now true. */
+        int ax_ok = g_ax_check();
         cJSON *data = cJSON_CreateObject();
-        cJSON_AddStringToObject(data, "required_capability", "code_signing+accessibility");
         cJSON_AddStringToObject(data, "spec", "\xc2\xa7""6/\xc2\xa7""9");
+        cJSON_AddBoolToObject(data, "accessibility_granted", ax_ok);
+        if (!ax_ok) {
+            cJSON_AddStringToObject(data, "required_capability", "accessibility");
+            return jsonrpc_serialize_error(
+                id, MIRROR_RPC_PRECONDITION_FAILED,
+                "mirror.enable requires Accessibility permission (grant it in System "
+                "Settings > Privacy & Security > Accessibility)",
+                data);
+        }
+        /* Accessibility IS granted; the remaining gate is code-signing for the event tap,
+         * which is not built yet — the next stage of this arc. */
+        cJSON_AddStringToObject(data, "required_capability", "code_signing");
         return jsonrpc_serialize_error(
             id, MIRROR_RPC_PRECONDITION_FAILED,
-            "mirror.enable requires code-signing + Accessibility (signing infra not built)", data);
+            "mirror.enable: Accessibility granted; code-signing for the event tap is not "
+            "built yet",
+            data);
     }
 
     return jsonrpc_serialize_error(id, -32601, "method not found", NULL);

@@ -87,6 +87,62 @@ static void test_enable_deferred(void) {
     free(resp);
 }
 
+/* AX-1: enable now consults a REAL Accessibility probe (seam-injected here). Without
+ * the permission, the error names "accessibility" — an honest, actionable reason,
+ * not the old blanket "signing infra not built". */
+static int ax_denied(void) { return 0; }
+static int ax_granted(void) { return 1; }
+
+static cJSON *enable_error_data(int (*probe)(void), char **resp_out) {
+    mirror_set_accessibility_check(probe);
+    mirror_runtime_t rt = {0};
+    mirror_runtime_init(&rt);
+    cJSON *id = cJSON_CreateNumber(6);
+    char *resp = commands_dispatch(&rt, "mirror.enable", NULL, id);
+    cJSON_Delete(id);
+    *resp_out = resp;
+    TEST_ASSERT_NOT_NULL(resp);
+    cJSON *parsed = cJSON_Parse(resp);
+    TEST_ASSERT_NOT_NULL(parsed);
+    cJSON *err = cJSON_GetObjectItem(parsed, "error");
+    TEST_ASSERT_NOT_NULL(err);
+    TEST_ASSERT_EQUAL_INT(MIRROR_RPC_PRECONDITION_FAILED,
+                          cJSON_GetObjectItem(err, "code")->valueint);
+    return parsed; /* caller frees parsed + *resp_out, then resets the probe */
+}
+
+static void test_enable_without_accessibility_reports_accessibility(void) {
+    char *resp = NULL;
+    cJSON *parsed = enable_error_data(ax_denied, &resp);
+    cJSON *data = cJSON_GetObjectItem(cJSON_GetObjectItem(parsed, "error"), "data");
+    TEST_ASSERT_NOT_NULL(data);
+    cJSON *cap = cJSON_GetObjectItem(data, "required_capability");
+    TEST_ASSERT_NOT_NULL(cap);
+    TEST_ASSERT_EQUAL_STRING("accessibility", cap->valuestring);
+    cJSON *granted = cJSON_GetObjectItem(data, "accessibility_granted");
+    TEST_ASSERT_NOT_NULL(granted);
+    TEST_ASSERT_FALSE(cJSON_IsTrue(granted));
+    cJSON_Delete(parsed);
+    free(resp);
+    mirror_set_accessibility_check(NULL);
+}
+
+static void test_enable_with_accessibility_reports_signing(void) {
+    char *resp = NULL;
+    cJSON *parsed = enable_error_data(ax_granted, &resp);
+    cJSON *data = cJSON_GetObjectItem(cJSON_GetObjectItem(parsed, "error"), "data");
+    TEST_ASSERT_NOT_NULL(data);
+    cJSON *cap = cJSON_GetObjectItem(data, "required_capability");
+    TEST_ASSERT_NOT_NULL(cap);
+    TEST_ASSERT_EQUAL_STRING("code_signing", cap->valuestring);
+    cJSON *granted = cJSON_GetObjectItem(data, "accessibility_granted");
+    TEST_ASSERT_NOT_NULL(granted);
+    TEST_ASSERT_TRUE(cJSON_IsTrue(granted));
+    cJSON_Delete(parsed);
+    free(resp);
+    mirror_set_accessibility_check(NULL);
+}
+
 void run_commands_tests(void) {
     RUN_TEST(test_runtime_init_defaults);
     RUN_TEST(test_status_dispatch);
@@ -94,4 +150,6 @@ void run_commands_tests(void) {
     RUN_TEST(test_exclude_add_dispatch);
     RUN_TEST(test_stats_dispatch);
     RUN_TEST(test_enable_deferred);
+    RUN_TEST(test_enable_without_accessibility_reports_accessibility);
+    RUN_TEST(test_enable_with_accessibility_reports_signing);
 }
