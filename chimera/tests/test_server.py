@@ -1300,6 +1300,24 @@ class TestAnomalyRelay:
         )
         await task
 
+    # Active countermeasure (timing): a detected anomaly also starts ECHO traffic-timing
+    # normalization — pairs with CHAFF (CHAFF hides volume, ECHO hides timing).
+    async def test_anomaly_starts_echo_timing_normalization(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        _ec, efake = await _attach_registered_module(server, "echo", ["echo.start"])
+        task = asyncio.create_task(
+            server._relay_handle(Event(topic=self._ANOMALY, payload={"score": 0.9}))
+        )
+        for _ in range(4):
+            await asyncio.sleep(0)
+        assert efake.frames(), "anomaly should start ECHO timing normalization"
+        forwarded = efake.last_request()
+        assert forwarded.method == "echo.start"
+        server._resolve_pending(
+            Response(jsonrpc="2.0", id=forwarded.id, result={"ok": True})
+        )
+        await task
+
     # B — resilience: an offline target is logged, never raised; the relay returns.
     async def test_relay_offline_target_logged_not_raised(
         self, tmp_path: Any, caplog: Any

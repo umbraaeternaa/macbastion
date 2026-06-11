@@ -114,9 +114,12 @@ class Server:
     # D7 wire guard is untouched (this path never originates from a connection).
     RELAY_RULES: ClassVar[dict[str, list[str]]] = {
         # A detected anomaly heightens TETHER's sensitivity, locks the vault, AND turns on
-        # CHAFF decoy traffic — the organism doesn't just defend, it obscures the operator's
-        # real activity while the threat is live.
-        "oracle.anomaly.detected": ["tether.heighten", "vault.lock", "chaff.generation.start"],
+        # both obfuscation organs — the organism doesn't just defend, it obscures the
+        # operator's real activity while the threat is live: CHAFF hides traffic *volume*
+        # (decoy requests), ECHO hides traffic *timing* (constant-rate normalization).
+        "oracle.anomaly.detected": [
+            "tether.heighten", "vault.lock", "chaff.generation.start", "echo.start",
+        ],
         # Losing the paired phone (TETHER dead-man) auto-locks the open vault — its
         # plaintext RAM mount is torn down (VD-9b). vault.lock with no params locks
         # whatever vault is currently open.
