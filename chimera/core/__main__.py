@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
+import json
 import os
 import signal
 import subprocess
@@ -24,6 +26,7 @@ from core.override import OverrideStore
 from core.registry import Registry
 from core.server import Server
 from core.shim_client import ShimClient, ShimError
+from core.status_view import render_status
 from core.supervisor import CHIMERA_MODULES, ModuleSpec, Supervisor
 from core.tokens import TokenIssuer
 
@@ -73,6 +76,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     sub.add_parser(
         "shim-check", help="diagnostic: ping the shim and attempt the per-boot-secret handshake"
     )
+    sub.add_parser("status", help="print a live view of the organism (core + modules)")
     return parser.parse_args(argv)
 
 
@@ -196,11 +200,39 @@ async def _shim_check() -> int:
         return 1
 
 
+async def _status(config: CoreConfig) -> int:
+    """`chimera status`: fetch core.status over core.sock and print the organism view.
+    A core that isn't running -> a friendly message + exit 1 (never a stack trace)."""
+    sock = config.socket_dir / "core.sock"
+    try:
+        reader, writer = await asyncio.open_unix_connection(str(sock))
+    except (FileNotFoundError, ConnectionRefusedError, OSError):
+        print(f"core not reachable at {sock} — is `chimera up` running?")
+        return 1
+    try:
+        writer.write(b'{"jsonrpc":"2.0","id":1,"method":"core.status"}\n')
+        await writer.drain()
+        raw = await asyncio.wait_for(reader.readline(), timeout=5.0)
+    finally:
+        writer.close()
+        with contextlib.suppress(Exception):
+            await writer.wait_closed()
+    msg = json.loads(raw.decode())
+    result = msg.get("result")
+    if result is None:
+        print(f"core.status error: {msg.get('error')}")
+        return 1
+    print(render_status(result))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     if args.command == "shim-check":  # standalone diagnostic — needs no core config
         raise SystemExit(asyncio.run(_shim_check()))
     config = _config_from_env()
+    if args.command == "status":
+        raise SystemExit(asyncio.run(_status(config)))
     if args.command == "plist":
         print(launch_agent_plist(config.socket_dir))
         return
