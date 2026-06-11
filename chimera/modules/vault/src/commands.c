@@ -44,6 +44,7 @@ static void default_context(VaultContext *out) {
 
 void vault_runtime_tick(vault_runtime_t *rt, long now) {
     if (rt != NULL && rt->relock_at != 0 && now >= rt->relock_at) {
+        vault_mount_end(rt->open_vault_id); /* VD-9b: the plaintext vanishes on auto-relock */
         rt->open_vault_id[0] = '\0';
         rt->relock_at = 0;
     }
@@ -385,6 +386,7 @@ static char *handle_lock(vault_runtime_t *rt, const cJSON *params, const cJSON *
     const char *want = cJSON_IsString(vid) ? vid->valuestring : NULL;
     cJSON *r = cJSON_CreateObject();
     if (rt->open_vault_id[0] != '\0' && (want == NULL || strcmp(rt->open_vault_id, want) == 0)) {
+        vault_mount_end(rt->open_vault_id); /* VD-9b: tear down the mount on lock */
         rt->open_vault_id[0] = '\0';
         rt->relock_at = 0;
         cJSON_AddBoolToObject(r, "ok", 1);
@@ -561,6 +563,7 @@ static char *handle_delete(vault_runtime_t *rt, const cJSON *params, const cJSON
     /* evict the KEK + wipe the sealed-file index (best-effort — the registry drop already
      * makes the vault unreachable; these remove the leftover secret + ciphertext). */
     vault_keychain_delete(vid->valuestring);
+    vault_mount_end(vid->valuestring); /* VD-9b: tear down the mount if it was open */
     char fpath[1200];
     snprintf(fpath, sizeof(fpath), "%s/%s.files.json", rt->meta_dir, vid->valuestring);
     unlink(fpath);
@@ -631,6 +634,7 @@ static char *handle_policy_update(vault_runtime_t *rt, const cJSON *params, cons
     /* the policy (and thus the derived key) changed — close the vault so the next unlock
      * re-evaluates from scratch under the new policy. */
     if (strcmp(rt->open_vault_id, vid->valuestring) == 0) {
+        vault_mount_end(vid->valuestring); /* VD-9b */
         rt->open_vault_id[0] = '\0';
         rt->relock_at = 0;
     }

@@ -4,6 +4,7 @@
  * gated -31004 until GREEN. */
 #include "unity.h"
 
+#include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -316,6 +317,47 @@ static void test_unlock_mounts_plaintext(void) {
     free(vid);
 }
 
+static void unlock_mount_path(vault_runtime_t *rt, const char *vid, char *out, size_t sz) {
+    cJSON *root = unlock(rt, vid);
+    cJSON *mount = cJSON_GetObjectItemCaseSensitive(
+        cJSON_GetObjectItemCaseSensitive(root, "result"), "mount");
+    TEST_ASSERT_TRUE(cJSON_IsString(mount));
+    snprintf(out, sz, "%s", mount->valuestring);
+    cJSON_Delete(root);
+}
+
+static void test_lock_unmounts(void) {
+    /* VD-9b: locking tears down the mount — the decrypted plaintext volume vanishes. */
+    unlock_setup();
+    g_hour = 12;
+    vault_runtime_t rt;
+    vault_runtime_init(&rt);
+    char *vid = create_vault(&rt, "s", "allow_when: hour >= 9 and hour <= 17");
+    char path[600];
+    unlock_mount_path(&rt, vid, path, sizeof(path));
+    DIR *d = opendir(path);
+    TEST_ASSERT_NOT_NULL(d); /* mounted while open */
+    closedir(d);
+    cJSON_Delete(lock_vault(&rt, vid));
+    TEST_ASSERT_NULL(opendir(path)); /* unmounted on lock */
+    free(vid);
+}
+
+static void test_relock_unmounts(void) {
+    /* VD-9b: the auto-relock timer also unmounts when it fires. */
+    unlock_setup();
+    g_hour = 12;
+    vault_runtime_t rt;
+    vault_runtime_init(&rt);
+    char *vid = create_vault(&rt, "s", "allow_when: hour >= 9 and hour <= 17");
+    char path[600];
+    unlock_mount_path(&rt, vid, path, sizeof(path));
+    vault_runtime_tick(&rt, rt.relock_at + 1); /* advance past the deadline */
+    TEST_ASSERT_NULL(opendir(path));           /* auto-relock unmounted it */
+    TEST_ASSERT_EQUAL_INT('\0', rt.open_vault_id[0]); /* and closed it */
+    free(vid);
+}
+
 static cJSON *policy_update(vault_runtime_t *rt, const char *vault_id, const char *dsl) {
     cJSON *p = cJSON_CreateObject();
     cJSON_AddStringToObject(p, "vault_id", vault_id);
@@ -391,4 +433,6 @@ void run_unlock_tests(void) {
     RUN_TEST(test_policy_update_refused_with_content);
     RUN_TEST(test_policy_update_changes_decision);
     RUN_TEST(test_unlock_mounts_plaintext);
+    RUN_TEST(test_lock_unmounts);
+    RUN_TEST(test_relock_unmounts);
 }
