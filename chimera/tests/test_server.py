@@ -1553,3 +1553,25 @@ class TestTetherEscalationReflex:
         await server._on_tether_escalation(self._esc("L3", "trigger_purge"))
         assert shim.locked == 0  # PURGE is opt-in — no screen lock, no vault lock, no wipe
         assert vfake.frames() == []
+
+    # AD-1 tail: the shim-driven escalations bypass _relay_one, so audit them directly.
+    async def test_l1_screen_lock_is_audited(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        server._shim_client = _FakeShim()  # type: ignore[assignment]
+        await server._on_tether_escalation(self._esc("L1", "lock_screen"))
+        recent = server._audit_log.recent()
+        assert len(recent) == 1
+        assert recent[0]["topic"] == "tether.escalation"
+        assert recent[0]["commands"] == ["shim.lock"]
+        assert recent[0]["outcome"] == "ok"
+
+    async def test_l3_purge_request_is_audited_as_refused(self, tmp_path: Any) -> None:
+        # A requested-but-refused PURGE is security-relevant — it MUST leave a trace.
+        server = _make_server(tmp_path)
+        server._shim_client = _FakeShim()  # type: ignore[assignment]
+        await server._on_tether_escalation(self._esc("L3", "trigger_purge"))
+        recent = server._audit_log.recent()
+        assert len(recent) == 1
+        blob = (recent[0]["commands"][0] + " " + recent[0]["outcome"]).lower()
+        assert "purge" in blob
+        assert "refus" in blob or "opt-in" in blob

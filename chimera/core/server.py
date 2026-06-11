@@ -571,19 +571,27 @@ class Server:
         """
         action = event.payload.get("action_requested")
         if action == "lock_screen":
-            if self._shim_client is not None:
+            # Shim screen-lock bypasses _relay_one, so audit it here directly (AD-1).
+            if self._shim_client is None:
+                self._audit("tether.escalation", "shim.lock", "error: shim unavailable")
+            else:
                 try:
                     await self._shim_client.lock()
-                except Exception:  # noqa: BLE001 — reflex must never crash the loop
+                except Exception as exc:  # noqa: BLE001 — reflex must never crash the loop
                     logger.exception("tether escalation: shim screen-lock failed")
+                    self._audit("tether.escalation", "shim.lock", f"error: {exc}")
+                else:
+                    self._audit("tether.escalation", "shim.lock", "ok")
         elif action == "lock_vaults":
             await self._relay_one("tether.escalation", "vault.lock")
         elif action == "trigger_purge":
             # L3 is the nuclear option — irreversible. Auto-running it from a reflex is
             # unsafe; PURGE stays operator opt-in (core.purge), never an automatic effect.
+            # A requested-but-refused PURGE is security-relevant — leave a trace (AD-1).
             logger.warning(
                 "tether escalation requested PURGE (L3) — opt-in only, not auto-run"
             )
+            self._audit("tether.escalation", "purge.trigger", "refused: L3 opt-in only")
 
     async def _escalation_loop(self) -> None:
         """Consume tether.escalation events and actuate each (errors isolated)."""
