@@ -75,13 +75,19 @@ Slice 3A react-entrypoint (RED→GREEN) done. CORE: idea #3 Slice 3B anomaly-rel
 (RED→GREEN) done — a NEW core capability. ORACLE: idea #3 Slice 3C anomaly-emit
 (RED→GREEN) done — the real producer. **Idea #3 (Anomaly-Tripwire) COMPLETE** —
 3A+3B+3C wired + e2e-confirmed by 3D.
-Last completed: **vault.delete — registry drop + KEK eviction + content wipe** (commit `60e13a6`) — VD-7.
-`vault.delete {vault_id}` removes a vault completely: drops it from `registry.json`, **evicts its
-master-secret KEK from the Keychain** (new `del` backend hook; real path `SecItemDelete`, manual-tier),
-unlinks its sealed-file index `<vault_id>.files.json`, and closes it if it is the open vault. `{ok:true}`;
-unknown id -> `{ok:false, reason:no_such_vault}`. `vault.delete` un-gated; **`vault.policy.update` is now the
-SOLE -31004 engine method**. 2 RED->GREEN Unity (65 VAULT). 954 -> 956. NEXT: `vault.policy.update`
-(last gated method) and/or mount-to-tmpfs (manual-tier).
+Last completed: **vault.policy.update — re-policy an empty vault; VAULT IPC fully real** (commit `3e47f25`)
+— VD-8, the last gated method. `vault.policy.update {vault_id, policy_dsl}` validates the new DSL
+(fail-closed -32602), rewrites the policy in `registry.json`, and closes the vault if open. Because the
+derived key is bound to the policy (`Argon2id(master || policy_hash)`), it REFUSES a vault holding sealed
+content -> `{ok:false, reason:vault_not_empty}` (re-keying would orphan the ciphertext — MANIFESTO §4: no
+silent data loss); unknown id -> `{ok:false, reason:no_such_vault}`. **`is_engine_method` + the -31004
+branch are removed — EVERY `vault.*` method is now real.** 5 RED->GREEN Unity (69 VAULT). 956 -> 960.
+⚠️ Only mount-to-tmpfs (manual-tier) remains for VAULT. NEXT: mount-to-tmpfs, or move to another module.
+
+Prior milestone: **vault.delete — registry drop + KEK eviction + content wipe** (commit `60e13a6`) — VD-7.
+`vault.delete {vault_id}` drops the vault from `registry.json`, evicts its KEK from the Keychain (new `del`
+backend hook; real `SecItemDelete`, manual-tier), unlinks `<vault_id>.files.json`, closes it if open.
+`{ok:true}`; unknown id -> `{ok:false, reason:no_such_vault}`. 2 RED->GREEN Unity.
 
 Prior milestone: **decrypt-at-unlock — open sealed files with the gated key** (commit `3605bb6`) — VD-6.
 On ALLOW `vault.unlock` OPENS the vault's sealed files (`vault_open_all`): re-derives the key,
@@ -807,10 +813,10 @@ core, as authority, turns the event into a command.) Slices:
 - Native (MIRROR Unity): 42 passing (6 perturb + 6 profile + 5 exclude + 5 stats + 4 rng + 10 jsonrpc + 6 commands)
 - Native (shim Unity): 38 passing (13 ops [incl lock/evict/reboot real via injectable actions + killall documented no-op, Slice 3a/3b/3c] + 6 peercred + 2 server + 11 protocol [incl 4 secret-gating + 3 handshake] + 3 secret + 3 attest [fail-closed seams; positive = manual-tier] — per-boot secret + destructive-op gating + shim.handshake secret issuance to a SecCode-attested peer + real lock (pmset) / evict (Keychain, asuser) / reboot (/sbin/reboot), SS-2/3 / 2b / 3a-3c) — separate C trust-plane suite, NOT in pytest
 - Native (TETHER C++ Unity): 48 passing (4 ewma + 6 presence + 4 classify + 8 escalation + 6 emit + 10 commands + 10 monitor) — separate C++ suite, NOT in pytest
-- Native (VAULT C Unity): 65 passing (6 lexer + 6 parser + 9 evaluator + 6 fail_closed + 3 relock + 7 decide + 7 crypto + 9 commands [VD-1 status + VD-2 create/list + VD-3 create-provisions-KEK + VD-7 delete-removes/no_such_vault + policy.update gated -31004] + 2 keychain [VD-3 load-or-create] + 10 unlock [VD-4a decision + VD-4b key-derive + VD-4c lock/auto-relock + VD-5 add_file seals + VD-6 decrypt-at-unlock round-trip]) — separate C suite, NOT in pytest. VAULT is a live daemon (VD-1..7): create provisions a per-vault Keychain KEK (-> evict has real targets); unlock is state-gated, derives the key + OPENS the sealed files (full add_file->unlock crypto round-trip); lock/auto-relock close the lifecycle; delete drops the vault + evicts its KEK + wipes content. `vault.policy.update` is the last gated method; mount-to-tmpfs is the remaining manual-tier step
+- Native (VAULT C Unity): 69 passing (6 lexer + 6 parser + 9 evaluator + 6 fail_closed + 3 relock + 7 decide + 7 crypto + 11 commands [VD-1 status + VD-2 create/list + VD-3 create-provisions-KEK + VD-7 delete-removes/no_such_vault + VD-8 policy.update changes/unknown/bad-dsl] + 2 keychain [VD-3 load-or-create] + 12 unlock [VD-4a decision + VD-4b key-derive + VD-4c lock/auto-relock + VD-5 add_file seals + VD-6 decrypt-at-unlock round-trip + VD-8 policy.update refused-with-content/changes-decision]) — separate C suite, NOT in pytest. VAULT is a live daemon (VD-1..8): create provisions a per-vault Keychain KEK (-> evict has real targets); unlock is state-gated, derives the key + OPENS the sealed files (full add_file->unlock crypto round-trip); lock/auto-relock close the lifecycle; delete drops the vault + evicts its KEK + wipes content; policy.update re-policies an empty vault. EVERY vault.* method is now real (no -31004); only mount-to-tmpfs (manual-tier) remains
 - Native (ECHO C Unity): 31 passing (9 shaper — budget + flat-wire invariant + burst + clamps; 7 config — defaults + validation + atomic set + budget bridge; 7 stats — padding ratio + decile histogram + surge; 8 commands — echo.* dispatch over jsonrpc) — separate C suite, NOT in pytest
 - Native (PURGE C Unity): 35 passing (7 dry-run planner — §8 honest-wipe classify + keys-first tier plan; 9 target registry — add/dedup/remove + plan bridge; 7 config — post-action + marker, atomic set; 12 commands — purge.* dispatch, trigger gated -31004) — separate C suite, NOT in pytest
-- Total: 956 passing (595 default [incl 22 pulse scoring + 24 pulse baseline + 10 pulse assess + 10 pulse temporal + 3 pulse emission + 5 pulse danger-registry + 5 pulse finishers + 8 core gate + 5 core gate-wiring + 7 core override + 3 core gate-override + 5 core override.set + 6 core gate-hardening + 3 core entry + 10 core supervisor + 8 core CLI + 4 core autonomy + 3 core mark-lost + 1 core lock + 1 core graceful-down + 3 core tier0 + 3 core purge] + 57 integration + 46 CHAFF + 31 ECHO + 35 PURGE + 42 MIRROR + 38 shim + 48 TETHER + 65 VAULT Unity; ollama subset not double-counted)
+- Total: 960 passing (595 default [incl 22 pulse scoring + 24 pulse baseline + 10 pulse assess + 10 pulse temporal + 3 pulse emission + 5 pulse danger-registry + 5 pulse finishers + 8 core gate + 5 core gate-wiring + 7 core override + 3 core gate-override + 5 core override.set + 6 core gate-hardening + 3 core entry + 10 core supervisor + 8 core CLI + 4 core autonomy + 3 core mark-lost + 1 core lock + 1 core graceful-down + 3 core tier0 + 3 core purge] + 57 integration + 46 CHAFF + 31 ECHO + 35 PURGE + 42 MIRROR + 38 shim + 48 TETHER + 69 VAULT Unity; ollama subset not double-counted)
 
 **Open tails (honest tracking, MANIFESTO §4):**
 - Fernet at-rest: CHAFF (C/OpenSSL) and ORACLE (Python `cryptography.Fernet`) share the format but interop is NOT cross-tested (B1 deferred; format-faithful).
