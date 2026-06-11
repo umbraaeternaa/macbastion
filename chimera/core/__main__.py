@@ -18,6 +18,7 @@ import subprocess
 import sys
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from core.broker import EventBroker
 from core.config import CoreConfig
@@ -200,28 +201,49 @@ async def _shim_check() -> int:
         return 1
 
 
-async def _status(config: CoreConfig) -> int:
-    """`chimera status`: fetch core.status over core.sock and print the organism view.
-    A core that isn't running -> a friendly message + exit 1 (never a stack trace)."""
-    sock = config.socket_dir / "core.sock"
+async def _fetch(sock: Path, method: str) -> dict[str, Any] | None:
+    """Send one JSON-RPC request over core.sock and return the parsed reply, or None if
+    core is unreachable. The reply carries either a 'result' or an 'error'."""
     try:
         reader, writer = await asyncio.open_unix_connection(str(sock))
     except (FileNotFoundError, ConnectionRefusedError, OSError):
-        print(f"core not reachable at {sock} — is `chimera up` running?")
-        return 1
+        return None
     try:
-        writer.write(b'{"jsonrpc":"2.0","id":1,"method":"core.status"}\n')
+        req = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method})
+        writer.write((req + "\n").encode())
         await writer.drain()
         raw = await asyncio.wait_for(reader.readline(), timeout=5.0)
     finally:
         writer.close()
         with contextlib.suppress(Exception):
             await writer.wait_closed()
-    msg = json.loads(raw.decode())
-    result = msg.get("result")
-    if result is None:
-        print(f"core.status error: {msg.get('error')}")
+    parsed: dict[str, Any] = json.loads(raw.decode())
+    return parsed
+
+
+async def _status(config: CoreConfig) -> int:
+    """`chimera status`: print the live organism view (core + modules + reactive state +
+    VAULT open/locked). A core that isn't running -> a friendly message + exit 1."""
+    sock = config.socket_dir / "core.sock"
+    core_msg = await _fetch(sock, "core.status")
+    if core_msg is None:
+        print(f"core not reachable at {sock} — is `chimera up` running?")
         return 1
+    result = core_msg.get("result")
+    if result is None:
+        print(f"core.status error: {core_msg.get('error')}")
+        return 1
+    # Live VAULT state (routed to the daemon; an offline/erroring module shows as offline).
+    vault_msg = await _fetch(sock, "vault.status")
+    vres = vault_msg.get("result") if vault_msg else None
+    if vres is not None:
+        result["vault"] = {
+            "available": True,
+            "open": bool(vres.get("vault_open")),
+            "open_vault_id": vres.get("open_vault_id", ""),
+        }
+    else:
+        result["vault"] = {"available": False}
     print(render_status(result))
     return 0
 

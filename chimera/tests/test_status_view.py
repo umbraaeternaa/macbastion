@@ -61,6 +61,23 @@ def test_render_without_reactive_does_not_crash() -> None:
     assert "CHIMERA" in out
 
 
+def test_render_vault_open() -> None:
+    vault = {"available": True, "open": True, "open_vault_id": "abcd"}
+    out = render_status({**SAMPLE, "vault": vault})
+    assert "VAULT: open" in out
+    assert "abcd" in out  # which vault is open
+
+
+def test_render_vault_locked() -> None:
+    out = render_status({**SAMPLE, "vault": {"available": True, "open": False}})
+    assert "VAULT: locked" in out
+
+
+def test_render_vault_offline() -> None:
+    out = render_status({**SAMPLE, "vault": {"available": False}})
+    assert "VAULT: offline" in out
+
+
 # --- integration: the `chimera status` subcommand over a real core socket ---
 import pytest  # noqa: E402
 
@@ -104,6 +121,7 @@ async def test_status_subcommand_renders_live_core(tmp_path: Any, capsys: Any) -
         assert rc == 0
         assert "CHIMERA" in out
         assert "vault" in out
+        assert "VAULT:" in out  # live vault-state line (offline here — no daemon attached)
     finally:
         await server.stop()
 

@@ -33,4 +33,14 @@ def render_status(payload: dict[str, Any]) -> str:
         lines.append(f"armed reflexes ({len(reflexes)}):")
         for r in reflexes:
             lines.append(f"  - {r}")
+
+    # Live VAULT state (queried from the daemon; offline when the module is down).
+    vault = payload.get("vault")
+    if vault is not None:
+        if not vault.get("available", True):
+            lines.append("VAULT: offline")
+        elif vault.get("open"):
+            lines.append(f"VAULT: open ({vault.get('open_vault_id', '?')})")
+        else:
+            lines.append("VAULT: locked")
     return "\n".join(lines)
