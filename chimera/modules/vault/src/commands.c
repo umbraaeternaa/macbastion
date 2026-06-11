@@ -17,6 +17,7 @@
 #include "crypto.h"
 #include "jsonrpc.h"
 #include "keychain.h"
+#include "mount.h"
 #include "parser.h"
 
 #define VAULT_RELOCK_SECONDS 900   /* auto-relock 15 min after unlock (§5.6 default) */
@@ -270,13 +271,16 @@ static int hex_decode(const char *hex, unsigned char *out, size_t max) {
     return (int)(hlen / 2);
 }
 
-/* Open every sealed file in `sealed` with `key` (verifying the Poly1305 tag). 1 if ALL open
- * (sets *count); 0 if any entry is malformed or fails to verify (tamper / wrong key). The
- * decrypted plaintext is verified then discarded — mounting it to a tmpfs is manual-tier. */
-static int vault_open_all(const cJSON *sealed, const uint8_t key[VAULT_KEY_BYTES], int *count) {
+/* Open every sealed file in `sealed` with `key` (verifying the Poly1305 tag) and materialise the
+ * decrypted plaintext into the vault's mount (VD-9a). 1 if ALL open + land in the mount (sets
+ * *count); 0 if any entry is malformed, fails to verify (tamper / wrong key), or can't be written
+ * to the mount. The plaintext is zeroed from this buffer once handed to the mount. */
+static int vault_open_all(const cJSON *sealed, const uint8_t key[VAULT_KEY_BYTES],
+                          const char *vault_id, int *count) {
     int n = 0;
     const cJSON *e = NULL;
     cJSON_ArrayForEach(e, sealed) {
+        const cJSON *nm = cJSON_GetObjectItem(e, "name");
         const cJSON *nh = cJSON_GetObjectItem(e, "nonce");
         const cJSON *ch = cJSON_GetObjectItem(e, "ct");
         if (!cJSON_IsString(nh) || !cJSON_IsString(ch)) {
@@ -296,7 +300,10 @@ static int vault_open_all(const cJSON *sealed, const uint8_t key[VAULT_KEY_BYTES
         int ok = 0;
         if (ct != NULL && pt != NULL && hex_decode(ch->valuestring, ct, ctlen) == (int)ctlen) {
             size_t ptlen = 0;
-            ok = vault_crypto_open(key, nonce, ct, ctlen, pt, &ptlen) ? 1 : 0;
+            if (vault_crypto_open(key, nonce, ct, ctlen, pt, &ptlen)) {
+                const char *fname = cJSON_IsString(nm) ? nm->valuestring : "file";
+                ok = (vault_mount_put(vault_id, fname, pt, ptlen) == 0) ? 1 : 0;
+            }
             sodium_memzero(pt, ptcap);
         }
         free(ct);
@@ -335,17 +342,23 @@ static char *handle_unlock(vault_runtime_t *rt, const cJSON *params, const cJSON
         if (vault_derive_key(vid->valuestring, policy, key) != 0) {
             return denied(id, "key_unavailable");
         }
-        /* VD-6: open the vault's sealed files with the gated key — proves the state-gated key
-         * actually decrypts the vault (the add_file -> unlock round-trip). Plaintext is verified
-         * then discarded; mounting it to a tmpfs is a manual-tier follow-on. */
+        /* VD-9a: open a RAM-backed mount, then OPEN the sealed files with the gated key and
+         * materialise the decrypted plaintext into the mount — it never touches the disk and
+         * vanishes on lock. A bad tag (tamper / wrong key) or a failed mount tears it back down. */
+        char mountpath[512];
+        if (vault_mount_begin(vid->valuestring, mountpath, sizeof(mountpath)) != 0) {
+            sodium_memzero(key, sizeof(key));
+            return denied(id, "mount_failed");
+        }
         char fpath[1200];
         snprintf(fpath, sizeof(fpath), "%s/%s.files.json", rt->meta_dir, vid->valuestring);
         cJSON *sealed = load_array_file(fpath);
         int files = 0;
-        int integrity_ok = vault_open_all(sealed, key, &files);
+        int integrity_ok = vault_open_all(sealed, key, vid->valuestring, &files);
         cJSON_Delete(sealed);
         sodium_memzero(key, sizeof(key));
         if (!integrity_ok) {
+            vault_mount_end(vid->valuestring); /* don't leave a half-populated mount behind */
             return denied(id, "integrity"); /* a sealed file failed to verify (tamper / wrong key) */
         }
         snprintf(rt->open_vault_id, sizeof(rt->open_vault_id), "%s", vid->valuestring);
@@ -354,6 +367,7 @@ static char *handle_unlock(vault_runtime_t *rt, const cJSON *params, const cJSON
         cJSON_AddBoolToObject(r, "ok", 1);
         cJSON_AddStringToObject(r, "vault_id", vid->valuestring);
         cJSON_AddNumberToObject(r, "files", files);
+        cJSON_AddStringToObject(r, "mount", mountpath);
         return jsonrpc_serialize_response(id, r);
     }
     if (d.verdict == VAULT_DEFER) {

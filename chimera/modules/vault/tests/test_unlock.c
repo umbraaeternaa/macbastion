@@ -280,6 +280,42 @@ static void test_unlock_opens_sealed_files(void) {
     free(vid);
 }
 
+static void test_unlock_mounts_plaintext(void) {
+    /* On ALLOW the decrypted plaintext is materialised into the vault's mount (VD-9a) — the
+     * unlock response carries the mount path and the file is readable there. */
+    unlock_setup();
+    g_hour = 12;
+    vault_runtime_t rt;
+    vault_runtime_init(&rt);
+    char *vid = create_vault(&rt, "s", "allow_when: hour >= 9 and hour <= 17");
+    cJSON_Delete(unlock(&rt, vid)); /* open (empty mount) */
+    const char *src = "/tmp/chimera_vault_secret.txt";
+    FILE *sf = fopen(src, "wb");
+    TEST_ASSERT_NOT_NULL(sf);
+    fputs("top-secret", sf);
+    fclose(sf);
+    cJSON_Delete(add_file(&rt, vid, src));
+    unlink(src);
+    cJSON_Delete(lock_vault(&rt, vid));
+
+    cJSON *root = unlock(&rt, vid); /* reopen -> mounts + materialises the plaintext */
+    cJSON *result = cJSON_GetObjectItemCaseSensitive(root, "result");
+    cJSON *mount = cJSON_GetObjectItemCaseSensitive(result, "mount");
+    TEST_ASSERT_TRUE(cJSON_IsString(mount));
+    TEST_ASSERT_TRUE(mount->valuestring[0] != '\0');
+    char fp[700];
+    snprintf(fp, sizeof(fp), "%s/chimera_vault_secret.txt", mount->valuestring);
+    FILE *mf = fopen(fp, "rb");
+    TEST_ASSERT_NOT_NULL(mf);
+    char buf[64] = {0};
+    size_t n = fread(buf, 1, sizeof(buf) - 1, mf);
+    fclose(mf);
+    buf[n] = '\0';
+    TEST_ASSERT_EQUAL_STRING("top-secret", buf);
+    cJSON_Delete(root);
+    free(vid);
+}
+
 static cJSON *policy_update(vault_runtime_t *rt, const char *vault_id, const char *dsl) {
     cJSON *p = cJSON_CreateObject();
     cJSON_AddStringToObject(p, "vault_id", vault_id);
@@ -354,4 +390,5 @@ void run_unlock_tests(void) {
     RUN_TEST(test_unlock_opens_sealed_files);
     RUN_TEST(test_policy_update_refused_with_content);
     RUN_TEST(test_policy_update_changes_decision);
+    RUN_TEST(test_unlock_mounts_plaintext);
 }

@@ -4,10 +4,11 @@
 
 #include "tests.h"
 
-/* Before every test, swap the keychain to an in-memory backend so NO test ever touches the real
- * login Keychain (the real SecItem path is manual-tier). */
+/* Before every test, swap the keychain + mount to in-memory / temp-dir backends so NO test ever
+ * touches the real login Keychain or mounts a real RAM disk (both real paths are manual-tier). */
 void setUp(void) {
     vault_test_install_mem_keychain();
+    vault_test_install_tmp_mount();
 }
 void tearDown(void) {}
 
@@ -23,5 +24,6 @@ int main(void) {
     run_commands_tests();
     run_keychain_tests();
     run_unlock_tests();
+    run_mount_tests();
     return UNITY_END();
 }
