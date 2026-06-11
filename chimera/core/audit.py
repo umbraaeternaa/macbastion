@@ -23,8 +23,9 @@ from typing import Any
 class AuditLog:
     """Append-only record of every reflex the core actuates."""
 
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, max_entries: int = 1000) -> None:
         self._path = Path(path)
+        self._max = max_entries  # cap: the trail keeps only the last N actuations
 
     def record(
         self, *, topic: str, commands: Sequence[str], outcome: str
@@ -47,7 +48,20 @@ class AuditLog:
         self._path.chmod(0o600)
         with self._path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(entry) + "\n")
+        self._trim()
         return entry
+
+    def _trim(self) -> None:
+        """Keep only the last `max_entries` lines, so the trail never grows without bound
+        on a long-running daemon. Rewrites in place, preserving 0600."""
+        try:
+            lines = self._path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            return
+        if len(lines) <= self._max:
+            return
+        self._path.write_text("\n".join(lines[-self._max:]) + "\n", encoding="utf-8")
+        self._path.chmod(0o600)
 
     def recent(self, n: int = 50) -> list[dict[str, Any]]:
         """The last n actuations in chronological order; [] if nothing recorded.

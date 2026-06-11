@@ -48,6 +48,19 @@ def test_record_outcome_can_capture_failure(tmp_path: Any) -> None:
     assert "offline" in log.recent()[0]["outcome"]
 
 
+def test_record_caps_to_max_entries(tmp_path: Any) -> None:
+    # The trail must not grow without bound: record past the cap, keep only the last N.
+    log = AuditLog(tmp_path / "audit.jsonl", max_entries=5)
+    for i in range(8):
+        log.record(topic=f"t{i}", commands=["x"], outcome="ok")
+    recent = log.recent(100)
+    assert len(recent) == 5  # capped
+    assert [e["topic"] for e in recent] == ["t3", "t4", "t5", "t6", "t7"]  # the last 5
+    # and the file on disk is capped too (not just the read)
+    lines = (tmp_path / "audit.jsonl").read_text().splitlines()
+    assert len(lines) == 5
+
+
 def test_file_is_owner_only(tmp_path: Any) -> None:
     path = Path(tmp_path / "audit.jsonl")
     log = AuditLog(path)
