@@ -77,17 +77,23 @@ Slice 3A react-entrypoint (RED→GREEN) done. CORE: idea #3 Slice 3B anomaly-rel
 (RED→GREEN) done — a NEW core capability. ORACLE: idea #3 Slice 3C anomaly-emit
 (RED→GREEN) done — the real producer. **Idea #3 (Anomaly-Tripwire) COMPLETE** —
 3A+3B+3C wired + e2e-confirmed by 3D.
-Last completed: **MIRROR arc slice 1 — `mirror.enable` does a REAL Accessibility probe** (AX-1; commit
-`0087170`). MIRROR is the last organ whose core capability (behavioral-noise injection) is gated; this is the
-first concrete step to unlock it. `mirror.enable` used to return ONE blanket `-31004` "signing infra not
-built" for everyone. It now consults the real OS Accessibility state (`AXIsProcessTrusted()` via the
-already-linked ApplicationServices framework) behind an injectable seam (`mirror_set_accessibility_check`;
-tests inject a deterministic stub, `NULL` resets to real). Two HONEST probe-driven states, both still `-31004`
-(enable genuinely can't proceed yet) but with a TRUE reason: NOT granted -> `required_capability:
-"accessibility"` + "grant it in System Settings > Privacy & Security > Accessibility"; granted ->
-`accessibility_granted: true`, `required_capability: "code_signing"` (next gate — event-tap signing, still
-unbuilt). 2 RED->GREEN (44 MIRROR Unity, 0 fail). 1017 -> 1019. `-Werror` clean; no new dependency.
-NEXT (MIRROR arc): code-signing gate for the CGEventTap, then the real tap install + perturbation wiring.
+Last completed: **MIRROR arc slice 2 — `mirror.enable` starts a REAL CGEvent input injector** (AX-2;
+commit `9a05af3`, Day 17). Slice 1 probed Accessibility and reported an honest reason; with Accessibility
+granted it still returned a `code_signing` wall. Slice 2 makes enable **go live**: new injector seam
+(`mirror_set_injector`; tests inject a stub). Accessibility granted -> `rt->enabled = 1`, start the injector
+via the seam, return `ok` (roll back + "injector failed" error if it can't start). **Design call:**
+code-signing is a DISTRIBUTION concern, not a local-use blocker — a power-user who grants Accessibility can
+post events, so the signing gate is dropped for local use (CHIMERA is a power tool, not a mass product).
+Real injector backend (MANUAL-TIER — not unit-tested, needs a live Accessibility grant): a pthread that
+while enabled posts small humanlike mouse-move perturbations (`perturb_mouse` scaled by the profile's
+`mouse_sigma`) via `CGEventCreateMouseEvent` + `CGEventPost`, jittered gap via `perturb_timing`; stops when
+`mirror.disable` clears `enabled`. Dispatch holds the runtime mutex so the thread can't see a half-state.
+Test replaced (`reports_signing` -> `starts_injector`); 44 MIRROR Unity, count unchanged at 1019. `-Werror`
+clean. NEXT (MIRROR arc): LIVE-VERIFY the injector (grant Accessibility to the mirror binary, observe the
+cursor jitter, confirm `mirror.disable` stops it); then secure-field downgrade wiring + click/key jitter.
+
+Prior milestone: **MIRROR arc slice 1 — `mirror.enable` does a REAL Accessibility probe** (AX-1; commit
+`0087170`) — `AXIsProcessTrusted()` behind an injectable seam; honest probe-driven errors.
 
 Prior milestone: **reflex audit trail — COMPLETE: readable surface + full coverage** (AD-1; commits `a64ee7d`
 `chimera audit` CLI + `6465ed5` shim-tail audit). The audit trail is now end-to-end usable. New
