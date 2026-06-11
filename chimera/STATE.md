@@ -121,6 +121,12 @@ The reflex TRIAD — the "one mind" secures the vault from three angles:
 ✅ **LIVE-WIRE-VERIFIED e2e** (core + real VAULT daemon + real hdiutil RAM mount): unlock -> publish
 `tether.absent` -> relay issued `vault.lock` -> daemon locked + unmounted (vault_open False, /Volumes gone)
 -> clean. The "one mind" runs on real hardware.
+✅ **FULL-ORGANISM DEMO-VERIFIED e2e** (throwaway script, day 16): real core + real VAULT daemon + live
+`watch` stream + `status` between acts. All THREE reflex arms fired live and locked the vault each time —
+`tether.absent`, PULSE `exhausted` (status showed `PULSE: exhausted`), and `tether.escalation` L2
+(`lock_vaults`) — with the `watch` stream narrating and `status` showing VAULT open->locked transitions;
+clean teardown (KEK evicted, mounts gone). The complete organism demonstrably defends itself on real
+hardware.
 
 Prior milestone: **TETHER-loss auto-locks the open vault** (commit `696e2e8`) — first cross-module reflex;
 `tether.absent -> vault.lock` on the relay path (the paired phone leaving range locks the open vault + tears
