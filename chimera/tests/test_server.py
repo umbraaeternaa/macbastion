@@ -1280,6 +1280,26 @@ class TestAnomalyRelay:
             methods.add(vfake.last_request().method)
         assert methods == {"tether.heighten", "vault.lock"}
 
+    # Active countermeasure: a detected anomaly also turns on CHAFF decoy traffic to
+    # mask the operator's real activity (the organism obscures, not just locks).
+    async def test_anomaly_starts_chaff_decoy_traffic(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        _cc, cfake = await _attach_registered_module(
+            server, "chaff", ["chaff.generation.start"]
+        )
+        task = asyncio.create_task(
+            server._relay_handle(Event(topic=self._ANOMALY, payload={"score": 0.9}))
+        )
+        for _ in range(4):
+            await asyncio.sleep(0)
+        assert cfake.frames(), "anomaly should start CHAFF decoy traffic"
+        forwarded = cfake.last_request()
+        assert forwarded.method == "chaff.generation.start"
+        server._resolve_pending(
+            Response(jsonrpc="2.0", id=forwarded.id, result={"ok": True})
+        )
+        await task
+
     # B — resilience: an offline target is logged, never raised; the relay returns.
     async def test_relay_offline_target_logged_not_raised(
         self, tmp_path: Any, caplog: Any
