@@ -11,10 +11,12 @@
 
 #define VAULT_MASTER_SECRET_LEN 32
 
-/* Backend hooks. load: 1 = found (fills out[32]), 0 = absent, -1 = error. store: 0 ok / -1. */
+/* Backend hooks. load: 1 = found (fills out[32]), 0 = absent, -1 = error. store: 0 ok / -1.
+ * del: 0 ok (including already-absent) / -1 error. */
 typedef struct {
     int (*load)(const char *vault_id, unsigned char *out);
     int (*store)(const char *vault_id, const unsigned char *secret);
+    int (*del)(const char *vault_id);
 } vault_keychain_backend_t;
 
 /* Swap the backend (NULL field(s) reset to the real SecItem backend). Returns the previous. */
@@ -23,5 +25,9 @@ vault_keychain_backend_t vault_keychain_set_backend(vault_keychain_backend_t b);
 /* Get-or-create the vault's master secret. 0 on success (out[VAULT_MASTER_SECRET_LEN] filled),
  * -1 on error. Absent -> generate 32 CSPRNG bytes + store. */
 int vault_keychain_load_or_create(const char *vault_id, unsigned char *out);
+
+/* Evict the vault's master secret (VD-7, vault.delete). 0 on success including already-absent,
+ * -1 on error. The same item the privileged shim's evict (PURGE Tier-0) destroys. */
+int vault_keychain_delete(const char *vault_id);
 
 #endif /* VAULT_KEYCHAIN_H */

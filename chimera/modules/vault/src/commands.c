@@ -10,6 +10,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <unistd.h>
 
 #include <sodium.h>
 
@@ -511,11 +512,59 @@ static char *handle_add_file(vault_runtime_t *rt, const cJSON *params, const cJS
     return jsonrpc_serialize_response(id, r);
 }
 
+/* vault.delete (VD-7): permanently remove a vault — drop it from the registry, evict its
+ * Keychain master secret (KEK), wipe its sealed-file index, and close it if it is the open
+ * vault. {ok:true} on success; an unknown id -> {ok:false, reason:no_such_vault}. */
+static char *handle_delete(vault_runtime_t *rt, const cJSON *params, const cJSON *id) {
+    const cJSON *vid = cJSON_GetObjectItem(params, "vault_id");
+    if (!cJSON_IsString(vid)) {
+        return jsonrpc_serialize_error(id, -32602, "vault_id required", NULL);
+    }
+    cJSON *reg = load_registry(rt->meta_dir);
+    int found = -1;
+    int n = cJSON_GetArraySize(reg);
+    for (int i = 0; i < n; i++) {
+        const cJSON *e = cJSON_GetArrayItem(reg, i);
+        const cJSON *eid = cJSON_GetObjectItem(e, "vault_id");
+        if (cJSON_IsString(eid) && strcmp(eid->valuestring, vid->valuestring) == 0) {
+            found = i;
+            break;
+        }
+    }
+    if (found < 0) {
+        cJSON_Delete(reg);
+        cJSON *r = cJSON_CreateObject();
+        cJSON_AddBoolToObject(r, "ok", 0);
+        cJSON_AddStringToObject(r, "reason", "no_such_vault");
+        return jsonrpc_serialize_response(id, r);
+    }
+    cJSON_DeleteItemFromArray(reg, found);
+    int rc = save_registry(rt->meta_dir, reg);
+    cJSON_Delete(reg);
+    if (rc != 0) {
+        return jsonrpc_serialize_error(id, -32000, "persist failed", NULL);
+    }
+    /* evict the KEK + wipe the sealed-file index (best-effort — the registry drop already
+     * makes the vault unreachable; these remove the leftover secret + ciphertext). */
+    vault_keychain_delete(vid->valuestring);
+    char fpath[1200];
+    snprintf(fpath, sizeof(fpath), "%s/%s.files.json", rt->meta_dir, vid->valuestring);
+    unlink(fpath);
+    /* if the deleted vault was the open one, close it */
+    if (strcmp(rt->open_vault_id, vid->valuestring) == 0) {
+        rt->open_vault_id[0] = '\0';
+        rt->relock_at = 0;
+    }
+    cJSON *r = cJSON_CreateObject();
+    cJSON_AddBoolToObject(r, "ok", 1);
+    return jsonrpc_serialize_response(id, r);
+}
+
 /* The methods whose real behaviour (decrypt / mount / re-encrypt) is not built yet — refuse
  * rather than fake it (MANIFESTO §4). */
 static int is_engine_method(const char *method) {
     static const char *const ENGINE[] = {
-        "vault.policy.update", "vault.delete",
+        "vault.policy.update",
     };
     for (size_t i = 0; i < sizeof(ENGINE) / sizeof(ENGINE[0]); i++) {
         if (strcmp(method, ENGINE[i]) == 0) {
@@ -550,6 +599,9 @@ char *vault_commands_dispatch(vault_runtime_t *rt, const char *method, const cJS
     }
     if (strcmp(method, "vault.add_file") == 0) {
         return handle_add_file(rt, params, id);
+    }
+    if (strcmp(method, "vault.delete") == 0) {
+        return handle_delete(rt, params, id);
     }
     if (is_engine_method(method)) {
         return jsonrpc_serialize_error(id, -31004, "vault engine not available", NULL);

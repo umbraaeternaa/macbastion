@@ -73,13 +73,39 @@ static int keychain_store_real(const char *vault_id, const unsigned char *secret
     return (st == errSecSuccess) ? 0 : -1;
 }
 
-static vault_keychain_backend_t g_backend = {keychain_load_real, keychain_store_real};
+static int keychain_delete_real(const char *vault_id) {
+    CFStringRef acct = CFStringCreateWithCString(NULL, vault_id, kCFStringEncodingUTF8);
+    if (acct == NULL) {
+        return -1;
+    }
+    const void *keys[] = {kSecClass, kSecAttrService, kSecAttrAccount};
+    const void *vals[] = {kSecClassGenericPassword, KC_SERVICE, acct};
+    CFDictionaryRef q = CFDictionaryCreate(NULL, keys, vals, 3, &kCFTypeDictionaryKeyCallBacks,
+                                           &kCFTypeDictionaryValueCallBacks);
+    OSStatus st = q ? SecItemDelete(q) : errSecParam;
+    if (q) {
+        CFRelease(q);
+    }
+    CFRelease(acct);
+    return (st == errSecSuccess || st == errSecItemNotFound) ? 0 : -1;
+}
+
+static vault_keychain_backend_t g_backend = {keychain_load_real, keychain_store_real,
+                                             keychain_delete_real};
 
 vault_keychain_backend_t vault_keychain_set_backend(vault_keychain_backend_t b) {
     vault_keychain_backend_t prev = g_backend;
     g_backend.load = b.load ? b.load : keychain_load_real;
     g_backend.store = b.store ? b.store : keychain_store_real;
+    g_backend.del = b.del ? b.del : keychain_delete_real;
     return prev;
+}
+
+int vault_keychain_delete(const char *vault_id) {
+    if (vault_id == NULL) {
+        return -1;
+    }
+    return g_backend.del(vault_id);
 }
 
 int vault_keychain_load_or_create(const char *vault_id, unsigned char *out) {

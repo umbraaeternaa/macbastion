@@ -51,8 +51,8 @@ static void test_status_reports_no_open_vault(void) {
     cJSON_Delete(root);
 }
 
-static void test_delete_is_gated_31004(void) {
-    cJSON *root = dispatch("vault.delete"); /* delete engine not built yet */
+static void test_policy_update_is_gated_31004(void) {
+    cJSON *root = dispatch("vault.policy.update"); /* policy.update engine not built yet */
     TEST_ASSERT_EQUAL_INT(-31004, error_code(root));
     cJSON_Delete(root);
 }
@@ -108,6 +108,51 @@ static void test_create_provisions_keychain_kek(void) {
     TEST_ASSERT_EQUAL_INT(1, vault_test_keychain_count()); /* create provisioned exactly one KEK */
 }
 
+static void test_delete_removes_vault(void) {
+    setup_tmp_state();
+    cJSON *params = make_create_params("doomed", "allow_when: hour >= 9 and hour <= 17");
+    cJSON *root = dispatch_params("vault.create", params);
+    cJSON *vid = cJSON_GetObjectItemCaseSensitive(
+        cJSON_GetObjectItemCaseSensitive(root, "result"), "vault_id");
+    char id[64];
+    snprintf(id, sizeof(id), "%s", vid->valuestring);
+    cJSON_Delete(root);
+    cJSON_Delete(params);
+    TEST_ASSERT_EQUAL_INT(1, vault_test_keychain_count()); /* create provisioned the KEK */
+
+    cJSON *dp = cJSON_CreateObject();
+    cJSON_AddStringToObject(dp, "vault_id", id);
+    cJSON *droot = dispatch_params("vault.delete", dp);
+    cJSON_Delete(dp);
+    cJSON *result = cJSON_GetObjectItemCaseSensitive(droot, "result");
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(result, "ok")));
+    cJSON_Delete(droot);
+
+    /* the vault is gone from the registry */
+    cJSON *lroot = dispatch("vault.list");
+    cJSON *vaults = cJSON_GetObjectItemCaseSensitive(
+        cJSON_GetObjectItemCaseSensitive(lroot, "result"), "vaults");
+    TEST_ASSERT_EQUAL_INT(0, cJSON_GetArraySize(vaults));
+    cJSON_Delete(lroot);
+
+    /* its master-secret KEK was evicted from the keychain */
+    TEST_ASSERT_EQUAL_INT(0, vault_test_keychain_count());
+}
+
+static void test_delete_unknown_vault_denied(void) {
+    setup_tmp_state();
+    cJSON *dp = cJSON_CreateObject();
+    cJSON_AddStringToObject(dp, "vault_id", "0123456789abcdef0123456789abcdef");
+    cJSON *droot = dispatch_params("vault.delete", dp);
+    cJSON_Delete(dp);
+    cJSON *result = cJSON_GetObjectItemCaseSensitive(droot, "result");
+    TEST_ASSERT_TRUE(cJSON_IsFalse(cJSON_GetObjectItemCaseSensitive(result, "ok")));
+    TEST_ASSERT_EQUAL_STRING(
+        "no_such_vault",
+        cJSON_GetObjectItemCaseSensitive(result, "reason")->valuestring);
+    cJSON_Delete(droot);
+}
+
 static void test_unknown_method_is_32601(void) {
     cJSON *root = dispatch("vault.bogus");
     TEST_ASSERT_EQUAL_INT(-32601, error_code(root));
@@ -116,10 +161,12 @@ static void test_unknown_method_is_32601(void) {
 
 void run_commands_tests(void) {
     RUN_TEST(test_status_reports_no_open_vault);
-    RUN_TEST(test_delete_is_gated_31004);
+    RUN_TEST(test_policy_update_is_gated_31004);
     RUN_TEST(test_create_returns_vault_id);
     RUN_TEST(test_create_rejects_bad_policy);
     RUN_TEST(test_list_returns_created_vault);
     RUN_TEST(test_create_provisions_keychain_kek);
+    RUN_TEST(test_delete_removes_vault);
+    RUN_TEST(test_delete_unknown_vault_denied);
     RUN_TEST(test_unknown_method_is_32601);
 }

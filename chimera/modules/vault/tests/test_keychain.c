@@ -37,10 +37,20 @@ static int mem_store(const char *vault_id, const unsigned char *secret) {
     return -1;
 }
 
+static int mem_del(const char *vault_id) {
+    for (int i = 0; i < MEM_MAX; i++) {
+        if (g_mem[i].present && strcmp(g_mem[i].vault_id, vault_id) == 0) {
+            memset(&g_mem[i], 0, sizeof(g_mem[i]));
+            return 0;
+        }
+    }
+    return 0; /* already absent is success */
+}
+
 /* Installed by the runner's setUp: reset the store + swap in the in-memory backend. */
 void vault_test_install_mem_keychain(void) {
     memset(g_mem, 0, sizeof(g_mem));
-    vault_keychain_backend_t b = {mem_load, mem_store};
+    vault_keychain_backend_t b = {mem_load, mem_store, mem_del};
     vault_keychain_set_backend(b);
 }
 
