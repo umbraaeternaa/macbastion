@@ -42,6 +42,25 @@ def test_render_empty_modules_does_not_crash() -> None:
     assert "CHIMERA" in out  # header still rendered, no module rows
 
 
+def test_render_shows_reactive_state() -> None:
+    payload = {
+        **SAMPLE,
+        "reactive": {
+            "pulse_mode": "tired",
+            "reflexes": ["tether.absent -> vault.lock", "pulse:exhausted -> vault.lock"],
+        },
+    }
+    out = render_status(payload)
+    assert "tired" in out  # the live PULSE cognitive mode
+    assert "tether.absent -> vault.lock" in out  # an armed reflex is listed
+    assert "pulse:exhausted -> vault.lock" in out
+
+
+def test_render_without_reactive_does_not_crash() -> None:
+    out = render_status(SAMPLE)  # no "reactive" key -> still renders core + modules
+    assert "CHIMERA" in out
+
+
 # --- integration: the `chimera status` subcommand over a real core socket ---
 import pytest  # noqa: E402
 

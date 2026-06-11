@@ -302,9 +302,17 @@ class Server:
             if self._start_time is None
             else max(0.0, time.time() - self._start_time)
         )
+        # Reactive state — the "one mind" made visible: the live PULSE cognitive mode and
+        # the armed cross-module reflexes (data-driven RELAY_RULES + the two code reflexes).
+        reflexes = [
+            f"{topic} -> {', '.join(cmds)}" for topic, cmds in sorted(self.RELAY_RULES.items())
+        ]
+        reflexes.append("pulse:exhausted -> vault.lock")
+        reflexes.append("tether.escalation L1/L2 -> shim.lock / vault.lock")
         return {
             "core": {"version": self.CORE_VERSION, "uptime_seconds": uptime},
             "modules": modules,
+            "reactive": {"pulse_mode": self._pulse_mode or "normal", "reflexes": reflexes},
         }
 
     def _handle_subscribe(

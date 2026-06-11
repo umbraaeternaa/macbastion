@@ -477,6 +477,27 @@ class TestCoreStatus:
         resp = await server.handle_command(_req("core.status"), conn)
         assert resp.result["modules"]["vault"]["restart_count"] == 0
 
+    async def test_reactive_section_pulse_mode_default(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        conn = server.new_connection()
+        resp = await server.handle_command(_req("core.status"), conn)
+        assert resp.result["reactive"]["pulse_mode"] == "normal"  # no PULSE event yet
+
+    async def test_reactive_section_reflects_pulse_mode(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        server._pulse_mode = "tired"
+        conn = server.new_connection()
+        resp = await server.handle_command(_req("core.status"), conn)
+        assert resp.result["reactive"]["pulse_mode"] == "tired"
+
+    async def test_reactive_section_lists_armed_reflexes(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        conn = server.new_connection()
+        resp = await server.handle_command(_req("core.status"), conn)
+        reflexes = resp.result["reactive"]["reflexes"]
+        assert any("tether.absent" in r for r in reflexes)
+        assert any("exhausted" in r for r in reflexes)
+
 
 # ---------------------------------------------------------------------------
 # core.subscribe handler — broker subscription
