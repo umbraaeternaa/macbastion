@@ -111,6 +111,11 @@ class Server:
     # (this path never originates from a connection). topic -> module.method.
     RELAY_RULES: ClassVar[dict[str, str]] = {
         "oracle.anomaly.detected": "tether.heighten",
+        # The "one mind": losing the paired phone (TETHER dead-man) auto-locks the
+        # open vault — VAULT reacts to TETHER through core's authority. vault.lock
+        # with no params locks whatever vault is currently open (its plaintext mount
+        # is torn down, VD-9b). Data, not logic; the D7 wire guard is untouched.
+        "tether.absent": "vault.lock",
     }
 
     def __init__(

@@ -1273,3 +1273,22 @@ class TestAnomalyRelay:
         )
         await server._relay_handle(Event(topic="chaff.decoy.sent", payload={}))
         assert fake.frames() == []
+
+    # tether.absent -> vault.lock: losing the paired phone auto-locks the open
+    # vault (the "one mind" — VAULT reacting to TETHER, via core's authority).
+    async def test_tether_absent_relays_vault_lock(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        _modconn, fake = await _attach_registered_module(
+            server, "vault", ["vault.lock"]
+        )
+        task = asyncio.create_task(
+            server._relay_handle(Event(topic="tether.absent", payload={}))
+        )
+        await asyncio.sleep(0)  # let the relay forward + register the pending future
+        assert fake.frames(), "tether.absent should relay a command to VAULT"
+        forwarded = fake.last_request()
+        assert forwarded.method == "vault.lock"
+        server._resolve_pending(
+            Response(jsonrpc="2.0", id=forwarded.id, result={"ok": True})
+        )
+        await task  # completes without raising
