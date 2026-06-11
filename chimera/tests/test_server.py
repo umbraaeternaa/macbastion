@@ -1220,7 +1220,8 @@ class TestAnomalyRelay:
         task = asyncio.create_task(
             server._relay_handle(Event(topic=self._ANOMALY, payload={"score": 0.9}))
         )
-        await asyncio.sleep(0)  # let the relay forward + register the pending future
+        for _ in range(4):  # let the fan-out relay forward + register the pending future
+            await asyncio.sleep(0)
         assert fake.frames(), "relay should have forwarded a command"
         forwarded = fake.last_request()
         assert forwarded.method == "tether.heighten"
@@ -1230,6 +1231,33 @@ class TestAnomalyRelay:
             Response(jsonrpc="2.0", id=forwarded.id, result={"ok": True})
         )
         await task  # completes without raising
+
+    # Fan-out: one event drives MULTIPLE module reflexes. A detected anomaly both
+    # heightens TETHER's sensitivity AND locks the vault (defense in depth).
+    async def test_anomaly_relays_to_both_tether_and_vault(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        _tc, tfake = await _attach_registered_module(
+            server, "tether", ["tether.heighten"]
+        )
+        _vc, vfake = await _attach_registered_module(server, "vault", ["vault.lock"])
+        task = asyncio.create_task(
+            server._relay_handle(Event(topic=self._ANOMALY, payload={"score": 0.9}))
+        )
+        for _ in range(4):  # let both reflexes forward + register their pendings
+            await asyncio.sleep(0)
+        for fake in (tfake, vfake):
+            if fake.frames():
+                req = fake.last_request()
+                server._resolve_pending(
+                    Response(jsonrpc="2.0", id=req.id, result={"ok": True})
+                )
+        await task
+        methods = set()
+        if tfake.frames():
+            methods.add(tfake.last_request().method)
+        if vfake.frames():
+            methods.add(vfake.last_request().method)
+        assert methods == {"tether.heighten", "vault.lock"}
 
     # B — resilience: an offline target is logged, never raised; the relay returns.
     async def test_relay_offline_target_logged_not_raised(
@@ -1284,7 +1312,8 @@ class TestAnomalyRelay:
         task = asyncio.create_task(
             server._relay_handle(Event(topic="tether.absent", payload={}))
         )
-        await asyncio.sleep(0)  # let the relay forward + register the pending future
+        for _ in range(4):  # let the fan-out relay forward + register the pending future
+            await asyncio.sleep(0)
         assert fake.frames(), "tether.absent should relay a command to VAULT"
         forwarded = fake.last_request()
         assert forwarded.method == "vault.lock"

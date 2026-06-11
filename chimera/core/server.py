@@ -109,13 +109,16 @@ class Server:
     # topics is published, core — as authority, NOT a module — issues the mapped
     # command to the target module. Data, not logic; the D7 wire guard is untouched
     # (this path never originates from a connection). topic -> module.method.
-    RELAY_RULES: ClassVar[dict[str, str]] = {
-        "oracle.anomaly.detected": "tether.heighten",
-        # The "one mind": losing the paired phone (TETHER dead-man) auto-locks the
-        # open vault — VAULT reacts to TETHER through core's authority. vault.lock
-        # with no params locks whatever vault is currently open (its plaintext mount
-        # is torn down, VD-9b). Data, not logic; the D7 wire guard is untouched.
-        "tether.absent": "vault.lock",
+    # topic -> the list of module.method reflexes core issues when it is published.
+    # Fan-out: one event can drive several organs ("one mind"). Data, not logic; the
+    # D7 wire guard is untouched (this path never originates from a connection).
+    RELAY_RULES: ClassVar[dict[str, list[str]]] = {
+        # A detected anomaly heightens TETHER's sensitivity AND locks the vault.
+        "oracle.anomaly.detected": ["tether.heighten", "vault.lock"],
+        # Losing the paired phone (TETHER dead-man) auto-locks the open vault — its
+        # plaintext RAM mount is torn down (VD-9b). vault.lock with no params locks
+        # whatever vault is currently open.
+        "tether.absent": ["vault.lock"],
     }
 
     def __init__(
@@ -410,36 +413,36 @@ class Server:
         """
         return await self._issue_to_module(method, params)
 
-    async def _relay_handle(self, event: Event) -> None:
-        """Relay one broker event to its mapped module command (RELAY_RULES).
-
-        Core acts as authority — it issues the command in-process, never via a
-        connection, so the D7 wire guard is untouched. Resilient: an unmapped topic
-        issues nothing; a missing target, a timeout, or any error is logged, never
-        raised, so the consume loop survives.
-        """
-        target = self.RELAY_RULES.get(event.topic)
-        if target is None:
-            return  # no rule for this topic — issue nothing
+    async def _relay_one(self, topic: str, target: str) -> None:
+        """Issue one relay target on core's authority, isolating every failure mode."""
         try:
             reply = await self._dispatch_internal(target, None)
         except RpcError as exc:
-            logger.warning(
-                "anomaly relay %s -> %s failed: %s", event.topic, target, exc
-            )
+            logger.warning("anomaly relay %s -> %s failed: %s", topic, target, exc)
             return
         except Exception:  # noqa: BLE001 — relay must never crash the consume loop
-            logger.exception("anomaly relay %s -> %s raised", event.topic, target)
+            logger.exception("anomaly relay %s -> %s raised", topic, target)
             return
         if reply.error is not None:
             logger.warning(
-                "anomaly relay %s -> %s returned error: %s",
-                event.topic,
-                target,
-                reply.error,
+                "anomaly relay %s -> %s returned error: %s", topic, target, reply.error
             )
         else:
-            logger.info("anomaly relay %s -> %s ok", event.topic, target)
+            logger.info("anomaly relay %s -> %s ok", topic, target)
+
+    async def _relay_handle(self, event: Event) -> None:
+        """Relay one broker event to ALL its mapped module commands (RELAY_RULES).
+
+        Core acts as authority — it issues each command in-process, never via a
+        connection, so the D7 wire guard is untouched. Fan-out: a topic may map to
+        several reflexes, issued concurrently. Resilient: an unmapped topic issues
+        nothing; each target's missing-module / timeout / error is isolated and
+        logged, never raised, so the consume loop and the sibling reflexes survive.
+        """
+        targets = self.RELAY_RULES.get(event.topic)
+        if not targets:
+            return  # no rule for this topic — issue nothing
+        await asyncio.gather(*(self._relay_one(event.topic, t) for t in targets))
 
     async def _relay_loop(self) -> None:
         """Consume relay-rule events and dispatch each (errors isolated per event)."""
