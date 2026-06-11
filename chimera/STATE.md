@@ -75,17 +75,24 @@ Slice 3A react-entrypoint (RED→GREEN) done. CORE: idea #3 Slice 3B anomaly-rel
 (RED→GREEN) done — a NEW core capability. ORACLE: idea #3 Slice 3C anomaly-emit
 (RED→GREEN) done — the real producer. **Idea #3 (Anomaly-Tripwire) COMPLETE** —
 3A+3B+3C wired + e2e-confirmed by 3D.
-Last completed: **ORACLE all-clear — the threat axis is now bidirectional** (commit `65bf8db`). 🎯 **1000+
-tests crossed (1001).** ORACLE was one-way: it shouted `oracle.anomaly.detected` on the upward threshold
-cross but never signalled a return to normal, so de-escalation had to hang off `tether.recovered` (a
-different axis). Now `_handle_classify` is edge-aware — it tracks `_anomalous` and, once anomalous, emits
-`oracle.anomaly.cleared` when the score falls below `threshold - ANOMALY_HYSTERESIS` (0.1) — a hysteresis
-band so a score hovering near the threshold can't flap detected/cleared. Detector stays advisory-pure (D4);
-the emit lives in the client; ORACLE still only announces, never acts. Core wires `oracle.anomaly.cleared ->
-[chaff.generation.stop, echo.stop]`, so the **same axis that raised the obfuscation now lowers it** (purer
-than the tether proxy; `tether.recovered` stand-down stays too). `detected` stays level-triggered (unchanged).
-4 RED->GREEN (3 ORACLE client emit + 1 core relay). 997 -> 1001. mypy --strict + ruff clean. NEXT: MIRROR
-signing arc (Accessibility + code-signing — big), swiftbar (parent-scope, needs OK), or harden.
+Last completed: **reflex audit trail — the autonomous organism is now accountable** (AD-1; commits
+`9d733b7` store + `ee7fafb` wiring). Core actuates reflexes on its own authority (lock the vault, ramp/relax
+obfuscation, escalate) — those actions used to vanish the moment they scrolled past `chimera watch`. New
+`core/audit.py` `AuditLog`: append-only JSONL (`record(topic, commands, outcome)` / `recent(n)`), 0600 file
+in a 0700 dir, corrupt line skipped never fatal, plaintext by design (a record of core's OWN actions — no
+keys/payloads). Server wires it into `_relay_one` (always on; injectable; defaults to `audit.jsonl` beside
+the sockets), so every actuated reflex is recorded with its **outcome** — `ok`, or `error: ...` when the
+target is offline/errors. The single chokepoint covers the whole RELAY_RULES fan-out + the pulse->vault and
+escalation->vault.lock code reflexes. A failing audit write is logged, never breaks the reflex. The operator
+can now answer "why did my vault lock?" post-hoc. 8 RED->GREEN (6 store + 2 wiring). 1001 -> 1009. mypy
+--strict + ruff clean.
+KNOWN TAILS (next slices): (1) escalation->shim.lock goes via `_shim_client` directly, NOT `_relay_one`, so
+that one actuation is not yet audited; (2) no `chimera audit` query surface yet (read `recent()` only in
+code). NEXT: audit those tails + a `chimera audit` CLI; or MIRROR signing arc; or swiftbar (parent-scope).
+
+Prior milestone: **ORACLE all-clear — the threat axis is now bidirectional** (commit `65bf8db`) — crossed
+1000 tests; `_handle_classify` emits `oracle.anomaly.cleared` on the downward cross below `threshold -
+ANOMALY_HYSTERESIS` (0.1); core stands obfuscation down on the matching axis.
 
 Prior milestone: **de-escalation — tether.recovered stands down the obfuscation organs** (commit `f51bdf0`)
 — first stand-down; `tether.recovered -> [chaff.generation.stop, echo.stop]`; the reflex web goes down, not
@@ -906,7 +913,7 @@ core, as authority, turns the event into a command.) Slices:
 - Native (VAULT C Unity): 74 passing (6 lexer + 6 parser + 9 evaluator + 6 fail_closed + 3 relock + 7 decide + 7 crypto + 11 commands [VD-1 status + VD-2 create/list + VD-3 create-provisions-KEK + VD-7 delete-removes/no_such_vault + VD-8 policy.update changes/unknown/bad-dsl] + 2 keychain [VD-3 load-or-create] + 15 unlock/mount [VD-4a decision + VD-4b key-derive + VD-4c lock/auto-relock + VD-5 add_file seals + VD-6 decrypt-at-unlock round-trip + VD-8 policy.update refused-with-content/changes-decision + VD-9a unlock-mounts-plaintext + VD-9b lock/relock-unmount] + 2 mount-seam [VD-9a begin/put/end roundtrip + put-without-begin]) — separate C suite, NOT in pytest. VAULT is a live daemon (VD-1..9): create provisions a per-vault Keychain KEK (-> evict has real targets); unlock is state-gated, derives the key, OPENS the sealed files + materialises plaintext into a RAM-backed mount; lock/auto-relock/delete/policy.update unmount (plaintext vanishes); delete drops the vault + evicts its KEK; policy.update re-policies an empty vault. EVERY vault.* method is real; decrypted plaintext is RAM-only. Lone manual-tier path: the real hdiutil RAM-disk mount backend
 - Native (ECHO C Unity): 31 passing (9 shaper — budget + flat-wire invariant + burst + clamps; 7 config — defaults + validation + atomic set + budget bridge; 7 stats — padding ratio + decile histogram + surge; 8 commands — echo.* dispatch over jsonrpc) — separate C suite, NOT in pytest
 - Native (PURGE C Unity): 35 passing (7 dry-run planner — §8 honest-wipe classify + keys-first tier plan; 9 target registry — add/dedup/remove + plan bridge; 7 config — post-action + marker, atomic set; 12 commands — purge.* dispatch, trigger gated -31004) — separate C suite, NOT in pytest
-- Total: 1001 passing (629 default [incl 22 pulse scoring + 24 pulse baseline + 10 pulse assess + 10 pulse temporal + 3 pulse emission + 5 pulse danger-registry + 5 pulse finishers + 8 core gate + 5 core gate-wiring + 7 core override + 3 core gate-override + 5 core override.set + 6 core gate-hardening + 3 core entry + 10 core supervisor + 8 core CLI + 4 core autonomy + 3 core mark-lost + 1 core lock + 1 core graceful-down + 3 core tier0 + 3 core purge + 1 core tether->vault relay + 1 core fan-out relay + 2 core anomaly-obfuscation (chaff+echo) + 1 core de-escalation (recovered stand-down) + 3 ORACLE all-clear (anomaly.cleared hysteresis) + 1 core anomaly-cleared stand-down + 3 core pulse->vault reflex + 3 core tether-escalation actuation + 19 core status-view/watch] + 59 integration + 46 CHAFF + 31 ECHO + 35 PURGE + 42 MIRROR + 38 shim + 48 TETHER + 74 VAULT Unity; ollama subset not double-counted)
+- Total: 1009 passing (637 default [incl 22 pulse scoring + 24 pulse baseline + 10 pulse assess + 10 pulse temporal + 3 pulse emission + 5 pulse danger-registry + 5 pulse finishers + 8 core gate + 5 core gate-wiring + 7 core override + 3 core gate-override + 5 core override.set + 6 core gate-hardening + 3 core entry + 10 core supervisor + 8 core CLI + 4 core autonomy + 3 core mark-lost + 1 core lock + 1 core graceful-down + 3 core tier0 + 3 core purge + 1 core tether->vault relay + 1 core fan-out relay + 2 core anomaly-obfuscation (chaff+echo) + 1 core de-escalation (recovered stand-down) + 3 ORACLE all-clear (anomaly.cleared hysteresis) + 1 core anomaly-cleared stand-down + 6 core audit store + 2 core audit wiring + 3 core pulse->vault reflex + 3 core tether-escalation actuation + 19 core status-view/watch] + 59 integration + 46 CHAFF + 31 ECHO + 35 PURGE + 42 MIRROR + 38 shim + 48 TETHER + 74 VAULT Unity; ollama subset not double-counted)
 
 **Open tails (honest tracking, MANIFESTO §4):**
 - Fernet at-rest: CHAFF (C/OpenSSL) and ORACLE (Python `cryptography.Fernet`) share the format but interop is NOT cross-tested (B1 deferred; format-faithful).
