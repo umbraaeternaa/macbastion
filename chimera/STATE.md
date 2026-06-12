@@ -86,6 +86,14 @@ gate adds friction on dangerous actions. ✅ LIVE-VERIFIED end-to-end (real idle
 stamped). Existing client tests made hermetic (`idle_reader -> None`). 2 RED->GREEN. 1033 -> 1035. mypy
 --strict + ruff clean. NEXT (PD-idle): chronotype/session already live; group-A (MIRROR input aggregates) +
 group-C (ORACLE drift) producers remain gated — or a different organ/arc.
+✅ **COGNITIVE LOOP LIVE-VERIFIED end-to-end** (Day 18, throwaway harness — real `PulseClient._compute` + real
+`Server` gate + real `EventBroker`): at 3am, a "just took a break" operator scored 0.75 -> **TIRED**, while the
+SAME instant with the live idle signal showing 6h of unbroken work scored 1.00 -> **EXHAUSTED** — the live idle
+signal is what tips tired->exhausted. The mode published through the real broker reached core's gate via
+`_gate_loop`, and `vault.delete` (a registered danger action) was: forwarded at NORMAL, **delayed 5.0s** at
+TIRED, **BLOCKED (-31003 DENIED_BY_POLICY)** at EXHAUSTED; the exhausted transition also fired the `vault.lock`
+cognitive reflex (audited). The full loop — live idle -> temporal -> EXHAUSTED -> gate BLOCK + vault auto-lock
+— runs on real components with no wiring gap. PD-idle made the cognitive gate genuinely operator-driven.
 
 Prior milestone: **PULSE IdleTracker — the idle sub-signal goes live (PD-idle-1)** (commit `2d7517f`, Day 18).
 New pure/hermetic `pulse/idle.py` `IdleTracker` derives `last_idle_end` from a stream of `(now, idle_seconds)`:
