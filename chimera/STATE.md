@@ -83,9 +83,17 @@ Last completed: **PULSE consumes ORACLE anomaly as group-C drift — ALL 3 SENSE
 `drift=self._drift.drift(now)` to assess. **The PULSE sensing trilogy is complete** — input dynamics (group-A,
 MIRROR tap, live-verified), temporal/idle (group-B, ioreg, live), and ORACLE behavioral drift (group-C) are
 all live. Non-numeric score ignored (fail-open). 3 RED->GREEN + pulse integration green. 1068 -> 1071. mypy
---strict + ruff clean. NEXT: a capstone full-loop live-verify, or PULSE's remaining tails (confirm-dialog
-surface / external-OS gating / live registry-refresh) — or a fresh organ/arc (TETHER BLE, CHAFF/ECHO real
-shaping, PURGE real wipe, the code-signing arc).
+--strict + ruff clean.
+✅ **TRILOGY CAPSTONE LIVE-VERIFIED end-to-end** (Day 18, throwaway harness — real `PulseClient._on_event_frame`
+ingest + real `_compute` + real `Server` gate): fed real events of all three groups and each lifted the fatigue
+score live — group-B temporal alone 0.05 (NORMAL) -> + a fatigued `mirror.input.minute` (group-A) 0.66
+(CAUTION) -> + an `oracle.anomaly.detected` score (group-C) 0.71 (TIRED); the TIRED mode pushed through the
+real broker reached the gate via `_gate_loop` and `vault.delete` was **delayed 5.0s** (cool-off) vs forwarded
+at NORMAL. The whole 2-day PULSE-sensing line is proven on real components: real 3-group signals -> event ->
+PULSE mode -> gate friction. (Harness catch: seeding the 14-day baseline at 03:00 lost one day to the [now-14d,
+now) window at a 14:00 `now` -> forced-normal; seeding relative to `now` fixed it.)
+NEXT: PULSE's remaining tails (confirm-dialog surface / external-OS gating / live registry-refresh) — or a
+fresh organ/arc (TETHER BLE, CHAFF/ECHO real shaping, PURGE real wipe, the code-signing arc).
 
 Prior milestone: **PULSE DriftTracker — ORACLE anomaly as the group-C drift signal (PD-C-1)** (commit
 `496fb07`, Day 18). Pure `pulse/drift.py` `DriftTracker` holds an ORACLE anomaly score (from
