@@ -77,7 +77,25 @@ Slice 3A react-entrypoint (RED→GREEN) done. CORE: idea #3 Slice 3B anomaly-rel
 (RED→GREEN) done — a NEW core capability. ORACLE: idea #3 Slice 3C anomaly-emit
 (RED→GREEN) done — the real producer. **Idea #3 (Anomaly-Tripwire) COMPLETE** —
 3A+3B+3C wired + e2e-confirmed by 3D.
-Last completed: **SV-5 — ONE-COMMAND INSTALL/UNINSTALL (persistence CLI); verified live on hardware**
+Last completed: **TETHER real BLE source — Phase 3 effector UN-GATED, verified live on hardware**
+(commits `15e4947` TE-real-1 + `3159ba3` TE-real-2, Day 20 — Phase 3 begins). TETHER's presence sensing was
+the gated seam (`CoreBluetoothSource::next()` returned false, §4 honest empty). Now real: **TE-real-1** added a
+pure, tested companion-identity matcher (`normalize_bt_addr` + `companion_matches`, 4 RED->GREEN, tether 48->52).
+**TE-real-2** added `src/cb_scanner.mm` — an Objective-C++ CBCentralManager that scans for the companion's BLE
+service UUID on a private dispatch queue and feeds live RSSI through `CoreBluetoothSource` into the presence
+engine; `companion_id` comes from config (+`TETHER_COMPANION_ID` env override); Makefile links
+CoreBluetooth+Foundation. Bluetooth off/denied → honest not-ready, never fabricates presence (§4). The .mm +
+source are manual-tier (the matcher is unit-tested).
+✅ **LIVE on hardware** (Day 20): the integrated `CoreBluetoothSource` caught a real in-air BLE beacon — `seen`
+flipped 0->1 with graded, changing RSSI (-76/-97 dBm) — proving config-UUID → .mm scan → Sample → presence
+end-to-end. (Hardware reality found honestly: classic-BT paging of a phone is a dead end — no RSSI passively,
+20s page-timeout actively; the working path is BLE ranging of a stable advertiser. A stock Samsung S22 via
+nRF Connect is a flaky advertiser; any reliable BLE beacon works — the Mac code is one for all.)
+NEXT (Phase 3 continues): a reliable companion beacon for the live "walk away -> VAULT locks" demo (cheap
+hardware BLE tag, mechanism already proven); then the other gated effectors — MIRROR/PULSE Accessibility taps,
+CHAFF/ECHO root/shim traffic shaping, arm PURGE real wipe, code-signing.
+
+Prior milestone: **SV-5 — ONE-COMMAND INSTALL/UNINSTALL (persistence CLI); verified live on hardware**
 (commit `eb784c4`, Day 20 — Phase 2). `python -m core install` writes the LaunchAgent plist to
 ~/Library/LaunchAgents/com.umbra.chimera.plist then `launchctl bootstrap gui/$(id -u)` (idempotent: boots out
 any prior instance first, so re-install updates the plist instead of failing on 'already bootstrapped');
@@ -1202,11 +1220,11 @@ core, as authority, turns the event into a command.) Slices:
 - Native (CHAFF Unity): 46 passing (7 endpoints + 6 schedule + 6 crypto + 6 db + 10 jsonrpc + 6 commands + 5 generation)
 - Native (MIRROR Unity): 42 passing (6 perturb + 6 profile + 5 exclude + 5 stats + 4 rng + 10 jsonrpc + 6 commands)
 - Native (shim Unity): 38 passing (13 ops [incl lock/evict/reboot real via injectable actions + killall documented no-op, Slice 3a/3b/3c] + 6 peercred + 2 server + 11 protocol [incl 4 secret-gating + 3 handshake] + 3 secret + 3 attest [fail-closed seams; positive = manual-tier] — per-boot secret + destructive-op gating + shim.handshake secret issuance to a SecCode-attested peer + real lock (pmset) / evict (Keychain, asuser) / reboot (/sbin/reboot), SS-2/3 / 2b / 3a-3c) — separate C trust-plane suite, NOT in pytest
-- Native (TETHER C++ Unity): 48 passing (4 ewma + 6 presence + 4 classify + 8 escalation + 6 emit + 10 commands + 10 monitor) — separate C++ suite, NOT in pytest
+- Native (TETHER C++ Unity): 52 passing (4 ewma + 6 presence + 4 classify + 8 escalation + 6 emit + 10 commands + 10 monitor + 4 source [TE-real-1 companion matcher: normalize + match]) — separate C++ suite, NOT in pytest. The real BLE source (cb_scanner.mm CBCentralManager, TE-real-2) is manual-tier — verified live, caught a real beacon with graded RSSI
 - Native (VAULT C Unity): 74 passing (6 lexer + 6 parser + 9 evaluator + 6 fail_closed + 3 relock + 7 decide + 7 crypto + 11 commands [VD-1 status + VD-2 create/list + VD-3 create-provisions-KEK + VD-7 delete-removes/no_such_vault + VD-8 policy.update changes/unknown/bad-dsl] + 2 keychain [VD-3 load-or-create] + 15 unlock/mount [VD-4a decision + VD-4b key-derive + VD-4c lock/auto-relock + VD-5 add_file seals + VD-6 decrypt-at-unlock round-trip + VD-8 policy.update refused-with-content/changes-decision + VD-9a unlock-mounts-plaintext + VD-9b lock/relock-unmount] + 2 mount-seam [VD-9a begin/put/end roundtrip + put-without-begin]) — separate C suite, NOT in pytest. VAULT is a live daemon (VD-1..9): create provisions a per-vault Keychain KEK (-> evict has real targets); unlock is state-gated, derives the key, OPENS the sealed files + materialises plaintext into a RAM-backed mount; lock/auto-relock/delete/policy.update unmount (plaintext vanishes); delete drops the vault + evicts its KEK; policy.update re-policies an empty vault. EVERY vault.* method is real; decrypted plaintext is RAM-only. Lone manual-tier path: the real hdiutil RAM-disk mount backend
 - Native (ECHO C Unity): 31 passing (9 shaper — budget + flat-wire invariant + burst + clamps; 7 config — defaults + validation + atomic set + budget bridge; 7 stats — padding ratio + decile histogram + surge; 8 commands — echo.* dispatch over jsonrpc) — separate C suite, NOT in pytest
 - Native (PURGE C Unity): 35 passing (7 dry-run planner — §8 honest-wipe classify + keys-first tier plan; 9 target registry — add/dedup/remove + plan bridge; 7 config — post-action + marker, atomic set; 12 commands — purge.* dispatch, trigger gated -31004) — separate C suite, NOT in pytest
-- Total: 1085 passing (687 default [incl 22 pulse scoring + 24 pulse baseline + 10 pulse assess + 10 pulse temporal + 5 pulse idle [PD-idle-1] + 5 pulse drift [PD-C-1] + 5 pulse input [PD-A-1 group-A mapper] + 10 pulse emission [EM + PD-idle-2 + PD-A-2 + PD-A-3 group-A subscribe] + 5 pulse danger-registry + 5 pulse finishers + 8 core gate + 5 core gate-wiring + 7 core override + 3 core gate-override + 5 core override.set + 6 core gate-hardening + 3 core entry + 10 core supervisor + 18 core CLI (incl SV-5 install/uninstall) + 4 core autonomy + 3 core mark-lost + 1 core lock + 1 core graceful-down + 3 core tier0 + 3 core purge + 1 core tether->vault relay + 1 core fan-out relay + 2 core anomaly-obfuscation (chaff+echo) + 1 core de-escalation (recovered stand-down) + 3 ORACLE all-clear (anomaly.cleared hysteresis) + 1 core anomaly-cleared stand-down + 7 core audit store + 2 core audit wiring + 6 core audit surface (render+CLI) + 2 core shim-escalation audit + 3 core pulse->vault reflex + 3 core tether-escalation actuation + 19 core status-view/watch] + 59 integration + 46 CHAFF + 31 ECHO + 40 PURGE + 63 MIRROR + 38 shim + 48 TETHER + 74 VAULT Unity; ollama subset not double-counted)
+- Total: 1089 passing (687 default [incl 22 pulse scoring + 24 pulse baseline + 10 pulse assess + 10 pulse temporal + 5 pulse idle [PD-idle-1] + 5 pulse drift [PD-C-1] + 5 pulse input [PD-A-1 group-A mapper] + 10 pulse emission [EM + PD-idle-2 + PD-A-2 + PD-A-3 group-A subscribe] + 5 pulse danger-registry + 5 pulse finishers + 8 core gate + 5 core gate-wiring + 7 core override + 3 core gate-override + 5 core override.set + 6 core gate-hardening + 3 core entry + 10 core supervisor + 18 core CLI (incl SV-5 install/uninstall) + 4 core autonomy + 3 core mark-lost + 1 core lock + 1 core graceful-down + 3 core tier0 + 3 core purge + 1 core tether->vault relay + 1 core fan-out relay + 2 core anomaly-obfuscation (chaff+echo) + 1 core de-escalation (recovered stand-down) + 3 ORACLE all-clear (anomaly.cleared hysteresis) + 1 core anomaly-cleared stand-down + 7 core audit store + 2 core audit wiring + 6 core audit surface (render+CLI) + 2 core shim-escalation audit + 3 core pulse->vault reflex + 3 core tether-escalation actuation + 19 core status-view/watch] + 59 integration + 46 CHAFF + 31 ECHO + 40 PURGE + 63 MIRROR + 38 shim + 52 TETHER + 74 VAULT Unity; ollama subset not double-counted)
 
 **Open tails (honest tracking, MANIFESTO §4):**
 
