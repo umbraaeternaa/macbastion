@@ -67,9 +67,15 @@ static void test_stats_dispatch(void) {
     free(resp);
 }
 
-/* enable is GATED on code-signing + TCC: must return a -31004 error response.
- * Stub returns NULL -> TEST_ASSERT_NOT_NULL fails -> FAIL. */
+/* Deterministic Accessibility stubs (seam injection) — a unit test must not depend on
+ * whether THIS machine has granted Accessibility (which flips the real AXIsProcessTrusted). */
+static int ax_denied(void) { return 0; }
+static int ax_granted(void) { return 1; }
+
+/* enable without Accessibility: must return a MIRROR_RPC_PRECONDITION_FAILED error response.
+ * Inject "denied" so the outcome is deterministic on any machine (granted or not). */
 static void test_enable_deferred(void) {
+    mirror_set_accessibility_check(ax_denied);
     mirror_runtime_t rt = {0};
     mirror_runtime_init(&rt);
     cJSON *id = cJSON_CreateNumber(5);
@@ -85,14 +91,12 @@ static void test_enable_deferred(void) {
     cJSON_Delete(parsed);
     cJSON_Delete(id);
     free(resp);
+    mirror_set_accessibility_check(NULL);
 }
 
-/* AX-1: enable now consults a REAL Accessibility probe (seam-injected here). Without
- * the permission, the error names "accessibility" — an honest, actionable reason,
- * not the old blanket "signing infra not built". */
-static int ax_denied(void) { return 0; }
-static int ax_granted(void) { return 1; }
-
+/* AX-1: enable now consults a REAL Accessibility probe (seam-injected via ax_denied/
+ * ax_granted above). Without the permission, the error names "accessibility" — an honest,
+ * actionable reason, not the old blanket "signing infra not built". */
 static cJSON *enable_error_data(int (*probe)(void), char **resp_out) {
     mirror_set_accessibility_check(probe);
     mirror_runtime_t rt = {0};
