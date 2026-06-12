@@ -22,14 +22,27 @@ RESPONSE_SCHEMA: dict[str, Any] = {
 
 
 _TEMPLATE = """\
-You are a security anomaly detector observing a single user's machine.
-Given the user's normal pattern (baseline summary) below, decide whether the \
-following event is unusual. Reply with a score from 0 (perfectly normal) to 1 \
-(highly anomalous) and a short reasoning.
+You are a security anomaly detector for a single user's machine. Score how \
+anomalous and dangerous the event is, from 0.0 (perfectly normal) to 1.0 \
+(clearly malicious or destructive). Put the NUMBER in the `score` field — make it \
+match how dangerous your reasoning says the event is.
 
-When you explain, cite concrete personal context: the time of day versus the \
-user's usual hours, how many days the baseline spans, and whether this source \
-or type is new. Return context_factors as a short list of such factors.
+Scoring guide (anchors):
+- 0.0-0.2  routine, expected (normal app use, usual login hours).
+- 0.3-0.5  mildly unusual (a new app, off-hours but plausible).
+- 0.6-0.8  suspicious (unrecognized process, unusual data access, odd network).
+- 0.9-1.0  clearly malicious/destructive — ransomware or mass file encryption, \
+data exfiltration, deleting backups/shadow copies, credential theft.
+
+Examples:
+- Event: user opens their browser at 2pm.  ->  score 0.05
+- Event: 8000 files encrypted to .locked, ransom note written, shadow copies \
+deleted.  ->  score 0.97
+- Event: 2GB uploaded to an unknown host over Tor at 3am.  ->  score 0.9
+
+Use the user's baseline below for context. Cite concrete factors: time of day \
+versus usual hours, how many days the baseline spans, whether this source or type \
+is new. Return context_factors as a short list of such factors.
 
 Baseline summary (JSON):
 {summary}
@@ -37,7 +50,9 @@ Baseline summary (JSON):
 Event (JSON):
 {event}
 
-Score the event 0-1 and explain why."""
+Now set `score` (0.0-1.0) for THIS event and explain why. A destructive or clearly \
+malicious event MUST score above 0.8; do not output 0 for an event your reasoning \
+calls dangerous."""
 
 
 def build_prompt(
