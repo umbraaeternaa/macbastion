@@ -50,9 +50,10 @@ Baseline summary (JSON):
 Event (JSON):
 {event}
 
-Now set `score` (0.0-1.0) for THIS event and explain why. A destructive or clearly \
-malicious event MUST score above 0.8; do not output 0 for an event your reasoning \
-calls dangerous."""
+Now set `score` (0.0-1.0) for THIS event and explain why. Make the number match \
+the danger your reasoning describes — high only for genuinely suspicious or \
+destructive events, low for routine, in-baseline activity. Do not output 0 for an \
+event your reasoning calls dangerous, and do not over-flag normal activity."""
 
 
 def build_prompt(

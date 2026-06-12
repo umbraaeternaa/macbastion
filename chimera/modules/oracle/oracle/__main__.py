@@ -18,6 +18,7 @@ observe-first: no Ollama, no classify, no Mode B (later slice).
 """
 
 import asyncio
+import os
 import signal
 from pathlib import Path
 
@@ -48,9 +49,11 @@ def main() -> None:
     config = CoreConfig()
     oracle_dir = Path("~/.config/chimera/oracle").expanduser()
     store = BaselineStore(oracle_dir / "baseline.db", oracle_dir / "baseline.key")
-    # Mode B: wire the LLM detector so oracle.classify works live (local Ollama, llama3.2:1b).
-    # Ollama down -> classify fails per-call (-31004), never at startup.
-    detector = Detector(LlmClient(), store)
+    # Mode B: wire the LLM detector so oracle.classify works live (local Ollama). Default
+    # model qwen2.5:7b — it calibrates threat scores reliably (the 1B model under/over-scored);
+    # CHIMERA_ORACLE_MODEL overrides. Ollama down -> classify fails per-call, not at startup.
+    model = os.environ.get("CHIMERA_ORACLE_MODEL", "qwen2.5:7b")
+    detector = Detector(LlmClient(model=model), store)
     client = OracleClient(
         config.socket_dir,
         store,
