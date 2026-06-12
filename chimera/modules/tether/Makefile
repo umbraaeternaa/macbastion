@@ -21,20 +21,29 @@ CSTRICT   := -std=c17 -Wall -Wextra -Werror -O2 $(INCLUDES)
 CRELAXED  := -std=c17 -O2 $(INCLUDES)
 TESTINC   := -Itests/vendor/unity -DUNITY_INCLUDE_DOUBLE
 TESTCXX   := -std=c++17 -Wall -Wextra -O2 $(INCLUDES) $(TESTINC)
+# Objective-C++ (the real BLE scanner, cb_scanner.mm) — ARC; relaxed like vendored
+# glue (Apple framework headers aren't -Werror-clean). Links CoreBluetooth+Foundation.
+MMSTRICT  := -std=c++17 -Wall -Wextra -O2 -fobjc-arc $(INCLUDES)
+FRAMEWORKS := -framework Foundation -framework CoreBluetooth
 
 BIN       := tether
 CPP_OBJS  := $(patsubst %.cpp,%.o,$(filter-out src/main.cpp,$(wildcard src/*.cpp)))
+MM_OBJS   := src/cb_scanner.o               # Objective-C++ BLE backend (TE-real-2)
 C_OBJS    := ../common/jsonrpc.o           # shared jsonrpc (JE-1 extract; ends TE-7b, was the 4th copy)
 VEND_OBJS := src/vendor/cjson/cJSON.o
 UNITY_OBJ := tests/vendor/unity/unity.o
 TEST_OBJS := $(patsubst %.cpp,%.o,$(wildcard tests/*.cpp))
 
-$(BIN): src/main.o $(CPP_OBJS) $(C_OBJS) $(VEND_OBJS)
-	$(CXX) $^ -o $@
+$(BIN): src/main.o $(CPP_OBJS) $(MM_OBJS) $(C_OBJS) $(VEND_OBJS)
+	$(CXX) $^ $(FRAMEWORKS) -o $@
 
 # C++ objects — strict.
 src/%.o: src/%.cpp
 	$(CXX) $(CXXSTRICT) -c $< -o $@
+
+# Objective-C++ BLE backend — relaxed + ARC (framework glue).
+src/cb_scanner.o: src/cb_scanner.mm
+	$(CXX) $(MMSTRICT) -c $< -o $@
 
 # Shared C jsonrpc (modules/common, JE-1) — compiled as C (clang $(CSTRICT)), NOT
 # clang++, so its extern "C" symbols link cleanly into this C++ module. Explicit
@@ -52,14 +61,14 @@ tests/vendor/unity/unity.o: tests/vendor/unity/unity.c
 tests/%.o: tests/%.cpp
 	$(CXX) $(TESTCXX) -c $< -o $@
 
-test: $(TEST_OBJS) $(UNITY_OBJ) $(CPP_OBJS) $(C_OBJS) $(VEND_OBJS)
-	$(CXX) $(TEST_OBJS) $(UNITY_OBJ) $(CPP_OBJS) $(C_OBJS) $(VEND_OBJS) -o run_tests
+test: $(TEST_OBJS) $(UNITY_OBJ) $(CPP_OBJS) $(MM_OBJS) $(C_OBJS) $(VEND_OBJS)
+	$(CXX) $(TEST_OBJS) $(UNITY_OBJ) $(CPP_OBJS) $(MM_OBJS) $(C_OBJS) $(VEND_OBJS) $(FRAMEWORKS) -o run_tests
 	./run_tests
 
 format:
 	clang-format -i include/*.hpp include/*.h src/*.cpp tests/test_*.cpp
 
 clean:
-	rm -f $(BIN) run_tests src/main.o $(CPP_OBJS) $(C_OBJS) $(VEND_OBJS) $(UNITY_OBJ) $(TEST_OBJS)
+	rm -f $(BIN) run_tests src/main.o $(CPP_OBJS) $(MM_OBJS) $(C_OBJS) $(VEND_OBJS) $(UNITY_OBJ) $(TEST_OBJS)
 
 .PHONY: test format clean

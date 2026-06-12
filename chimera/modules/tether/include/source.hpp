@@ -38,19 +38,28 @@ class SyntheticSource : public RssiSource {
     std::size_t pos_;
 };
 
-/* The real BLE source — a CoreBluetooth (.mm) central scanner. GATED on Bluetooth
- * hardware + TCC; until the .mm lands it yields nothing (next() == false), so a
- * production daemon ticks but emits no presence — it NEVER fabricates presence
- * (MANIFESTO §4, the honest empty state, mirroring MIRROR's empty drain). */
+/* The real BLE source — a CoreBluetooth (.mm) central scanner that ranges the
+ * companion advertising `companion_id` (a BLE service UUID). Backed by cb_scanner.mm
+ * (manual-tier: Bluetooth hardware + TCC). An empty companion_id, Bluetooth off, or a
+ * denied grant all yield nothing (next() == false) — the daemon ticks but emits no
+ * presence, NEVER fabricating it (MANIFESTO §4, the honest empty state). */
 class CoreBluetoothSource : public RssiSource {
   public:
+    explicit CoreBluetoothSource(std::string companion_id = "");
+    ~CoreBluetoothSource() override;
+    CoreBluetoothSource(const CoreBluetoothSource &) = delete;
+    CoreBluetoothSource &operator=(const CoreBluetoothSource &) = delete;
     bool next(Sample &out) override;
+
+  private:
+    void *scanner_; /* opaque cb_scanner_t* (cb_scanner.mm); nullptr when unconfigured */
 };
 
 /* Choose the daemon's source. With TETHER_SYNTHETIC_RSSI set (tests/dev only) →
- * a SyntheticSource from that script; otherwise → CoreBluetoothSource (the gated,
- * currently-empty production source). Production never sets the env. */
-std::unique_ptr<RssiSource> make_source();
+ * a SyntheticSource from that script; otherwise → a CoreBluetoothSource ranging
+ * `companion_id`. Production never sets the env; an empty companion_id keeps the
+ * source honestly empty (no companion configured → no presence). */
+std::unique_ptr<RssiSource> make_source(const std::string &companion_id = "");
 
 /* Companion identity (TE-real). A BLE/Classic address as macOS reports it
  * ("A8:79:8D:90:1C:83"). normalize strips separators + lowercases so the same

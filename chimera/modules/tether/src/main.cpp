@@ -33,7 +33,8 @@ void core_socket_path(char *out, std::size_t outsz) {
 
 /* Apply config.json over runtime + daemon defaults (non-fatal — a missing or
  * malformed file leaves defaults intact, like MIRROR). */
-void apply_config(tether::TetherRuntime &rt, tether::DaemonConfig &dcfg, const char *path) {
+void apply_config(tether::TetherRuntime &rt, tether::DaemonConfig &dcfg,
+                  std::string &companion_id, const char *path) {
     if (!path) {
         return;
     }
@@ -50,6 +51,12 @@ void apply_config(tether::TetherRuntime &rt, tether::DaemonConfig &dcfg, const c
     cJSON *tick = cJSON_GetObjectItemCaseSensitive(root, "tick_ms");
     if (cJSON_IsNumber(tick)) {
         dcfg.tick_ms = static_cast<long>(tick->valuedouble);
+    }
+    /* companion_id: the BLE service UUID the paired companion advertises. Empty
+     * keeps the BLE source honestly silent (no companion → no presence, §4). */
+    cJSON *cid = cJSON_GetObjectItemCaseSensitive(root, "companion_id");
+    if (cJSON_IsString(cid) && cid->valuestring) {
+        companion_id = cid->valuestring;
     }
     cJSON *nt = cJSON_GetObjectItemCaseSensitive(root, "near_threshold");
     if (cJSON_IsNumber(nt)) {
@@ -73,11 +80,17 @@ int main(int argc, char **argv) {
 
     tether::TetherRuntime rt;
     tether::DaemonConfig dcfg;
-    apply_config(rt, dcfg, std::getenv("TETHER_CONFIG_PATH"));
+    std::string companion_id;
+    apply_config(rt, dcfg, companion_id, std::getenv("TETHER_CONFIG_PATH"));
+    /* Env override (live testing): point TETHER at a companion UUID without editing
+     * config — e.g. TETHER_COMPANION_ID=6368696D-6572-6100-0000-000000000001. */
+    if (const char *env_cid = std::getenv("TETHER_COMPANION_ID"); env_cid && env_cid[0]) {
+        companion_id = env_cid;
+    }
 
     /* Monitor is built from the (config-applied) runtime config. */
     tether::Monitor mon(rt.presence, rt.escalation, 0.3);
-    std::unique_ptr<tether::RssiSource> src = tether::make_source();
+    std::unique_ptr<tether::RssiSource> src = tether::make_source(companion_id);
 
     char sock[1024];
     core_socket_path(sock, sizeof(sock));
