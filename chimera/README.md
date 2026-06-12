@@ -34,7 +34,8 @@ reactive web that relays events into reflexes, a cognitive gate, and the audit t
 
 ## Quick start
 
-Requirements: macOS on Apple Silicon · Homebrew · Python 3.11+ · [Ollama](https://ollama.com) (for ORACLE).
+Requirements: macOS on Apple Silicon · Homebrew · Python 3.11+ · [Ollama](https://ollama.com)
+with a capable model for ORACLE (`ollama pull qwen2.5:7b`; override via `CHIMERA_ORACLE_MODEL`).
 
 ```bash
 git clone https://github.com/umbraaeternaa/macbastion.git
@@ -71,15 +72,27 @@ grant resets; a signed binary keeps a stable designated requirement and the gran
 
 ## Honest status
 
-The brain and reactive intelligence are **complete and live-verified**: the organism
-thinks, senses, reacts, and has **defended itself end-to-end on real hardware** — a flagged
-ransomware event drove the vault to auto-lock and obfuscation to start, all recorded in the
-audit trail. VAULT and ORACLE are functionally complete; MIRROR and PULSE sense for real.
+The brain and reactive intelligence are **complete and live-verified**: the organism thinks,
+senses, reacts, and has **defended itself end-to-end on real hardware** — a flagged ransomware
+event drove the vault to auto-lock and obfuscation to start, all in the audit trail. ORACLE's
+local LLM now scores threats reliably (default `qwen2.5:7b`: ransomware → ~1.0, routine → ~0.05).
 
-The **last mile** is un-gating each organ's real OS effectors — the permissions a security
-tool inherently needs: Accessibility (MIRROR/PULSE), Bluetooth + a paired phone (TETHER),
-root for traffic shaping (CHAFF/ECHO), and code-signing for a stable identity. We build for
-a year, not a week.
+Most real OS effectors are now **un-gated and verified on hardware**:
+
+- **MIRROR** — Accessibility granted; real humanlike input jitter (live CGEvent injection).
+- **TETHER** — real CoreBluetooth proximity (ranges a companion beacon's live RSSI) and, via
+  the privileged shim, a real screen-lock when you walk away.
+- **CHAFF** — real decoy HTTPS traffic (libcurl).
+- **VAULT / PULSE** — functionally complete; PULSE senses real input.
+- **Privileged shim** — the one root component (LaunchDaemon) is installed and attests a
+  code-signed, hardened-runtime **frozen core** (per-boot secret), so its destructive ops
+  (Keychain evict, reboot) are authorized over an authenticated channel. The whole organism is
+  code-signed with a stable identity, so grants survive rebuilds (`sign.sh`).
+
+The remaining frontier is deliberately gated, not faked (MANIFESTO §4): **ECHO** (and CHAFF's
+kernel packet-shaping) need packet-level root, which the security model (§8.8) withholds — a
+separate, explicit decision; and **PURGE**'s secure-erase engine stays unbuilt until armed by a
+conscious opt-in — no module ever pretends to do what it cannot. We build for a year, not a week.
 
 ## Philosophy
 
