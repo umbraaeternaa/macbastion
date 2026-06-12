@@ -2,10 +2,19 @@
 green once parse_args / module_binary / launch_agent_plist land. Pure unit-level.
 """
 
+import os
 import sys
 from pathlib import Path
 
-from core.__main__ import _spawn_argv, launch_agent_plist, module_binary, parse_args
+from core.__main__ import (
+    _bootout_argv,
+    _bootstrap_argv,
+    _launch_agent_path,
+    _spawn_argv,
+    launch_agent_plist,
+    module_binary,
+    parse_args,
+)
 from core.supervisor import ModuleSpec
 
 
@@ -99,3 +108,37 @@ def test_launch_agent_plist_sets_working_dir(tmp_path):
     xml = launch_agent_plist(tmp_path)
     assert "<key>WorkingDirectory</key>" in xml
     assert str(chimera_dir) in xml
+
+
+# -- SV-5: install / uninstall (one-command persistence) ---------------------
+
+
+def test_parse_args_install():
+    assert parse_args(["install"]).command == "install"
+
+
+def test_parse_args_uninstall():
+    assert parse_args(["uninstall"]).command == "uninstall"
+
+
+def test_launch_agent_path_is_user_launchagents():
+    # The plist goes to the per-user LaunchAgents dir under the canonical label.
+    p = _launch_agent_path()
+    assert p == Path.home() / "Library/LaunchAgents/com.umbra.chimera.plist"
+    assert p.name == "com.umbra.chimera.plist"
+
+
+def test_bootstrap_argv_targets_gui_domain():
+    # `launchctl bootstrap gui/<uid> <plist>` loads the agent into the user's GUI domain.
+    plist = Path("/x/com.umbra.chimera.plist")
+    assert _bootstrap_argv(plist) == [
+        "launchctl", "bootstrap", f"gui/{os.getuid()}", str(plist)
+    ]
+
+
+def test_bootout_argv_targets_gui_domain():
+    # `launchctl bootout gui/<uid> <plist>` unloads the agent from the user's GUI domain.
+    plist = Path("/x/com.umbra.chimera.plist")
+    assert _bootout_argv(plist) == [
+        "launchctl", "bootout", f"gui/{os.getuid()}", str(plist)
+    ]

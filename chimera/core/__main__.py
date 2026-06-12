@@ -76,6 +76,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     sub.add_parser("up", help="start core and bring all modules up (the whole organism)")
     sub.add_parser("plist", help="print the LaunchAgent plist for `python -m core up`")
     sub.add_parser(
+        "install", help="install the LaunchAgent so the organism runs at login (one command)"
+    )
+    sub.add_parser("uninstall", help="unload the LaunchAgent and remove its plist")
+    sub.add_parser(
         "shim-check", help="diagnostic: ping the shim and attempt the per-boot-secret handshake"
     )
     sub.add_parser("status", help="print a live view of the organism (core + modules)")
@@ -207,6 +211,58 @@ def launch_agent_plist(socket_dir: Path) -> str:
         "    <key>KeepAlive</key>\n    <true/>\n"
         "</dict>\n</plist>\n"
     )
+
+
+def _launch_agent_path() -> Path:
+    """Where CHIMERA's persistence agent lives: the per-user LaunchAgents dir."""
+    return Path.home() / "Library/LaunchAgents/com.umbra.chimera.plist"
+
+
+def _bootstrap_argv(plist: Path) -> list[str]:
+    """`launchctl bootstrap gui/<uid> <plist>` — load the agent into the user GUI domain."""
+    return ["launchctl", "bootstrap", f"gui/{os.getuid()}", str(plist)]
+
+
+def _bootout_argv(plist: Path) -> list[str]:
+    """`launchctl bootout gui/<uid> <plist>` — unload the agent from the user GUI domain."""
+    return ["launchctl", "bootout", f"gui/{os.getuid()}", str(plist)]
+
+
+def _install(config: CoreConfig) -> int:
+    """`chimera install`: write the LaunchAgent plist and (re)load it, so the organism
+    starts at login and restarts if it crashes (§7.10). Idempotent — any prior instance is
+    booted out first, so re-running updates the plist instead of failing on 'already
+    bootstrapped'. Returns a process exit code (the launchctl side effects are manual-tier;
+    the plist content + argv are unit-tested)."""
+    plist = _launch_agent_path()
+    plist.parent.mkdir(parents=True, exist_ok=True)
+    plist.write_text(launch_agent_plist(config.socket_dir))
+    # Unload any prior instance first (ignore failure — it may simply not be loaded yet).
+    subprocess.run(_bootout_argv(plist), capture_output=True, check=False)  # noqa: S603
+    done = subprocess.run(  # noqa: S603
+        _bootstrap_argv(plist), capture_output=True, text=True, check=False
+    )
+    if done.returncode != 0:
+        print(f"wrote plist at {plist}, but `launchctl bootstrap` failed:")
+        print(f"  {done.stderr.strip()}")
+        return 1
+    print(f"CHIMERA installed — runs at login, restarts on crash.\n  plist: {plist}")
+    print("  remove any time with:  python -m core uninstall")
+    return 0
+
+
+def _uninstall() -> int:
+    """`chimera uninstall`: unload the LaunchAgent and remove its plist. Idempotent — a
+    missing or already-unloaded agent is a friendly no-op, not an error. Returns 0."""
+    plist = _launch_agent_path()
+    subprocess.run(_bootout_argv(plist), capture_output=True, check=False)  # noqa: S603
+    existed = plist.exists()
+    plist.unlink(missing_ok=True)
+    if existed:
+        print(f"CHIMERA uninstalled — agent unloaded, plist removed ({plist}).")
+    else:
+        print("CHIMERA not installed — nothing to remove.")
+    return 0
 
 
 async def _shim_check() -> int:
@@ -351,6 +407,10 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "plist":
         print(launch_agent_plist(config.socket_dir))
         return
+    if args.command == "install":
+        raise SystemExit(_install(config))
+    if args.command == "uninstall":
+        raise SystemExit(_uninstall())
     if args.command == "up":
         asyncio.run(run_up(config))
         return
