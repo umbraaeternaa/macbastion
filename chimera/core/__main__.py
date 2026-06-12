@@ -99,27 +99,31 @@ def module_binary(name: str) -> Path:
     return Path(__file__).resolve().parent.parent / "modules" / name / name
 
 
-def _spawn_argv(spec: ModuleSpec, socket_dir: Path) -> tuple[list[str], dict[str, str]]:
-    """The (argv, env) to launch one module pointed at socket_dir. A native module is its
-    own binary (modules/<name>/<name>); a Python module runs as `python -m <name>` with
-    its package dir on PYTHONPATH. Pure — Popen-free, so it is unit-testable."""
+def _spawn_argv(
+    spec: ModuleSpec, socket_dir: Path
+) -> tuple[list[str], dict[str, str], str]:
+    """The (argv, env, cwd) to launch one module pointed at socket_dir. A native module is
+    its own binary (modules/NAME/NAME); a Python module runs as `python -m NAME` with its
+    package dir on PYTHONPATH. cwd is the module's own directory so it finds files it reads
+    relative to the working dir (e.g. CHAFF's data/endpoints.json). Pure + unit-testable."""
+    module_dir = module_binary(spec.name).parent
     env = {
         "CHIMERA_SOCKET_DIR": str(socket_dir),
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
     }
     if spec.python:
-        env["PYTHONPATH"] = str(module_binary(spec.name).parent)
-        return [sys.executable, "-m", spec.name], env
-    return [str(module_binary(spec.name))], env
+        env["PYTHONPATH"] = str(module_dir)
+        return [sys.executable, "-m", spec.name], env, str(module_dir)
+    return [str(module_binary(spec.name))], env, str(module_dir)
 
 
 def _default_spawn(socket_dir: Path) -> Callable[[ModuleSpec], subprocess.Popen[bytes]]:
     """Build a spawn() that launches each module (native binary or `python -m`) at socket_dir."""
 
     def spawn(spec: ModuleSpec) -> subprocess.Popen[bytes]:
-        argv, env = _spawn_argv(spec, socket_dir)
+        argv, env, cwd = _spawn_argv(spec, socket_dir)
         return subprocess.Popen(  # noqa: S603 (trusted: our own modules)
-            argv, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            argv, env=env, cwd=cwd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
 
     return spawn

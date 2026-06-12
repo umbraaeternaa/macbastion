@@ -17,17 +17,19 @@ def test_parse_args_none_is_bare_core():
 
 
 def test_spawn_argv_native_module(tmp_path):
-    argv, env = _spawn_argv(ModuleSpec("echo"), tmp_path)
+    argv, env, cwd = _spawn_argv(ModuleSpec("echo"), tmp_path)
     assert argv == [str(module_binary("echo"))]
     assert env["CHIMERA_SOCKET_DIR"] == str(tmp_path)
+    assert cwd == str(module_binary("echo").parent)  # run from its own dir (relative data)
 
 
 def test_spawn_argv_python_module(tmp_path):
-    argv, env = _spawn_argv(ModuleSpec("pulse", python=True), tmp_path)
+    argv, env, cwd = _spawn_argv(ModuleSpec("pulse", python=True), tmp_path)
     assert argv[0] == sys.executable
     assert argv[1:] == ["-m", "pulse"]
     assert env["CHIMERA_SOCKET_DIR"] == str(tmp_path)
     assert env["PYTHONPATH"] == str(module_binary("pulse").parent)
+    assert cwd == str(module_binary("pulse").parent)
 
 
 def test_parse_args_up():
