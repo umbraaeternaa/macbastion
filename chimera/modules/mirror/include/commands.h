@@ -39,6 +39,8 @@ typedef struct {
     mirror_event_node_t *evq_head;
     mirror_event_node_t *evq_tail;
     time_t heartbeat_at;
+    mirror_inputagg_t input;  /* live per-minute group-A counters (fed by the tap) */
+    time_t input_minute_at;   /* start of the current input window (0 = not yet armed) */
 } mirror_runtime_t;
 
 /* Initialise runtime to defaults (disabled, profile = MIRROR_PROFILE_DEFAULT,
@@ -79,5 +81,12 @@ void mirror_set_secure_field_check(int (*fn)(void));
  * producer PULSE subscribes to. params: {chars, deletes, mouse_path_ratio} (the ratio is
  * null when there was no mouse movement). Caller holds rt->mutex (evq is mutex-protected). */
 void mirror_emit_input_minute(mirror_runtime_t *rt, const mirror_inputagg_t *snap);
+
+/* Per-minute group-A driver (MI-4): the first call arms the window (no emit); once
+ * MIRROR_INPUT_MINUTE_S has elapsed it rolls rt->input + emits mirror.input.minute and
+ * re-arms. Returns 1 if it emitted, else 0. Caller holds rt->mutex. `now` is injected so
+ * it is unit-testable (the daemon passes time(NULL)). */
+#define MIRROR_INPUT_MINUTE_S 60
+int mirror_tick_input_minute(mirror_runtime_t *rt, time_t now);
 
 #endif /* MIRROR_COMMANDS_H */

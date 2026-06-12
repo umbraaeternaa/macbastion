@@ -212,6 +212,43 @@ static void test_emit_input_minute_includes_mouse_ratio(void) {
     free(rt.evq_head);
 }
 
+/* MI-4: the per-minute driver. First call arms the window (no emit). Stub -> 0 -> ok
+ * here, but the emit/not-due tests below pin the real behaviour. */
+static void test_tick_input_first_call_arms_no_emit(void) {
+    mirror_runtime_t rt = {0};
+    mirror_runtime_init(&rt);
+    TEST_ASSERT_EQUAL_INT(0, mirror_tick_input_minute(&rt, 1000));
+    TEST_ASSERT_NULL(rt.evq_head); /* nothing emitted on the arming call */
+}
+
+/* After a minute, it rolls + emits the window's chars and re-arms. Stub -> 0/no event
+ * -> FAIL. */
+static void test_tick_input_emits_after_a_minute(void) {
+    mirror_runtime_t rt = {0};
+    mirror_runtime_init(&rt);
+    mirror_tick_input_minute(&rt, 1000); /* arm */
+    inputagg_key(&rt.input, 0);
+    inputagg_key(&rt.input, 0); /* 2 chars this window */
+    TEST_ASSERT_EQUAL_INT(1, mirror_tick_input_minute(&rt, 1060));
+    TEST_ASSERT_NOT_NULL(rt.evq_head);
+    cJSON *ev = cJSON_Parse(rt.evq_head->line);
+    TEST_ASSERT_EQUAL_INT(
+        2, cJSON_GetObjectItem(cJSON_GetObjectItem(ev, "params"), "chars")->valueint);
+    cJSON_Delete(ev);
+    TEST_ASSERT_EQUAL_UINT64(0, rt.input.chars); /* aggregator rolled (reset) */
+    free(rt.evq_head->line);
+    free(rt.evq_head);
+}
+
+/* Within the minute it does NOT emit. Stub -> 0 (passes here); pins the boundary. */
+static void test_tick_input_not_due_within_minute(void) {
+    mirror_runtime_t rt = {0};
+    mirror_runtime_init(&rt);
+    mirror_tick_input_minute(&rt, 1000); /* arm */
+    TEST_ASSERT_EQUAL_INT(0, mirror_tick_input_minute(&rt, 1059)); /* 59s < 60 */
+    TEST_ASSERT_NULL(rt.evq_head);
+}
+
 void run_commands_tests(void) {
     RUN_TEST(test_runtime_init_defaults);
     RUN_TEST(test_status_dispatch);
@@ -224,4 +261,7 @@ void run_commands_tests(void) {
     RUN_TEST(test_tick_params_downgrades_on_secure_field);
     RUN_TEST(test_emit_input_minute_enqueues_event);
     RUN_TEST(test_emit_input_minute_includes_mouse_ratio);
+    RUN_TEST(test_tick_input_first_call_arms_no_emit);
+    RUN_TEST(test_tick_input_emits_after_a_minute);
+    RUN_TEST(test_tick_input_not_due_within_minute);
 }

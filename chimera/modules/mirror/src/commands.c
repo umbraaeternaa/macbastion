@@ -142,6 +142,8 @@ void mirror_runtime_init(mirror_runtime_t *rt) {
     rt->evq_head = NULL;
     rt->evq_tail = NULL;
     rt->heartbeat_at = 0;
+    inputagg_reset(&rt->input);
+    rt->input_minute_at = 0; /* armed on the first tick */
 }
 
 /* {"ok": true} success body. */
@@ -311,4 +313,19 @@ void mirror_emit_input_minute(mirror_runtime_t *rt, const mirror_inputagg_t *sna
     if (line) {
         evq_push(rt, line);
     }
+}
+
+int mirror_tick_input_minute(mirror_runtime_t *rt, time_t now) {
+    if (rt->input_minute_at == 0) {
+        rt->input_minute_at = now; /* arm the first window — no emit yet */
+        return 0;
+    }
+    if (now - rt->input_minute_at < MIRROR_INPUT_MINUTE_S) {
+        return 0;
+    }
+    mirror_inputagg_t snap;
+    inputagg_roll(&rt->input, &snap); /* snapshot the minute + reset the live window */
+    mirror_emit_input_minute(rt, &snap);
+    rt->input_minute_at = now;
+    return 1;
 }
