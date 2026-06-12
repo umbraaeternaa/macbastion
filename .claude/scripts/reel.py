@@ -201,6 +201,30 @@ def _datastream(ts, op):
     return f'<g opacity="{op:.2f}">{"".join(out)}</g>'
 
 
+# --- quantum interference backdrop (day 13: wave physics) -----------------
+def _quantum(ts, op):
+    out = []
+    for sx, sy, ph in [(320, 560, 0.0), (770, 1120, math.pi), (540, 1620, math.pi / 2)]:
+        for k in range(8):
+            rr = (ts * 58 + k * 64 + ph * 26) % 520
+            o = max(0.0, 1 - rr / 520) * 0.13
+            col = V["a2"] if (k % 2) else V["a1"]
+            out.append(f'<circle cx="{sx}" cy="{sy}" r="{rr:.0f}" fill="none" stroke="{col}" stroke-width="1.3" opacity="{o:.2f}"/>')
+    return f'<g opacity="{op:.2f}">{"".join(out)}</g>'
+
+
+# --- heartbeat pulse: the organism breathes (day 13) ----------------------
+def _heartbeat(cx, cy, r, ts, op):
+    out = []
+    for k in range(3):
+        ph = (ts * (BPM / 60.0) * 0.5 + k / 3.0) % 1.0
+        rr = r * (0.28 + ph * 1.35)
+        o = max(0.0, 1 - ph) * 0.5
+        out.append(f'<circle cx="{cx}" cy="{cy}" r="{rr:.0f}" fill="none" stroke="{V["a2"]}" '
+                   f'stroke-width="{3*(1-ph)+1:.1f}" opacity="{o:.2f}" filter="url(#glow)"/>')
+    return f'<g opacity="{op:.2f}">{"".join(out)}</g>'
+
+
 # --- operator HUD console (instruments) -----------------------------------
 def _gauge(cx, cy, r, frac, col, label, ts):
     a0, a1 = math.radians(135), math.radians(135 + 270 * max(0.0, min(1.0, frac)))
@@ -274,7 +298,9 @@ def _compass(cx, cy, r, ts, op):
 
 
 def _ring(cx, cy, r, ts, op):
-    lit, focus, labels = BRIEF["lit"], BRIEF["focus"], BRIEF["labels"]
+    lit, labels = BRIEF["lit"], BRIEF["labels"]
+    fr = BRIEF["focus"]
+    focuses = fr if isinstance(fr, list) else [fr]
     pc = 0.55 + 0.45 * _pulse(ts)
     spin = ts * 6  # the arsenal slowly rotates
     parts = []
@@ -284,20 +310,38 @@ def _ring(cx, cy, r, ts, op):
     for i in range(8):
         a = math.radians(-90 + i * 45 + spin)
         nx, ny = cx + r * math.cos(a), cy + r * math.sin(a)
-        is_lit = i in lit or i == focus
-        col = V["a1"] if i in lit else (V["a2"] if i == focus else DIM_AMBER)
+        is_focus = i in focuses
+        is_lit = i in lit or is_focus
+        col = V["a2"] if is_focus else (V["a1"] if i in lit else DIM_AMBER)
         parts.append(f'<line x1="{cx}" y1="{cy}" x2="{nx:.0f}" y2="{ny:.0f}" stroke="{col}" stroke-width="2" opacity="{(0.45 if is_lit else 0.18):.2f}"/>')
-        rad = 30 + (5 * pc if i == focus else 0)
+        rad = 30 + (5 * pc if is_focus else 0)
         if is_lit:
             parts.append(f'<circle cx="{nx:.0f}" cy="{ny:.0f}" r="{rad:.0f}" fill="{VOID}" stroke="{col}" stroke-width="2.5" opacity="0.95" filter="url(#glow)"/>')
-            parts.append(f'<circle cx="{nx:.0f}" cy="{ny:.0f}" r="{rad+6:.0f}" fill="none" stroke="{col}" stroke-width="1" opacity="{(pc if i==focus else 0.5):.2f}"/>')
+            parts.append(f'<circle cx="{nx:.0f}" cy="{ny:.0f}" r="{rad+6:.0f}" fill="none" stroke="{col}" stroke-width="1" opacity="{(pc if is_focus else 0.5):.2f}"/>')
         else:
             parts.append(f'<circle cx="{nx:.0f}" cy="{ny:.0f}" r="26" fill="{VOID}" stroke="{DIM_AMBER}" stroke-width="2" opacity="0.6"/>')
+        if is_focus:  # day-13 register handshake: a packet travels node -> core
+            hf = (ts * 0.8 + i * 0.37) % 1.0
+            hx, hy = nx + (cx - nx) * hf, ny + (cy - ny) * hf
+            parts.append(f'<circle cx="{hx:.0f}" cy="{hy:.0f}" r="5" fill="{V["a2"]}" opacity="{(1-hf)*0.9:.2f}" filter="url(#glow)"/>')
+            # day-15 VAULT motif: a time-lock dial — a 12-tick ring + a sweeping relock hand —
+            # plus an OPEN/decrypt return packet (core -> node), closing the seal<->open round-trip.
+            dial_r = rad + 14
+            for t in range(12):
+                ta = math.radians(t * 30 + ts * 12)
+                tx1, ty1 = nx + dial_r * math.cos(ta), ny + dial_r * math.sin(ta)
+                tx2, ty2 = nx + (dial_r + 7) * math.cos(ta), ny + (dial_r + 7) * math.sin(ta)
+                parts.append(f'<line x1="{tx1:.0f}" y1="{ty1:.0f}" x2="{tx2:.0f}" y2="{ty2:.0f}" stroke="{V["a2"]}" stroke-width="1.5" opacity="0.5"/>')
+            ha = math.radians(-90 + (ts * 60) % 360)  # the relock hand sweeps once / 6s
+            parts.append(f'<line x1="{nx:.0f}" y1="{ny:.0f}" x2="{nx + dial_r * math.cos(ha):.0f}" y2="{ny + dial_r * math.sin(ha):.0f}" stroke="{V["a2"]}" stroke-width="2" opacity="0.85" filter="url(#glow)"/>')
+            of = (ts * 0.8 + i * 0.37 + 0.5) % 1.0  # the OPEN/decrypt return packet: core -> node
+            ox, oy = cx + (nx - cx) * of, cy + (ny - cy) * of
+            parts.append(f'<circle cx="{ox:.0f}" cy="{oy:.0f}" r="4" fill="{ACID}" opacity="{(1-of)*0.85:.2f}" filter="url(#glow)"/>')
         parts.append(_glyph(i, nx, ny, 13, col))
         lx, ly = cx + (r + 64) * math.cos(a), cy + (r + 64) * math.sin(a)
         parts.append(f'<text x="{lx:.0f}" y="{ly:.0f}" font-family="{FONT}" font-size="24" fill="{col}" text-anchor="middle" opacity="{(0.9 if is_lit else 0.4):.2f}">{labels[i]}</text>')
         if is_lit:
-            parts.append(f'<text x="{lx:.0f}" y="{ly+22:.0f}" font-family="{FONT}" font-size="15" fill="{ACID if i!=focus else V["a2"]}" text-anchor="middle" opacity="0.8">{"ACTIVE" if i==focus else "ONLINE"}</text>')
+            parts.append(f'<text x="{lx:.0f}" y="{ly+22:.0f}" font-family="{FONT}" font-size="15" fill="{V["a2"] if is_focus else ACID}" text-anchor="middle" opacity="0.8">{"LIVE" if is_focus else "ONLINE"}</text>')
     return f'<g opacity="{op:.2f}">{"".join(parts)}</g>'
 
 
@@ -328,6 +372,45 @@ def _panel(text, col, op):
     return (f'<g opacity="{op:.2f}"><rect x="60" y="1600" width="960" height="92" fill="{VOID}" opacity="0.72"/>'
             f'<rect x="60" y="1600" width="6" height="92" fill="{col}"/>'
             f'<text x="92" y="1658" font-family="{FONT}" font-size="34" fill="{WHITE}">{esc(text)}</text></g>')
+
+
+# --- NEW day-16 motif: the reflex audit ledger (a live log of what the one mind did) ---
+_LEDGER = [
+    ("tether.absent -> vault.lock", "ok"),
+    ("anomaly -> chaff + echo", "ok"),
+    ("pulse exhausted -> vault.lock", "ok"),
+    ("tether.recovered -> stand down", "ok"),
+    ("escalation L3 -> purge", "refused"),
+]
+
+
+def _ledger(ts, op):
+    """A terminal panel that reveals real reflex actuations one by one — the
+    `chimera audit` trail, made visual (today's build). Each line types in like a
+    live log; the refused L3 PURGE is amber (security-relevant)."""
+    if op <= 0.02:
+        return ""
+    x, y0 = 300, 1392
+    blink = "_" if int(ts * 2) % 2 == 0 else " "
+    back = (f'<rect x="{x-18}" y="{y0-34}" width="520" height="206" rx="7" fill="{VOID}" opacity="0.6"/>'
+            f'<rect x="{x-18}" y="{y0-34}" width="5" height="206" fill="{ACID}" opacity="0.85"/>')
+    head = (f'<circle cx="{x}" cy="{y0-9}" r="5" fill="{ACID}" opacity="{0.5+0.5*_pulse(ts,3):.2f}"/>'
+            f'<text x="{x+18}" y="{y0}" font-family="{FONT}" font-size="22" fill="{ACID}">AUDIT TRAIL ::</text>')
+    rows, last = [], -1
+    for k, (txt, tag) in enumerate(_LEDGER):
+        rv = max(0.0, min(1.0, (ts - (16.0 + k * 0.85)) * 2.4))
+        if rv <= 0.02:
+            continue
+        last = k
+        ly = y0 + 36 + k * 30
+        col = AMBER if tag == "refused" else (V["a1"] if k % 2 == 0 else V["a2"])
+        rows.append(f'<text x="{x}" y="{ly:.0f}" font-family="{FONT}" font-size="20" '
+                    f'fill="{col}" opacity="{rv*0.95:.2f}">{esc(txt + "  [" + tag + "]")}</text>')
+    if 0 <= last < len(_LEDGER):
+        cy = y0 + 36 + last * 30
+        rows.append(f'<text x="{x+486}" y="{cy:.0f}" font-family="{FONT}" font-size="20" '
+                    f'fill="{ACID}" text-anchor="end">{blink}</text>')
+    return f'<g opacity="{op:.2f}">{back}{head}{"".join(rows)}</g>'
 
 
 def _typed(text, x, y, ts, t0, col, size, op):
@@ -397,6 +480,117 @@ def _qr_scene(ts, op):
             f'<text x="540" y="1700" font-family="{FONT}" font-size="26" fill="{MUTED}" text-anchor="middle">github.com/umbraaeternaa/macbastion</text></g>')
 
 
+# --- attestation gate (day 14: the signed core passes, a same-uid impostor bounces) ---
+def _attest(cx, cy, ts, op):
+    if op <= 0.01:
+        return ""
+    out = []
+    gate_r = 205
+    bp = _pulse(ts, 2.0)
+    out.append(f'<circle cx="{cx}" cy="{cy}" r="{gate_r}" fill="none" stroke="{V["a2"]}" '
+               f'stroke-width="{1.5 + bp:.1f}" stroke-dasharray="5 11" opacity="0.5"/>')
+    period, spawn = 3.4, 440
+    for idx, (ang, signed) in enumerate(((-32.0, True), (148.0, False))):
+        ph = (ts / period + idx * 0.5) % 1.0
+        a = math.radians(ang)
+        if signed:  # the signed core: cleared, travels all the way to the core
+            d = spawn * (1.0 - ph)
+            col, glyph = ACID, "✓"
+        else:  # same-uid impostor: hits the gate at mid-phase, bounces back out
+            d = (spawn - (spawn - gate_r) * (ph / 0.5)) if ph < 0.5 \
+                else (gate_r + (spawn - gate_r) * ((ph - 0.5) / 0.5))
+            col, glyph = "#ff4d6d", "✗"
+        px, py = cx + d * math.cos(a), cy + d * math.sin(a)
+        out.append(f'<circle cx="{px:.0f}" cy="{py:.0f}" r="9" fill="{col}" opacity="0.92" filter="url(#glow)"/>')
+        out.append(f'<text x="{px:.0f}" y="{py - 15:.0f}" font-family="{FONT}" font-size="24" '
+                   f'fill="{col}" text-anchor="middle" opacity="0.95">{glyph}</text>')
+        if (not signed) and 0.46 < ph < 0.58:  # reject flash at the gate
+            gx, gy = cx + gate_r * math.cos(a), cy + gate_r * math.sin(a)
+            out.append(f'<circle cx="{gx:.0f}" cy="{gy:.0f}" r="{18 + 250 * (ph - 0.46):.0f}" '
+                       f'fill="none" stroke="{col}" stroke-width="2" opacity="{max(0.0, 0.8 - 6.6 * (ph - 0.46)):.2f}"/>')
+    out.append(f'<text x="{cx}" y="{cy - gate_r - 18:.0f}" font-family="{FONT}" font-size="21" '
+               f'fill="{V["a1"]}" text-anchor="middle" opacity="0.85">ATTEST :: SIG ✓ / ✗</text>')
+    return f'<g opacity="{op:.2f}">{"".join(out)}</g>'
+
+
+def _jitter(ts, op):
+    """MIRROR (day 17): the injected behavioural-noise trace — a humanlike jittered
+    input signal that FLATTENS inside a SECURE window (a lock-marked field), exactly the
+    secure-field downgrade shipped today: full noise everywhere, light over secrets."""
+    if op <= 0.01:
+        return ""
+    x0, x1, y0 = 150, 930, 1300
+    sec_a, sec_b = 510, 660  # the secure-field window: jitter collapses to "light" here
+
+    def _amp(x):
+        return 3.0 if sec_a < x < sec_b else 34.0
+
+    def _noise(x):  # layered sines = Gaussian-ish humanlike jitter, animated by ts
+        return (math.sin(x * 0.06 + ts * 5.0)
+                + math.sin(x * 0.17 + ts * 8.0) * 0.5
+                + math.sin(x * 0.31 + ts * 11.0) * 0.3)
+
+    pts = []
+    for i in range(131):
+        x = x0 + (x1 - x0) * i / 130.0
+        pts.append(f"{x:.0f},{y0 + _noise(x) * _amp(x) / 1.8:.0f}")
+    # a dark instrument backing lifts the trace off the dense scene behind it
+    back = (f'<rect x="{x0-34}" y="{y0-104}" width="{x1-x0+68}" height="196" rx="12" '
+            f'fill="{VOID}" opacity="0.62"/>'
+            f'<rect x="{x0-34}" y="{y0-104}" width="{x1-x0+68}" height="196" rx="12" '
+            f'fill="none" stroke="{V["a1"]}" stroke-width="1.4" opacity="0.35"/>')
+    trace = (f'<polyline points="{" ".join(pts)}" fill="none" stroke="{V["a1"]}" '
+             f'stroke-width="2.5" opacity="0.95" filter="url(#glow)"/>')
+    midx = (sec_a + sec_b) // 2
+    band = (f'<rect x="{sec_a}" y="{y0-46}" width="{sec_b-sec_a}" height="92" rx="6" fill="{ACID}" opacity="0.08"/>'
+            f'<rect x="{sec_a}" y="{y0-46}" width="{sec_b-sec_a}" height="92" rx="6" fill="none" '
+            f'stroke="{ACID}" stroke-width="1.5" opacity="0.5"/>')
+    lock = (f'<g opacity="0.9" filter="url(#glow)">'
+            f'<rect x="{midx-11}" y="{y0-88}" width="22" height="17" rx="3" fill="none" stroke="{ACID}" stroke-width="2.5"/>'
+            f'<path d="M{midx-7},{y0-88} v-6 a7,7 0 0 1 14,0 v6" fill="none" stroke="{ACID}" stroke-width="2.5"/></g>')
+    cx = x0 + (x1 - x0) * ((ts * 0.17) % 1.0)
+    cur = (f'<circle cx="{cx:.0f}" cy="{y0 + _noise(cx) * _amp(cx) / 1.8:.0f}" r="6" '
+           f'fill="{V["a2"]}" filter="url(#glow)"/>')
+    labs = (f'<text x="{x0}" y="{y0-58}" font-family="{FONT}" font-size="20" fill="{V["a1"]}" opacity="0.8">INPUT JITTER</text>'
+            f'<text x="{midx}" y="{y0+74}" font-family="{FONT}" font-size="18" fill="{ACID}" text-anchor="middle" opacity="0.85">SECURE · LIGHT</text>')
+    return f'<g opacity="{op:.2f}">{back}{band}{trace}{lock}{cur}{labs}</g>'
+
+
+def _pulse_meter(ts, op):
+    """PULSE (day 18): the operator-fatigue meter. Three senses — idle, input dynamics,
+    behavioural drift — feed a cognitive-load bar that rises and crosses the
+    NORMAL/CAUTION/TIRED/EXHAUSTED gates, its colour climbing green->amber->red. Exactly
+    what PULSE now does live: it senses the operator and the gate adds friction."""
+    if op <= 0.01:
+        return ""
+    x0, x1, y = 180, 900, 1316
+    w = x1 - x0
+    back = (f'<rect x="{x0-40}" y="{y-118}" width="{w+80}" height="208" rx="12" fill="{VOID}" opacity="0.62"/>'
+            f'<rect x="{x0-40}" y="{y-118}" width="{w+80}" height="208" rx="12" fill="none" '
+            f'stroke="{V["a1"]}" stroke-width="1.4" opacity="0.35"/>')
+    level = max(0.0, min(0.92, 0.92 * smooth((ts - 10.0) / 4.6)))  # fatigue climbs as senses feed
+    col = ACID if level < 0.4 else (AMBER if level < 0.7 else (MAGENTA if level < 0.9 else "#FF2D55"))
+    mode = ("NORMAL" if level < 0.4 else
+            ("CAUTION" if level < 0.7 else ("TIRED" if level < 0.9 else "EXHAUSTED")))
+    title = (f'<text x="{x0}" y="{y-86}" font-family="{FONT}" font-size="20" fill="{V["a1"]}" opacity="0.85">OPERATOR FATIGUE</text>'
+             f'<text x="{x1}" y="{y-86}" font-family="{FONT}" font-size="22" fill="{col}" text-anchor="end" filter="url(#glow)">{mode}</text>')
+    feeds = []
+    for i, lab in enumerate(("IDLE", "INPUT", "DRIFT")):
+        fx = x0 + w * (0.2 + 0.3 * i)
+        pu = 0.4 + 0.6 * _pulse(ts, 2 + i)
+        feeds.append(f'<circle cx="{fx:.0f}" cy="{y-56}" r="{5+3*pu:.0f}" fill="{V["a2"]}" opacity="{pu:.2f}" filter="url(#glow)"/>')
+        feeds.append(f'<line x1="{fx:.0f}" y1="{y-50}" x2="{fx:.0f}" y2="{y}" stroke="{V["a2"]}" stroke-width="1.5" opacity="{0.35*pu:.2f}"/>')
+        feeds.append(f'<text x="{fx:.0f}" y="{y-70}" font-family="{FONT}" font-size="15" fill="{V["a1"]}" text-anchor="middle" opacity="0.8">{lab}</text>')
+    track = f'<rect x="{x0}" y="{y}" width="{w}" height="26" rx="13" fill="{MUTED}" opacity="0.25"/>'
+    fill = f'<rect x="{x0}" y="{y}" width="{w*level:.0f}" height="26" rx="13" fill="{col}" opacity="0.92" filter="url(#glow)"/>'
+    ticks = []
+    for frac, lab in ((0.4, "CAUTION"), (0.7, "TIRED"), (0.9, "EXH")):
+        tx = x0 + w * frac
+        ticks.append(f'<line x1="{tx:.0f}" y1="{y-6}" x2="{tx:.0f}" y2="{y+32}" stroke="{WHITE}" stroke-width="1.5" opacity="0.5"/>')
+        ticks.append(f'<text x="{tx:.0f}" y="{y+50}" font-family="{FONT}" font-size="15" fill="{MUTED}" text-anchor="middle">{lab}</text>')
+    return f'<g opacity="{op:.2f}">{back}{title}{"".join(feeds)}{track}{fill}{"".join(ticks)}</g>'
+
+
 def frame(ts):
     b = BRIEF
     # central core: an Interstellar black hole that opens, then shrinks to the ring core
@@ -404,16 +598,21 @@ def frame(ts):
     bh_op = fade(ts, 5.0, 7.0, 30, 33, 35)
     world = (_blackhole(540, 760, max(34, bh_r), ts, bh_op)
              + _compass(540, 760, 230, ts, fade(ts, 0.3, 1.5, 3.5, 5.0, 6.5))
+             + _heartbeat(540, 760, 300, ts, fade(ts, 9.5, 11.0, 22, 32, 37))
              + _ring(540, 760, 300, ts, fade(ts, 7.5, 9.5, 24, 32, 38))
+             + _attest(540, 760, ts, fade(ts, 14.5, 16.0, 21.0, 23.0, 24.5))
              + _umbra(540, 1180, 0.6, ts, fade(ts, 8.0, 10.0, 24, 31, 36)))
     deep = (f'<rect width="{W}" height="{H}" fill="url(#void)"/>' + _cosmos(ts)
+            + _quantum(ts, fade(ts, 1.5, 4.0, 30, 36, 40))
             + _datastream(ts, fade(ts, 2.0, 4.0, 30, 36, 40))
             + _neural(ts, fade(ts, 9.0, 12.0, 28, 33, 37)))
     screen = deep + f'<g transform="{_camera(ts)}">{world}</g>'
     hud = _hud(ts, fade(ts, 1.5, 3.5, 33, 36, 39))
     hud += _typed(f"> CHIMERA :: DAY {b['day']}", 90, 1000, ts, 0.6, ACID, 46, fade(ts, 0.5, 1.2, 4.6, 5.6, 6.8))
     hud += _panel(b["event"], V["a1"], fade(ts, 13.5, 14.5, 21, 22.5, 23.5))
-    hud += _panel("THE ORGANISM LEARNS TO HESITATE", AMBER, fade(ts, 24, 25, 30, 31.5, 32.5))
+    hud += _pulse_meter(ts, fade(ts, 9.0, 11.0, 3.0, 14.5, 16.0))  # day 18: PULSE senses operator -> fatigue -> gate
+    hud += _ledger(ts, fade(ts, 15.5, 16.5, 8.0, 25.5, 26.8))
+    hud += _panel(b.get("panel2", b["subtitle"]), AMBER, fade(ts, 24, 25, 30, 31.5, 32.5))
     tc = fade(ts, 32.5, 33.5, 36.5, 37, 38)
     hud += (f'<g opacity="{tc:.2f}" text-anchor="middle">'
             f'<text x="540" y="1380" font-family="{FONT}" font-size="64" fill="{WHITE}">DAY {b["day"]}</text>'
