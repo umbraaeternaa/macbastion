@@ -13,5 +13,6 @@ int main(void) {
     run_targets_tests();
     run_config_tests();
     run_commands_tests();
+    run_wipe_tests();
     return UNITY_END();
 }
