@@ -1,10 +1,12 @@
 /* PURGE IPC command dispatch — purge.* methods over JSON-RPC (§7 IPC API, PD-2/PD-3).
- * Builds responses from the plan + targets + config cores. purge.trigger is GATED
- * (-31004): the real destruction engine is not built — no faked destruction (MANIFESTO §4). */
+ * Builds responses from the plan + targets + config cores. purge.trigger runs the tier
+ * EXECUTOR (exec.c) once armed; this slice's tier actions are honest no-op stubs that
+ * destroy nothing yet (MANIFESTO §4) — an unarmed trigger is still refused (-31004). */
 #include <stddef.h>
 #include <string.h>
 
 #include "commands.h"
+#include "exec.h"
 #include "jsonrpc.h"
 
 void purge_runtime_init(purge_runtime_t *rt) {
@@ -139,9 +141,25 @@ char *purge_commands_dispatch(purge_runtime_t *rt, const char *method, const cJS
     }
 
     if (strcmp(method, "purge.trigger") == 0) {
-        /* GATED: the destruction engine (Keychain/Mach VM/dc zva/libsodium) is not built.
-         * Refuse rather than fake destruction (MANIFESTO §4; §6 authorization). */
-        return jsonrpc_serialize_error(id, -31004, "destruction engine not available", NULL);
+        /* Authorization gate (§6): must be armed (purge.arm with a confirmation phrase) first.
+         * An unarmed trigger is refused — no accidental destruction. */
+        if (!rt->armed) {
+            return jsonrpc_serialize_error(id, -31004, "purge not armed (call purge.arm first)",
+                                           NULL);
+        }
+        /* Run the executor over the live plan. THIS slice's tier actions are honest no-op
+         * stubs (§4) — they destroy nothing yet; real effects land behind later slices. The
+         * trigger is single-shot: firing disarms, so a re-trigger needs a fresh arm. */
+        purge_plan_t plan = purge_plan_targets(&rt->targets, 1, 1);
+        purge_exec_result_t res = purge_execute(&plan);
+        rt->armed = 0;
+        cJSON *r = cJSON_CreateObject();
+        cJSON_AddBoolToObject(r, "fired", 1);
+        cJSON_AddNumberToObject(r, "tier0", res.tier0_done);
+        cJSON_AddNumberToObject(r, "tier1", res.tier1_done);
+        cJSON_AddNumberToObject(r, "tier2_shred", res.tier2_shred);
+        cJSON_AddNumberToObject(r, "tier3", res.tier3_done);
+        return jsonrpc_serialize_response(id, r);
     }
 
     return jsonrpc_serialize_error(id, -32601, "method not found", NULL);
