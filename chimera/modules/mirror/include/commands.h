@@ -101,4 +101,13 @@ int mirror_keycode_is_delete(int keycode);
 #define MIRROR_INPUT_MOUSE 1
 void mirror_observe_event(mirror_runtime_t *rt, int kind, int keycode, double dx, double dy);
 
+/* Passive input-observer seam (MI-5b). The real default installs a listen-only CGEventTap
+ * (keyDown | mouseMoved) on its own run-loop thread — manual-tier, needs Accessibility —
+ * that feeds events into rt->input via mirror_observe_event. Tests inject a stub; NULL
+ * resets to the real observer. mirror_input_observe_start launches it (the daemon calls
+ * this once at boot): returns 0 if started, nonzero if it can't (no Accessibility -> PULSE
+ * falls back to temporal — honest degrade). */
+void mirror_set_input_observer(int (*start)(mirror_runtime_t *rt));
+int mirror_input_observe_start(mirror_runtime_t *rt);
+
 #endif /* MIRROR_COMMANDS_H */

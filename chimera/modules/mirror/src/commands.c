@@ -341,3 +341,64 @@ void mirror_observe_event(mirror_runtime_t *rt, int kind, int keycode, double dx
         inputagg_mouse_move(&rt->input, dx, dy);
     }
 }
+
+/* Real passive input observer (MI-5b, MANUAL-TIER — needs a live Accessibility grant; not
+ * exercised by the unit suite). A listen-only CGEventTap on keyDown + mouseMoved runs on
+ * its own CFRunLoop thread; each event is reduced to a count via mirror_observe_event (the
+ * raw event is discarded — privacy §8). The tap NEVER modifies or drops an event. */
+static CGEventRef mirror_tap_callback(CGEventTapProxy proxy, CGEventType type,
+                                      CGEventRef event, void *userInfo) {
+    (void)proxy;
+    mirror_runtime_t *rt = (mirror_runtime_t *)userInfo;
+    pthread_mutex_lock(&rt->mutex);
+    if (type == kCGEventKeyDown) {
+        int keycode = (int)CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode);
+        mirror_observe_event(rt, MIRROR_INPUT_KEY, keycode, 0.0, 0.0);
+    } else if (type == kCGEventMouseMoved) {
+        double dx = (double)CGEventGetIntegerValueField(event, kCGMouseEventDeltaX);
+        double dy = (double)CGEventGetIntegerValueField(event, kCGMouseEventDeltaY);
+        mirror_observe_event(rt, MIRROR_INPUT_MOUSE, 0, dx, dy);
+    }
+    pthread_mutex_unlock(&rt->mutex);
+    return event; /* listen-only: pass the event through untouched */
+}
+
+static void *mirror_observer_loop(void *arg) {
+    mirror_runtime_t *rt = (mirror_runtime_t *)arg;
+    CGEventMask mask = CGEventMaskBit(kCGEventKeyDown) | CGEventMaskBit(kCGEventMouseMoved);
+    CFMachPortRef tap = CGEventTapCreate(kCGSessionEventTap, kCGHeadInsertEventTap,
+                                         kCGEventTapOptionListenOnly, mask,
+                                         mirror_tap_callback, rt);
+    if (!tap) {
+        return NULL; /* tap refused (no Accessibility) -> exit the thread, PULSE degrades */
+    }
+    CFRunLoopSourceRef src = CFMachPortCreateRunLoopSource(NULL, tap, 0);
+    CFRunLoopAddSource(CFRunLoopGetCurrent(), src, kCFRunLoopCommonModes);
+    CGEventTapEnable(tap, true);
+    CFRunLoopRun(); /* services the tap until the daemon exits (kills this thread) */
+    CFRelease(src);
+    CFRelease(tap);
+    return NULL;
+}
+
+static int mirror_input_observe_real(mirror_runtime_t *rt) {
+    if (!rt || !g_ax_check()) {
+        return -1; /* no Accessibility -> PULSE falls back to temporal (honest degrade) */
+    }
+    pthread_t t;
+    if (pthread_create(&t, NULL, mirror_observer_loop, rt) != 0) {
+        return -1;
+    }
+    pthread_detach(t);
+    return 0;
+}
+
+static int (*g_input_observer)(mirror_runtime_t *) = mirror_input_observe_real;
+
+void mirror_set_input_observer(int (*start)(mirror_runtime_t *rt)) {
+    g_input_observer = start ? start : mirror_input_observe_real;
+}
+
+int mirror_input_observe_start(mirror_runtime_t *rt) {
+    return g_input_observer(rt);
+}

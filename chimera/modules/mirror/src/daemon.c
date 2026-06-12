@@ -115,6 +115,14 @@ static void maybe_heartbeat(int fd, mirror_runtime_t *rt) {
     }
 }
 
+/* Roll + emit the per-minute group-A aggregate (MI-4/5b). Held under the lock since the
+ * observer thread writes rt->input concurrently. */
+static void maybe_emit_input(mirror_runtime_t *rt) {
+    pthread_mutex_lock(&rt->mutex);
+    mirror_tick_input_minute(rt, time(NULL));
+    pthread_mutex_unlock(&rt->mutex);
+}
+
 int daemon_run(int server_fd, mirror_runtime_t *rt) {
     g_rt = rt;
     struct sigaction sa;
@@ -122,6 +130,10 @@ int daemon_run(int server_fd, mirror_runtime_t *rt) {
     sa.sa_handler = on_signal;
     sigaction(SIGTERM, &sa, NULL);
     sigaction(SIGINT, &sa, NULL);
+
+    /* MI-5b: start the passive input observer for PULSE group-A. No Accessibility ->
+     * returns nonzero and PULSE degrades to temporal; never fatal. */
+    mirror_input_observe_start(rt);
 
     ipc_reader_t reader;
     ipc_reader_init(&reader, server_fd);
@@ -141,6 +153,7 @@ int daemon_run(int server_fd, mirror_runtime_t *rt) {
                 handle_inbound(server_fd, rt, line);
             }
         }
+        maybe_emit_input(rt);
         drain_events(server_fd, rt);
         maybe_heartbeat(server_fd, rt);
     }
