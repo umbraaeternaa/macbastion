@@ -77,7 +77,23 @@ Slice 3A react-entrypoint (RED→GREEN) done. CORE: idea #3 Slice 3B anomaly-rel
 (RED→GREEN) done — a NEW core capability. ORACLE: idea #3 Slice 3C anomaly-emit
 (RED→GREEN) done — the real producer. **Idea #3 (Anomaly-Tripwire) COMPLETE** —
 3A+3B+3C wired + e2e-confirmed by 3D.
-Last completed: **CODE-SIGNING — all 6 native binaries signed with a stable Apple Development identity**
+Last completed: **PRIVILEGED SHIM INSTALLED — first real root op (screen lock) LIVE on hardware**
+(Day 20 — Phase 3 keystone). The shim code was already complete (ops.c: lock/evict/reboot real, killall
+documented no-op; 38 hermetic tests; peercred/secret/attest/server; `core/shim_client.py`; `deploy/install-shim.sh`).
+Un-gate this slice = install + run it as root. Built + signed `shim/chimera-shim` (Apple Development, identifier
+`com.umbra.chimera.shim`; added to sign.sh), then **`sudo bash deploy/install-shim.sh`** copied it to
+`/usr/local/libexec/chimera/`, wrote `/Library/LaunchDaemons/com.umbra.chimera.shim.plist` (operator-uid 501),
+and `launchctl bootstrap system` → the shim runs as **root** (RunAtLoad+KeepAlive) on `/var/run/chimera-shim.sock`.
+✅ **LIVE on hardware**: `core shim-check` → `ping: pong` (core↔root channel via peercred); `handshake: DENIED
+— not attested` (correct — the running core is `python -m core`, whose SecCode ≠ core.req, so the per-boot
+secret is withheld and destructive ops stay gated). Then `ShimClient().call("shim.lock")` →
+`{"ok": true, "noop": false}` → real `pmset displaysleepnow` slept + locked the operator's display. So the full
+privilege path is real: core (uid 501) → peercred → **root shim** → real OS action. The reflex
+`tether.escalation L1 → shim.lock` is already wired, so TETHER's dead-man now has a real screen-lock effector.
+Per SS-2: **lock** is peercred-authed (LIVE now); **evict/reboot** stay secret-gated (need the frozen+signed
+core to attest — a later slice). Uninstall: `sudo bash deploy/install-shim.sh --uninstall`.
+
+Prior milestone: **CODE-SIGNING — all 6 native binaries signed with a stable Apple Development identity**
 (Day 20 — Phase 3, `sign.sh`). Discovery: the operator already has an "Apple Development" code-signing identity
 in his keychain — better than a self-signed cert (my openssl self-signed p12 import failed on a LibreSSL MAC
 incompat anyway; abandoned). `sign.sh` auto-detects the first Apple Development / Developer ID identity and
