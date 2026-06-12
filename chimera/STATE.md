@@ -77,7 +77,17 @@ Slice 3A react-entrypoint (RED→GREEN) done. CORE: idea #3 Slice 3B anomaly-rel
 (RED→GREEN) done — a NEW core capability. ORACLE: idea #3 Slice 3C anomaly-emit
 (RED→GREEN) done — the real producer. **Idea #3 (Anomaly-Tripwire) COMPLETE** —
 3A+3B+3C wired + e2e-confirmed by 3D.
-Last completed: **TETHER real BLE source — Phase 3 effector UN-GATED, verified live on hardware**
+Last completed: **MIRROR effector UN-GATED — Accessibility granted, real input-jitter LIVE on hardware**
+(Day 20 — Phase 3, no code change: MIRROR's effector was already written, only the TCC grant was missing).
+The operator granted Accessibility to `modules/mirror/mirror` (System Settings > Privacy & Security >
+Accessibility). After a `launchctl kickstart -k` restart so the daemon re-attributed, `mirror.enable` flipped
+from gated `-31004` to `{"ok": true}` — `AXIsProcessTrusted()` now true. The real CGEvent injector
+(`mirror_injector_loop`, CGEventPost humanlike mouse perturbations vs behavioural biometrics) ran live and the
+cursor visibly jittered (witnessed by the operator), then `mirror.disable` → `enabled:false`. The passive
+listen-only CGEventTap (PULSE group-A real input sensing) now also has its grant. So MIRROR's effector is real
+and verified — the last mile here was a permission, not code.
+
+Prior milestone: **TETHER real BLE source — Phase 3 effector UN-GATED, verified live on hardware**
 (commits `15e4947` TE-real-1 + `3159ba3` TE-real-2, Day 20 — Phase 3 begins). TETHER's presence sensing was
 the gated seam (`CoreBluetoothSource::next()` returned false, §4 honest empty). Now real: **TE-real-1** added a
 pure, tested companion-identity matcher (`normalize_bt_addr` + `companion_matches`, 4 RED->GREEN, tether 48->52).
