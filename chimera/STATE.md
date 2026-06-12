@@ -77,7 +77,24 @@ Slice 3A react-entrypoint (RED→GREEN) done. CORE: idea #3 Slice 3B anomaly-rel
 (RED→GREEN) done — a NEW core capability. ORACLE: idea #3 Slice 3C anomaly-emit
 (RED→GREEN) done — the real producer. **Idea #3 (Anomaly-Tripwire) COMPLETE** —
 3A+3B+3C wired + e2e-confirmed by 3D.
-Last completed: **PRIVILEGED SHIM INSTALLED — first real root op (screen lock) LIVE on hardware**
+Last completed: **FROZEN SIGNED CORE is the LIVE ORGANISM — shim attestation PASSES, destructive ops UN-GATED**
+(Day 20 — Phase 3, the secret keystone). The blocker: shim handshake needs the connecting core to be the
+*signed frozen* binary (its SecCode must match `core.req`), but the organism ran as `python -m core` (SecCode =
+the interpreter). Two-day-stale `dist/chimera/chimera` also couldn't run the organism. Fix — **frozen-aware
+core** (commit `17a9fb0`): `_chimera_root()` (frozen → `Path(sys.executable).parents[2]`, or `CHIMERA_ROOT`)
+feeds `module_binary` so native organs resolve from the repo, and `_module_python()` runs the Python organs
+(oracle/pulse) via the venv python instead of the frozen binary (which can't `-m oracle`); +4 tests (cli 18→22).
+Rebuilt (`deploy/build-core.sh`) + deep-signed hardened-runtime (`deploy/sign-core.sh`, 132 nested Mach-O, one
+identity, `flags=0x10000(runtime)`, no get-task-allow). Verified the SIGNED frozen core brings up **8/8**
+standalone; its DR is byte-identical to the installed `core.req`. Then `./dist/chimera/chimera install` swapped
+the LaunchAgent from python to the frozen core.
+✅ **LIVE on hardware**: organism REGISTERED **8/8** under the frozen core; `./dist/chimera/chimera shim-check`
+→ `ping: pong` + **`handshake: ok — secret obtained (64 hex chars)`**. So the running core is now code-sig
+attested by the root shim → the 256-bit per-boot secret is issued → **destructive root ops (evict/reboot) are
+authorized** (TETHER L2 vault-lock, PURGE Tier-0). Not triggered (destructive; the secret proves un-gate).
+Full shim auth model live: **peercred + per-boot secret + SecCode attestation**.
+
+Prior milestone: **PRIVILEGED SHIM INSTALLED — first real root op (screen lock) LIVE on hardware**
 (Day 20 — Phase 3 keystone). The shim code was already complete (ops.c: lock/evict/reboot real, killall
 documented no-op; 38 hermetic tests; peercred/secret/attest/server; `core/shim_client.py`; `deploy/install-shim.sh`).
 Un-gate this slice = install + run it as root. Built + signed `shim/chimera-shim` (Apple Development, identifier
