@@ -1,6 +1,6 @@
 # CHIMERA — Project State Snapshot
 
-> Updated: 2026-06-08
+> Updated: 2026-06-12
 > Version: 0.1.0-alpha (genesis)
 
 ---
@@ -77,7 +77,23 @@ Slice 3A react-entrypoint (RED→GREEN) done. CORE: idea #3 Slice 3B anomaly-rel
 (RED→GREEN) done — a NEW core capability. ORACLE: idea #3 Slice 3C anomaly-emit
 (RED→GREEN) done — the real producer. **Idea #3 (Anomaly-Tripwire) COMPLETE** —
 3A+3B+3C wired + e2e-confirmed by 3D.
-Last completed: **DEPLOY DP-4 — LaunchAgent plist sets WorkingDirectory; ORGANISM DEFENDS ITSELF LIVE**
+Last completed: **SV-5 — ONE-COMMAND INSTALL/UNINSTALL (persistence CLI); verified live on hardware**
+(commit `eb784c4`, Day 20 — Phase 2). `python -m core install` writes the LaunchAgent plist to
+~/Library/LaunchAgents/com.umbra.chimera.plist then `launchctl bootstrap gui/$(id -u)` (idempotent: boots out
+any prior instance first, so re-install updates the plist instead of failing on 'already bootstrapped');
+`python -m core uninstall` = `launchctl bootout` + remove plist (missing = friendly no-op). Pure parts
+unit-tested (`_launch_agent_path`, `_bootstrap_argv`, `_bootout_argv`, both subcommands); the launchctl side
+effects are manual-tier. 5 RED->GREEN (cli 13->18). 1080 -> 1085 (default 682 -> 687). mypy --strict + ruff clean.
+✅ **LIVE round-trip on the running organism** (Day 20): `uninstall` unloaded pid 84919, then `install`
+re-bootstrapped it as pid 17316 under launchd (program = venv python); `core status` then showed core
+v0.2.0-alpha + all 8 organs registered + 6 reflexes armed + VAULT locked. So `git clone` -> `./build.sh` ->
+`python -m core install` now makes CHIMERA live 24/7 from a single command. **Product onboarding (build +
+install) COMPLETE.**
+NEXT (Phase 3 — last mile): un-gate the real OS effectors — TCC grants for MIRROR/PULSE taps, Bluetooth +
+paired phone for TETHER, root/shim for CHAFF/ECHO traffic shaping, arm PURGE real wipe, code-signing for a
+stable identity — then Phase 4: GitHub release tag.
+
+Prior milestone: **DEPLOY DP-4 — LaunchAgent plist sets WorkingDirectory; ORGANISM DEFENDS ITSELF LIVE**
 (commits `9a46159` plist + `<oracle>` detector, Day 19). `launch_agent_plist` now emits `WorkingDirectory` =
 the chimera dir so the persistent `python -m core up` agent can import `core`. 1 RED->GREEN (13 cli). 1079 ->
 1080. mypy + ruff clean.
@@ -87,9 +103,7 @@ A throwaway client fed the live organism a blatant ransomware event -> the LLM s
 `oracle.anomaly.detected` -> the core reactive web ACTUATED 4 countermeasures, all `[ok]` in `core.audit`:
 **vault.lock** (sealed the vault) + chaff.generation.start (decoy) + echo.start (padding) + tether.heighten.
 The one mind defended the operator end-to-end on real hardware — real threat -> real LLM -> real reflexes.
-NEXT: make the organism PERSISTENT (install the user LaunchAgent via `chimera plist` -> ~/Library/LaunchAgents
--> launchctl bootstrap, so it boots automatically — system change, needs operator OK + grants TCC popups for
-MIRROR/PULSE taps + TETHER Bluetooth on first run); then the gated effectors (shim sudo, real taps).
+(Its NEXT — make the organism persistent — is now DONE by SV-5 above: `python -m core install`.)
 
 Prior milestone: **DEPLOY DP-3 — spawn each module from its own dir; FULL ORGANISM 8/8 LIVE** (commit
 `2317735`, Day 19). `_spawn_argv` now returns `(argv, env, cwd)` with cwd = the module's own dir
@@ -1192,7 +1206,7 @@ core, as authority, turns the event into a command.) Slices:
 - Native (VAULT C Unity): 74 passing (6 lexer + 6 parser + 9 evaluator + 6 fail_closed + 3 relock + 7 decide + 7 crypto + 11 commands [VD-1 status + VD-2 create/list + VD-3 create-provisions-KEK + VD-7 delete-removes/no_such_vault + VD-8 policy.update changes/unknown/bad-dsl] + 2 keychain [VD-3 load-or-create] + 15 unlock/mount [VD-4a decision + VD-4b key-derive + VD-4c lock/auto-relock + VD-5 add_file seals + VD-6 decrypt-at-unlock round-trip + VD-8 policy.update refused-with-content/changes-decision + VD-9a unlock-mounts-plaintext + VD-9b lock/relock-unmount] + 2 mount-seam [VD-9a begin/put/end roundtrip + put-without-begin]) — separate C suite, NOT in pytest. VAULT is a live daemon (VD-1..9): create provisions a per-vault Keychain KEK (-> evict has real targets); unlock is state-gated, derives the key, OPENS the sealed files + materialises plaintext into a RAM-backed mount; lock/auto-relock/delete/policy.update unmount (plaintext vanishes); delete drops the vault + evicts its KEK; policy.update re-policies an empty vault. EVERY vault.* method is real; decrypted plaintext is RAM-only. Lone manual-tier path: the real hdiutil RAM-disk mount backend
 - Native (ECHO C Unity): 31 passing (9 shaper — budget + flat-wire invariant + burst + clamps; 7 config — defaults + validation + atomic set + budget bridge; 7 stats — padding ratio + decile histogram + surge; 8 commands — echo.* dispatch over jsonrpc) — separate C suite, NOT in pytest
 - Native (PURGE C Unity): 35 passing (7 dry-run planner — §8 honest-wipe classify + keys-first tier plan; 9 target registry — add/dedup/remove + plan bridge; 7 config — post-action + marker, atomic set; 12 commands — purge.* dispatch, trigger gated -31004) — separate C suite, NOT in pytest
-- Total: 1080 passing (682 default [incl 22 pulse scoring + 24 pulse baseline + 10 pulse assess + 10 pulse temporal + 5 pulse idle [PD-idle-1] + 5 pulse drift [PD-C-1] + 5 pulse input [PD-A-1 group-A mapper] + 10 pulse emission [EM + PD-idle-2 + PD-A-2 + PD-A-3 group-A subscribe] + 5 pulse danger-registry + 5 pulse finishers + 8 core gate + 5 core gate-wiring + 7 core override + 3 core gate-override + 5 core override.set + 6 core gate-hardening + 3 core entry + 10 core supervisor + 8 core CLI + 4 core autonomy + 3 core mark-lost + 1 core lock + 1 core graceful-down + 3 core tier0 + 3 core purge + 1 core tether->vault relay + 1 core fan-out relay + 2 core anomaly-obfuscation (chaff+echo) + 1 core de-escalation (recovered stand-down) + 3 ORACLE all-clear (anomaly.cleared hysteresis) + 1 core anomaly-cleared stand-down + 7 core audit store + 2 core audit wiring + 6 core audit surface (render+CLI) + 2 core shim-escalation audit + 3 core pulse->vault reflex + 3 core tether-escalation actuation + 19 core status-view/watch] + 59 integration + 46 CHAFF + 31 ECHO + 40 PURGE + 63 MIRROR + 38 shim + 48 TETHER + 74 VAULT Unity; ollama subset not double-counted)
+- Total: 1085 passing (687 default [incl 22 pulse scoring + 24 pulse baseline + 10 pulse assess + 10 pulse temporal + 5 pulse idle [PD-idle-1] + 5 pulse drift [PD-C-1] + 5 pulse input [PD-A-1 group-A mapper] + 10 pulse emission [EM + PD-idle-2 + PD-A-2 + PD-A-3 group-A subscribe] + 5 pulse danger-registry + 5 pulse finishers + 8 core gate + 5 core gate-wiring + 7 core override + 3 core gate-override + 5 core override.set + 6 core gate-hardening + 3 core entry + 10 core supervisor + 18 core CLI (incl SV-5 install/uninstall) + 4 core autonomy + 3 core mark-lost + 1 core lock + 1 core graceful-down + 3 core tier0 + 3 core purge + 1 core tether->vault relay + 1 core fan-out relay + 2 core anomaly-obfuscation (chaff+echo) + 1 core de-escalation (recovered stand-down) + 3 ORACLE all-clear (anomaly.cleared hysteresis) + 1 core anomaly-cleared stand-down + 7 core audit store + 2 core audit wiring + 6 core audit surface (render+CLI) + 2 core shim-escalation audit + 3 core pulse->vault reflex + 3 core tether-escalation actuation + 19 core status-view/watch] + 59 integration + 46 CHAFF + 31 ECHO + 40 PURGE + 63 MIRROR + 38 shim + 48 TETHER + 74 VAULT Unity; ollama subset not double-counted)
 
 **Open tails (honest tracking, MANIFESTO §4):**
 
