@@ -25,6 +25,8 @@ from core.config import CoreConfig
 
 from oracle.baseline import BaselineStore
 from oracle.client import OracleClient
+from oracle.detector import Detector
+from oracle.llm import LlmClient
 
 DEFAULT_BASELINE_EVERY = 100
 
@@ -46,9 +48,13 @@ def main() -> None:
     config = CoreConfig()
     oracle_dir = Path("~/.config/chimera/oracle").expanduser()
     store = BaselineStore(oracle_dir / "baseline.db", oracle_dir / "baseline.key")
+    # Mode B: wire the LLM detector so oracle.classify works live (local Ollama, llama3.2:1b).
+    # Ollama down -> classify fails per-call (-31004), never at startup.
+    detector = Detector(LlmClient(), store)
     client = OracleClient(
         config.socket_dir,
         store,
+        detector=detector,
         baseline_every=DEFAULT_BASELINE_EVERY,
         heartbeat_interval=float(config.heartbeat_interval_s),
     )
