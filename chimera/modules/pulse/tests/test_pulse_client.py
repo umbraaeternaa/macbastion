@@ -145,3 +145,30 @@ async def test_idle_minute_keeps_group_a_absent(tmp_path):
     client._on_input_aggregates(chars=0, deletes=0, mouse_path_ratio=None)  # a quiet minute
     quiet_score, _, _ = await client._compute(NOW_NORMAL)
     assert quiet_score == base_score  # no typing -> group A absent, no fake fatigue
+
+
+# -- PD-A-3: PULSE subscribes to MIRROR's per-minute input-aggregate event ----
+
+
+def test_subscribes_to_mirror_input_event():
+    assert "mirror.input.minute" in PulseClient.SUBSCRIBE_TOPICS
+
+
+async def test_input_event_feeds_group_a(tmp_path):
+    client = _seeded_client(tmp_path)
+    frame = json.dumps({
+        "jsonrpc": "2.0", "method": "mirror.input.minute",
+        "params": {"chars": 100, "deletes": 30, "mouse_path_ratio": None},
+    })
+    await client._on_event_frame(frame)
+    assert client._group_a == {"typing_speed": 100.0, "error_rate": 0.3}
+
+
+async def test_unrelated_event_leaves_group_a_untouched(tmp_path):
+    client = _seeded_client(tmp_path)
+    frame = json.dumps({
+        "jsonrpc": "2.0", "method": "mirror.profile.changed",
+        "params": {"profile": "heavy"},
+    })
+    await client._on_event_frame(frame)
+    assert client._group_a is None  # an unrelated event never touches group-A

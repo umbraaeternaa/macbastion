@@ -82,6 +82,8 @@ class PulseClient:
         "pulse.calibrate.reset",
     )
     EVENTS: tuple[str, ...] = ("pulse.mode.changed", "pulse.error")
+    # group-A producer: MIRROR pushes a per-minute input-aggregate event we consume (PD-A-3).
+    SUBSCRIBE_TOPICS: tuple[str, ...] = ("mirror.input.minute",)
 
     def __init__(
         self,
@@ -120,6 +122,10 @@ class PulseClient:
     def _core_sock(self) -> Path:
         return self._socket_dir / "core.sock"
 
+    @property
+    def _events_sock(self) -> Path:
+        return self._socket_dir / "events.sock"
+
     # -- lifecycle --------------------------------------------------------
 
     async def run(self) -> None:
@@ -131,6 +137,7 @@ class PulseClient:
                 tg.create_task(self._serve_command_conn())
                 tg.create_task(self._heartbeat_loop())
                 tg.create_task(self._tick_loop())
+                tg.create_task(self._consume_events_conn())
         except* _DisconnectError:
             pass  # core closed the socket — graceful exit
         except* (ConnectionError, OSError, asyncio.IncompleteReadError):
@@ -175,6 +182,50 @@ class PulseClient:
             return
         if isinstance(message, Request):
             await self._send_cmd(await self._dispatch(message))
+
+    # -- connection #2: events.sock (consumer role — group-A from MIRROR) ------
+
+    async def _consume_events_conn(self) -> None:
+        """Subscribe to MIRROR's per-minute input-aggregate event and fold each into
+        group-A (PD-A-3). A separate read connection (events.sock), like ORACLE's."""
+        reader, writer = await asyncio.open_unix_connection(str(self._events_sock))
+        try:
+            await self._registered.wait()  # core.subscribe after our command conn is up
+            writer.write(
+                serialize_frame(
+                    Request(
+                        jsonrpc="2.0", id=self._next_id(), method="core.subscribe",
+                        params={"topics": list(self.SUBSCRIBE_TOPICS)},
+                    )
+                ).encode()
+            )
+            await writer.drain()
+            while True:
+                line = await reader.readline()
+                if not line:
+                    raise _DisconnectError
+                await self._on_event_frame(line.decode())
+        finally:
+            await self._close_writer(writer)
+
+    async def _on_event_frame(self, line: str) -> None:
+        """Fold a pushed mirror.input.minute aggregate into group-A; ignore everything
+        else (the sub ack, unrelated events). Malformed payload -> ignored (fail-open §8)."""
+        try:
+            message = parse_frame(line)
+        except Exception:  # noqa: BLE001 — tolerate a malformed frame
+            return
+        if not isinstance(message, Notification) or message.method != "mirror.input.minute":
+            return
+        params = message.params if isinstance(message.params, dict) else {}
+        try:
+            self._on_input_aggregates(
+                chars=int(params.get("chars", 0)),
+                deletes=int(params.get("deletes", 0)),
+                mouse_path_ratio=params.get("mouse_path_ratio"),
+            )
+        except (TypeError, ValueError):
+            return  # malformed aggregate -> ignore, never crash the consumer
 
     async def _dispatch(self, request: Request) -> Response:
         try:
