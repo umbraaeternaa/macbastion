@@ -249,6 +249,42 @@ static void test_tick_input_not_due_within_minute(void) {
     TEST_ASSERT_NULL(rt.evq_head);
 }
 
+/* MI-5: the tap callback's pure core. keycode classification. Stub -> 0 -> the delete
+ * cases FAIL. */
+static void test_keycode_is_delete(void) {
+    TEST_ASSERT_TRUE(mirror_keycode_is_delete(51));   /* backspace */
+    TEST_ASSERT_TRUE(mirror_keycode_is_delete(117));  /* forward-delete */
+    TEST_ASSERT_FALSE(mirror_keycode_is_delete(0));   /* 'a' */
+}
+
+/* a printable keystroke -> chars++. Stub no-op -> 0 -> FAIL. */
+static void test_observe_char_counts(void) {
+    mirror_runtime_t rt = {0};
+    mirror_runtime_init(&rt);
+    mirror_observe_event(&rt, MIRROR_INPUT_KEY, 0, 0.0, 0.0); /* 'a' */
+    TEST_ASSERT_EQUAL_UINT64(1, rt.input.chars);
+    TEST_ASSERT_EQUAL_UINT64(0, rt.input.deletes);
+}
+
+/* a delete keystroke -> deletes++. Stub -> 0 -> FAIL. */
+static void test_observe_delete_counts(void) {
+    mirror_runtime_t rt = {0};
+    mirror_runtime_init(&rt);
+    mirror_observe_event(&rt, MIRROR_INPUT_KEY, 51, 0.0, 0.0);   /* backspace */
+    mirror_observe_event(&rt, MIRROR_INPUT_KEY, 117, 0.0, 0.0);  /* forward-delete */
+    TEST_ASSERT_EQUAL_UINT64(0, rt.input.chars);
+    TEST_ASSERT_EQUAL_UINT64(2, rt.input.deletes);
+}
+
+/* a mouse move -> the aggregator's path accumulates (ratio becomes non-zero). Stub ->
+ * 0 -> FAIL. */
+static void test_observe_mouse_accumulates(void) {
+    mirror_runtime_t rt = {0};
+    mirror_runtime_init(&rt);
+    mirror_observe_event(&rt, MIRROR_INPUT_MOUSE, 0, 10.0, 0.0);
+    TEST_ASSERT_DOUBLE_WITHIN(0.001, 1.0, inputagg_mouse_ratio(&rt.input));
+}
+
 void run_commands_tests(void) {
     RUN_TEST(test_runtime_init_defaults);
     RUN_TEST(test_status_dispatch);
@@ -264,4 +300,8 @@ void run_commands_tests(void) {
     RUN_TEST(test_tick_input_first_call_arms_no_emit);
     RUN_TEST(test_tick_input_emits_after_a_minute);
     RUN_TEST(test_tick_input_not_due_within_minute);
+    RUN_TEST(test_keycode_is_delete);
+    RUN_TEST(test_observe_char_counts);
+    RUN_TEST(test_observe_delete_counts);
+    RUN_TEST(test_observe_mouse_accumulates);
 }

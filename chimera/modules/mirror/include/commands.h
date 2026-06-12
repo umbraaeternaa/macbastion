@@ -89,4 +89,16 @@ void mirror_emit_input_minute(mirror_runtime_t *rt, const mirror_inputagg_t *sna
 #define MIRROR_INPUT_MINUTE_S 60
 int mirror_tick_input_minute(mirror_runtime_t *rt, time_t now);
 
+/* macOS virtual keycodes that mean "delete" — backspace (kVK_Delete=51) and
+ * forward-delete (kVK_ForwardDelete=117). Returns 1 for those, else 0. */
+int mirror_keycode_is_delete(int keycode);
+
+/* Fold one observed input event into rt->input — the passive tap callback's pure core
+ * (MI-5). MIRROR_INPUT_KEY: a keystroke, `keycode` classifies char vs delete.
+ * MIRROR_INPUT_MOUSE: a move, `dx`/`dy` are the deltas. Counts only (privacy §8 — the
+ * raw event is discarded after this). Caller holds rt->mutex. */
+#define MIRROR_INPUT_KEY 0
+#define MIRROR_INPUT_MOUSE 1
+void mirror_observe_event(mirror_runtime_t *rt, int kind, int keycode, double dx, double dy);
+
 #endif /* MIRROR_COMMANDS_H */

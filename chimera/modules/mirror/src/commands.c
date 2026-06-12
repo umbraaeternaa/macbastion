@@ -329,3 +329,15 @@ int mirror_tick_input_minute(mirror_runtime_t *rt, time_t now) {
     rt->input_minute_at = now;
     return 1;
 }
+
+int mirror_keycode_is_delete(int keycode) {
+    return keycode == 51 || keycode == 117; /* kVK_Delete / kVK_ForwardDelete */
+}
+
+void mirror_observe_event(mirror_runtime_t *rt, int kind, int keycode, double dx, double dy) {
+    if (kind == MIRROR_INPUT_KEY) {
+        inputagg_key(&rt->input, mirror_keycode_is_delete(keycode));
+    } else if (kind == MIRROR_INPUT_MOUSE) {
+        inputagg_mouse_move(&rt->input, dx, dy);
+    }
+}
