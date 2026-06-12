@@ -185,6 +185,7 @@ def launch_agent_plist(socket_dir: Path) -> str:
         else [sys.executable, "-m", "core", "up"]
     )
     args_xml = "".join(f"        <string>{a}</string>\n" for a in program)
+    chimera_dir = Path(__file__).resolve().parent.parent  # `python -m core` needs cwd here
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
@@ -200,6 +201,8 @@ def launch_agent_plist(socket_dir: Path) -> str:
         "        <key>CHIMERA_SOCKET_DIR</key>\n"
         f"        <string>{socket_dir}</string>\n"
         "    </dict>\n"
+        "    <key>WorkingDirectory</key>\n"
+        f"    <string>{chimera_dir}</string>\n"
         "    <key>RunAtLoad</key>\n    <true/>\n"
         "    <key>KeepAlive</key>\n    <true/>\n"
         "</dict>\n</plist>\n"

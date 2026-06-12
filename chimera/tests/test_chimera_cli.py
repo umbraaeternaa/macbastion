@@ -89,3 +89,13 @@ def test_launch_agent_plist_unfrozen_uses_dash_m_core(tmp_path, monkeypatch):
     xml = launch_agent_plist(tmp_path)
     assert "<string>-m</string>" in xml
     assert "<string>core</string>" in xml
+
+
+def test_launch_agent_plist_sets_working_dir(tmp_path):
+    # `python -m core up` only resolves `core` when cwd is the chimera dir (its parent).
+    import core.__main__
+
+    chimera_dir = Path(core.__main__.__file__).resolve().parent.parent
+    xml = launch_agent_plist(tmp_path)
+    assert "<key>WorkingDirectory</key>" in xml
+    assert str(chimera_dir) in xml
