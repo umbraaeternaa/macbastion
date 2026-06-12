@@ -39,7 +39,10 @@ def _seeded_client(tmp_path):
         store.record_bucket(
             ts=(base - timedelta(days=d)).isoformat(), signals={"x": 1.0}, gated=False
         )
-    client = PulseClient(tmp_path, store, session_start="2026-06-12T00:00:00")
+    client = PulseClient(
+        tmp_path, store, session_start="2026-06-12T00:00:00",
+        idle_reader=lambda: None,  # hermetic: no real ioreg, idle stays absent
+    )
     client._cmd_writer = FakeWriter()
     return client
 
@@ -76,3 +79,34 @@ async def test_no_emit_when_mode_unchanged(tmp_path):
     await client._tick(NOW_CAUTION)  # establish caution
     await client._tick(NOW_CAUTION)  # same mode: no emit
     assert _mode_events(client) == []
+
+
+# -- PD-idle-2: the daemon feeds a live idle reader into the IdleTracker -------
+
+
+def _idle_client(tmp_path, readings):
+    """A seeded client whose idle reader yields the given readings in order."""
+    store = BaselineStore(tmp_path / "baseline.db", tmp_path / "baseline.key")
+    it = iter(readings)
+    client = PulseClient(
+        tmp_path, store, session_start="2026-06-12T00:00:00",
+        idle_reader=lambda: next(it),
+    )
+    client._cmd_writer = FakeWriter()
+    return client
+
+
+async def test_daemon_feeds_idle_tracker(tmp_path):
+    # away past the gap threshold, then back -> the daemon stamps last_idle_end.
+    client = _idle_client(tmp_path, [400.0, 1.0])
+    await client._compute("2026-06-12T10:05:00")  # idle 400s -> in a gap
+    await client._compute("2026-06-12T10:06:00")  # idle 1s   -> returned, gap ends
+    assert client._idle.last_idle_end == "2026-06-12T10:06:00"
+
+
+async def test_idle_reader_failure_is_fail_open(tmp_path):
+    # the idle sensor unavailable (None) must never crash or stamp (fail-open §8).
+    client = _idle_client(tmp_path, [None, None])
+    score, _mode, _ = await client._compute("2026-06-12T14:00:00")
+    assert 0.0 <= score <= 1.0
+    assert client._idle.last_idle_end is None

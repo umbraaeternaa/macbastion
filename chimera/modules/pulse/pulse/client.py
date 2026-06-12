@@ -17,6 +17,9 @@ from __future__ import annotations
 
 import asyncio
 import math
+import re
+import subprocess
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -32,9 +35,29 @@ from core.errors import (
 
 from pulse.assess import assess
 from pulse.baseline import BaselineStore
+from pulse.idle import IdleTracker
 from pulse.registry import DangerRegistry
 from pulse.scoring import Weights
 from pulse.temporal import temporal_signal
+
+_HID_IDLE_RE = re.compile(r'"HIDIdleTime"\s*=\s*(\d+)')
+
+
+def _read_system_idle_seconds() -> float | None:
+    """Current HID idle seconds via `ioreg -c IOHIDSystem` (HIDIdleTime is ns since the
+    last input event). Manual-tier — live on macOS. Any failure -> None (fail-open §8:
+    a broken idle sensor must never inflate fatigue / lock the operator out)."""
+    try:
+        out = subprocess.run(
+            ["/usr/sbin/ioreg", "-c", "IOHIDSystem"],
+            capture_output=True, text=True, timeout=2.0, check=True,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    match = _HID_IDLE_RE.search(out)
+    if match is None:
+        return None
+    return int(match.group(1)) / 1_000_000_000.0  # ns -> s
 
 
 class _DisconnectError(Exception):
@@ -70,6 +93,7 @@ class PulseClient:
         danger_registry: DangerRegistry | None = None,
         heartbeat_interval: float = 2.0,
         tick_interval: float = 60.0,
+        idle_reader: Callable[[], float | None] | None = None,
     ) -> None:
         self._socket_dir = Path(socket_dir)
         self._store = store
@@ -77,6 +101,9 @@ class PulseClient:
         self._chronotype = chronotype
         self._weights = weights if weights is not None else Weights()
         self._danger_registry = danger_registry
+        # group-B live idle producer: read system idle each tick, track gap-ends (PD-idle-2)
+        self._idle_reader = idle_reader if idle_reader is not None else _read_system_idle_seconds
+        self._idle = IdleTracker()
         self._heartbeat_interval = heartbeat_interval
         self._tick_interval = tick_interval
         self._enabled = True
@@ -184,10 +211,15 @@ class PulseClient:
         """Advisory composition (EM-1): temporal_signal -> assess over the store.
 
         Returns (score, mode, primary_signal). primary is 'temporal' — the only present
-        group this slice (group A/C gated).
+        group this slice (group A/C gated). The idle sub-signal is live (PD-idle-2): read
+        system idle, feed the tracker, pass its last_idle_end into temporal.
         """
+        idle_seconds = await asyncio.to_thread(self._idle_reader)
+        if idle_seconds is not None:
+            self._idle.observe(now, idle_seconds)
         temporal = temporal_signal(
-            now, session_start=self._session_start, last_idle_end=None,
+            now, session_start=self._session_start,
+            last_idle_end=self._idle.last_idle_end,
             chronotype=self._chronotype,
         )
         score, mode = await asyncio.to_thread(
