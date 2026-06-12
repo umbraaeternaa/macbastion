@@ -32,6 +32,14 @@ for m in chaff echo mirror vault tether purge; do
   printf '    %-8s signed + verified\n' "$m"
 done
 
+# The privileged shim (root LaunchDaemon) — a stable identity here pins core↔shim
+# attestation (the per-boot secret's designated requirement, SHIM.md §6/SS-4).
+if [ -x "shim/chimera-shim" ]; then
+  codesign -s "$ID" --force --identifier "com.umbra.chimera.shim" "shim/chimera-shim"
+  codesign --verify --strict "shim/chimera-shim"
+  printf '    %-8s signed + verified\n' "shim"
+fi
+
 echo ""
 echo "==> done. NOTE: a TCC grant given to an UNSIGNED binary does not match the signed"
 echo "    one — re-grant it ONCE after signing (e.g. MIRROR Accessibility); it persists"
