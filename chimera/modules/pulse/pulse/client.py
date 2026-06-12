@@ -36,6 +36,7 @@ from core.errors import (
 from pulse.assess import assess
 from pulse.baseline import BaselineStore
 from pulse.idle import IdleTracker
+from pulse.input import input_signals
 from pulse.registry import DangerRegistry
 from pulse.scoring import Weights
 from pulse.temporal import temporal_signal
@@ -104,6 +105,8 @@ class PulseClient:
         # group-B live idle producer: read system idle each tick, track gap-ends (PD-idle-2)
         self._idle_reader = idle_reader if idle_reader is not None else _read_system_idle_seconds
         self._idle = IdleTracker()
+        # group-A: latest MIRROR input aggregates mapped to fatigue readings (PD-A-2)
+        self._group_a: dict[str, float] | None = None
         self._heartbeat_interval = heartbeat_interval
         self._tick_interval = tick_interval
         self._enabled = True
@@ -223,10 +226,19 @@ class PulseClient:
             chronotype=self._chronotype,
         )
         score, mode = await asyncio.to_thread(
-            assess, self._store, now, group_a=None, temporal=temporal,
+            assess, self._store, now, group_a=self._group_a, temporal=temporal,
             drift=None, weights=self._weights,
         )
         return score, mode, "temporal"
+
+    def _on_input_aggregates(
+        self, chars: int, deletes: int, mouse_path_ratio: float | None
+    ) -> None:
+        """Cache one minute of MIRROR input aggregates as group-A readings (PD-A-2).
+
+        Mapped via input_signals (a quiet minute -> empty -> group A absent in assess);
+        the next _compute folds them into the fatigue score (the dominant w_a signal)."""
+        self._group_a = input_signals(chars, deletes, mouse_path_ratio)
 
     async def _handle_status(self) -> dict[str, Any]:
         """Advisory state (PD-3): temporal_signal -> assess over the store."""
