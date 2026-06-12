@@ -5,6 +5,7 @@
 #include "commands.h"
 
 #include <ApplicationServices/ApplicationServices.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
@@ -272,4 +273,42 @@ char *commands_dispatch(mirror_runtime_t *rt, const char *method, const cJSON *p
     }
 
     return jsonrpc_serialize_error(id, -32601, "method not found", NULL);
+}
+
+/* Enqueue an owned NDJSON line on the runtime's event queue (caller holds rt->mutex). */
+static void evq_push(mirror_runtime_t *rt, char *line) {
+    mirror_event_node_t *node = calloc(1, sizeof(*node));
+    if (!node) {
+        free(line);
+        return;
+    }
+    node->line = line;
+    node->next = NULL;
+    if (rt->evq_tail) {
+        rt->evq_tail->next = node;
+    } else {
+        rt->evq_head = node;
+    }
+    rt->evq_tail = node;
+}
+
+void mirror_emit_input_minute(mirror_runtime_t *rt, const mirror_inputagg_t *snap) {
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "jsonrpc", "2.0");
+    cJSON_AddStringToObject(root, "method", "mirror.input.minute");
+    cJSON *params = cJSON_CreateObject();
+    cJSON_AddNumberToObject(params, "chars", (double)snap->chars);
+    cJSON_AddNumberToObject(params, "deletes", (double)snap->deletes);
+    double ratio = inputagg_mouse_ratio(snap);
+    if (ratio > 0.0) {
+        cJSON_AddNumberToObject(params, "mouse_path_ratio", ratio);
+    } else {
+        cJSON_AddNullToObject(params, "mouse_path_ratio"); /* no movement -> absent */
+    }
+    cJSON_AddItemToObject(root, "params", params);
+    char *line = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    if (line) {
+        evq_push(rt, line);
+    }
 }

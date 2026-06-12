@@ -12,6 +12,7 @@
 #include "cJSON.h"
 
 #include "exclude.h"
+#include "inputagg.h"
 #include "profile.h"
 #include "stats.h"
 
@@ -72,5 +73,11 @@ mirror_profile_params_t mirror_tick_params(const mirror_runtime_t *rt, int is_se
  * — needs Accessibility); tests inject a stub. Returns nonzero when a secure field is
  * focused. Pass NULL to reset to the real probe. */
 void mirror_set_secure_field_check(int (*fn)(void));
+
+/* Build a mirror.input.minute event from a rolled aggregate snapshot and enqueue it on
+ * the runtime's event queue (drained to events.sock by the daemon) — the group-A
+ * producer PULSE subscribes to. params: {chars, deletes, mouse_path_ratio} (the ratio is
+ * null when there was no mouse movement). Caller holds rt->mutex (evq is mutex-protected). */
+void mirror_emit_input_minute(mirror_runtime_t *rt, const mirror_inputagg_t *snap);
 
 #endif /* MIRROR_COMMANDS_H */

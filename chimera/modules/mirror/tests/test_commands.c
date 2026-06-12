@@ -172,6 +172,46 @@ static void test_tick_params_downgrades_on_secure_field(void) {
     TEST_ASSERT_TRUE(down.mouse_sigma < full.mouse_sigma);
 }
 
+/* MI-3: the group-A producer — emit builds mirror.input.minute and queues it. Stub
+ * no-op -> evq stays empty -> FAIL. */
+static void test_emit_input_minute_enqueues_event(void) {
+    mirror_runtime_t rt = {0};
+    mirror_runtime_init(&rt);
+    mirror_inputagg_t snap = {0};
+    snap.chars = 120;
+    snap.deletes = 6; /* no mouse movement -> ratio absent */
+    mirror_emit_input_minute(&rt, &snap);
+    TEST_ASSERT_NOT_NULL(rt.evq_head); /* an event was queued */
+    cJSON *ev = cJSON_Parse(rt.evq_head->line);
+    TEST_ASSERT_NOT_NULL(ev);
+    TEST_ASSERT_EQUAL_STRING(
+        "mirror.input.minute", cJSON_GetObjectItem(ev, "method")->valuestring);
+    cJSON *p = cJSON_GetObjectItem(ev, "params");
+    TEST_ASSERT_EQUAL_INT(120, cJSON_GetObjectItem(p, "chars")->valueint);
+    TEST_ASSERT_EQUAL_INT(6, cJSON_GetObjectItem(p, "deletes")->valueint);
+    TEST_ASSERT_TRUE(cJSON_IsNull(cJSON_GetObjectItem(p, "mouse_path_ratio")));
+    cJSON_Delete(ev);
+    free(rt.evq_head->line);
+    free(rt.evq_head);
+}
+
+/* mouse movement -> a numeric ratio in the event (1.0 for a straight move). */
+static void test_emit_input_minute_includes_mouse_ratio(void) {
+    mirror_runtime_t rt = {0};
+    mirror_runtime_init(&rt);
+    mirror_inputagg_t snap = {0};
+    inputagg_mouse_move(&snap, 10.0, 0.0); /* straight -> ratio 1.0 */
+    mirror_emit_input_minute(&rt, &snap);
+    TEST_ASSERT_NOT_NULL(rt.evq_head);
+    cJSON *ev = cJSON_Parse(rt.evq_head->line);
+    cJSON *r = cJSON_GetObjectItem(cJSON_GetObjectItem(ev, "params"), "mouse_path_ratio");
+    TEST_ASSERT_FALSE(cJSON_IsNull(r));
+    TEST_ASSERT_DOUBLE_WITHIN(0.001, 1.0, r->valuedouble);
+    cJSON_Delete(ev);
+    free(rt.evq_head->line);
+    free(rt.evq_head);
+}
+
 void run_commands_tests(void) {
     RUN_TEST(test_runtime_init_defaults);
     RUN_TEST(test_status_dispatch);
@@ -182,4 +222,6 @@ void run_commands_tests(void) {
     RUN_TEST(test_enable_without_accessibility_reports_accessibility);
     RUN_TEST(test_enable_with_accessibility_starts_injector);
     RUN_TEST(test_tick_params_downgrades_on_secure_field);
+    RUN_TEST(test_emit_input_minute_enqueues_event);
+    RUN_TEST(test_emit_input_minute_includes_mouse_ratio);
 }
