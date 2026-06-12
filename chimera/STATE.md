@@ -77,7 +77,19 @@ Slice 3A react-entrypoint (RED→GREEN) done. CORE: idea #3 Slice 3B anomaly-rel
 (RED→GREEN) done — a NEW core capability. ORACLE: idea #3 Slice 3C anomaly-emit
 (RED→GREEN) done — the real producer. **Idea #3 (Anomaly-Tripwire) COMPLETE** —
 3A+3B+3C wired + e2e-confirmed by 3D.
-Last completed: **MIRROR effector UN-GATED — Accessibility granted, real input-jitter LIVE on hardware**
+Last completed: **CODE-SIGNING — all 6 native binaries signed with a stable Apple Development identity**
+(Day 20 — Phase 3, `sign.sh`). Discovery: the operator already has an "Apple Development" code-signing identity
+in his keychain — better than a self-signed cert (my openssl self-signed p12 import failed on a LibreSSL MAC
+incompat anyway; abandoned). `sign.sh` auto-detects the first Apple Development / Developer ID identity and
+`codesign -s … --force --identifier com.umbra.chimera.<m>` signs chaff/echo/mirror/vault/tether/purge (ad-hoc
+`-` fallback). All 6 signed + `codesign --verify --strict` OK (full chain Apple Development → WWDR → Root CA).
+Why it matters: an unsigned binary's TCC grant keys to its content hash (resets every rebuild); a stable signing
+identity keeps a stable designated requirement, so grants persist. The on-disk binaries are signed; the running
+organism still holds the pre-restart (unsigned) MIRROR grant — on the NEXT restart the signed mirror loads and
+MIRROR needs a ONE-TIME Accessibility re-grant, durable thereafter. (sign.sh is standalone — NOT wired into
+build.sh, so a fresh clone without the operator's cert still builds.)
+
+Prior milestone: **MIRROR effector UN-GATED — Accessibility granted, real input-jitter LIVE on hardware**
 (Day 20 — Phase 3, no code change: MIRROR's effector was already written, only the TCC grant was missing).
 The operator granted Accessibility to `modules/mirror/mirror` (System Settings > Privacy & Security >
 Accessibility). After a `launchctl kickstart -k` restart so the daemon re-attributed, `mirror.enable` flipped

@@ -58,6 +58,17 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.umbra.chimera.plist
 # launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.umbra.chimera.plist
 ```
 
+Optional — **stable identity** so macOS permission grants (Accessibility for MIRROR,
+Bluetooth for TETHER) survive rebuilds:
+
+```bash
+./sign.sh            # signs the native binaries with your Apple Development / Developer ID identity
+./sign.sh -          # or ad-hoc (valid signature, but no stable identity)
+```
+
+An unsigned binary is identified by its content hash, which changes every rebuild, so its
+grant resets; a signed binary keeps a stable designated requirement and the grant persists.
+
 ## Honest status
 
 The brain and reactive intelligence are **complete and live-verified**: the organism
