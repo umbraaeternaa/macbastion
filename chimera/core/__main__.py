@@ -98,9 +98,36 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def _chimera_root() -> Path:
+    """The chimera project dir (holds modules/ and .venv). Unfrozen: this file's parent.parent.
+    Frozen (the signed PyInstaller onedir at <root>/dist/chimera/chimera): derive from the
+    executable location, or a CHIMERA_ROOT override. This lets the signed frozen core — the
+    one the shim attests — still find the native module binaries and the interpreter that runs
+    the Python modules."""
+    env = os.environ.get("CHIMERA_ROOT")
+    if env:
+        return Path(env)
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parents[2]  # dist/chimera/chimera -> chimera/
+    return Path(__file__).resolve().parent.parent
+
+
+def _module_python() -> str:
+    """The interpreter that runs the Python modules (oracle/pulse). Unfrozen: sys.executable
+    is already the venv python. Frozen: sys.executable is the frozen core itself, which can't
+    run `-m oracle`, so use the project venv python (CHIMERA_PYTHON overrides)."""
+    env = os.environ.get("CHIMERA_PYTHON")
+    if env:
+        return env
+    if getattr(sys, "frozen", False):
+        venv = _chimera_root() / ".venv/bin/python"
+        return str(venv) if venv.exists() else "python3"
+    return sys.executable
+
+
 def module_binary(name: str) -> Path:
     """Resolve a module's daemon binary: modules/<name>/<name>."""
-    return Path(__file__).resolve().parent.parent / "modules" / name / name
+    return _chimera_root() / "modules" / name / name
 
 
 def _spawn_argv(
@@ -117,7 +144,7 @@ def _spawn_argv(
     }
     if spec.python:
         env["PYTHONPATH"] = str(module_dir)
-        return [sys.executable, "-m", spec.name], env, str(module_dir)
+        return [_module_python(), "-m", spec.name], env, str(module_dir)
     return [str(module_binary(spec.name))], env, str(module_dir)
 
 
@@ -189,7 +216,7 @@ def launch_agent_plist(socket_dir: Path) -> str:
         else [sys.executable, "-m", "core", "up"]
     )
     args_xml = "".join(f"        <string>{a}</string>\n" for a in program)
-    chimera_dir = Path(__file__).resolve().parent.parent  # `python -m core` needs cwd here
+    chimera_dir = _chimera_root()  # cwd for the agent; frozen-aware (finds modules/ + .venv)
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '

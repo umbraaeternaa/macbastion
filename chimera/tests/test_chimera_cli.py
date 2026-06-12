@@ -9,7 +9,9 @@ from pathlib import Path
 from core.__main__ import (
     _bootout_argv,
     _bootstrap_argv,
+    _chimera_root,
     _launch_agent_path,
+    _module_python,
     _spawn_argv,
     launch_agent_plist,
     module_binary,
@@ -142,3 +144,31 @@ def test_bootout_argv_targets_gui_domain():
     assert _bootout_argv(plist) == [
         "launchctl", "bootout", f"gui/{os.getuid()}", str(plist)
     ]
+
+
+# -- TE-frozen: frozen-aware module + interpreter resolution (the signed core runs the organism) --
+
+
+def test_chimera_root_unfrozen_is_project_dir():
+    # Unfrozen: the chimera dir holding modules/ — this is where module_binary resolves from.
+    root = _chimera_root()
+    assert (root / "modules").is_dir()
+    assert root == module_binary("echo").parent.parent.parent  # <root>/modules/echo/echo
+
+
+def test_chimera_root_env_override(monkeypatch):
+    monkeypatch.setenv("CHIMERA_ROOT", "/opt/chimera")
+    assert _chimera_root() == Path("/opt/chimera")
+
+
+def test_module_python_unfrozen_is_sys_executable(monkeypatch):
+    # Unfrozen, no override: the venv python (sys.executable) already runs `-m oracle`.
+    monkeypatch.delenv("CHIMERA_PYTHON", raising=False)
+    monkeypatch.setattr(sys, "frozen", False, raising=False)
+    assert _module_python() == sys.executable
+
+
+def test_module_python_env_override(monkeypatch):
+    # The override wins — used to point the frozen core at a real interpreter for oracle/pulse.
+    monkeypatch.setenv("CHIMERA_PYTHON", "/usr/bin/python3")
+    assert _module_python() == "/usr/bin/python3"
