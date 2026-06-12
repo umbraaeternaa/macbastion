@@ -17,5 +17,6 @@ int main(void) {
     run_emit_tests();
     run_commands_tests();
     run_monitor_tests();
+    run_source_tests();
     return UNITY_END();
 }

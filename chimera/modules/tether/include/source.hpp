@@ -8,6 +8,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace tether {
@@ -50,6 +51,14 @@ class CoreBluetoothSource : public RssiSource {
  * a SyntheticSource from that script; otherwise → CoreBluetoothSource (the gated,
  * currently-empty production source). Production never sets the env. */
 std::unique_ptr<RssiSource> make_source();
+
+/* Companion identity (TE-real). A BLE/Classic address as macOS reports it
+ * ("A8:79:8D:90:1C:83"). normalize strips separators + lowercases so the same
+ * device compares equal regardless of formatting. companion_matches returns true
+ * iff a discovered device IS the configured companion; an empty config never
+ * matches (no companion → never claim presence, MANIFESTO §4). Pure + hermetic. */
+std::string normalize_bt_addr(const std::string &addr);
+bool companion_matches(const std::string &configured, const std::string &device);
 
 } // namespace tether
 

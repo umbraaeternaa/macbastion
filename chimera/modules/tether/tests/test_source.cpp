@@ -1,0 +1,44 @@
+/* TE-real: companion-identity matcher (pure). The real BLE/Classic source is
+ * manual-tier (hardware + TCC); THIS is the hermetic, testable core every backend
+ * needs — "is this discovered device my configured companion?". */
+#include <string>
+
+#include "unity.h"
+
+#include "source.hpp"
+#include "tests.hpp"
+
+using tether::companion_matches;
+using tether::normalize_bt_addr;
+
+/* normalize: strip separators (':' '-'), lowercase — so formatting never matters. */
+static void test_normalize_lowercases_and_strips_separators(void) {
+    TEST_ASSERT_EQUAL_STRING("a8798d901c83", normalize_bt_addr("A8:79:8D:90:1C:83").c_str());
+    TEST_ASSERT_EQUAL_STRING("a8798d901c83", normalize_bt_addr("a8-79-8d-90-1c-83").c_str());
+    TEST_ASSERT_EQUAL_STRING("a8798d901c83", normalize_bt_addr("A8798D901C83").c_str());
+}
+
+/* The Samsung S22 matches itself across any formatting. */
+static void test_companion_matches_case_and_separator_insensitive(void) {
+    TEST_ASSERT_TRUE(companion_matches("A8:79:8D:90:1C:83", "a8:79:8d:90:1c:83"));
+    TEST_ASSERT_TRUE(companion_matches("A8:79:8D:90:1C:83", "A8798D901C83"));
+    TEST_ASSERT_TRUE(companion_matches("a8-79-8d-90-1c-83", "A8:79:8D:90:1C:83"));
+}
+
+/* A different paired device (the stray iPhone) is NOT the companion. */
+static void test_companion_no_match_different_device(void) {
+    TEST_ASSERT_FALSE(companion_matches("A8:79:8D:90:1C:83", "18:E7:B0:77:30:B3"));
+}
+
+/* No companion configured → never claim presence (honest empty state, §4). */
+static void test_companion_empty_config_never_matches(void) {
+    TEST_ASSERT_FALSE(companion_matches("", "A8:79:8D:90:1C:83"));
+    TEST_ASSERT_FALSE(companion_matches("A8:79:8D:90:1C:83", ""));
+}
+
+void run_source_tests(void) {
+    RUN_TEST(test_normalize_lowercases_and_strips_separators);
+    RUN_TEST(test_companion_matches_case_and_separator_insensitive);
+    RUN_TEST(test_companion_no_match_different_device);
+    RUN_TEST(test_companion_empty_config_never_matches);
+}

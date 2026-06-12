@@ -4,6 +4,7 @@
  * fabricates presence (§4). */
 #include "source.hpp"
 
+#include <cctype>
 #include <cstdlib>
 #include <fstream>
 #include <sstream>
@@ -67,6 +68,29 @@ std::unique_ptr<RssiSource> make_source() {
         return std::unique_ptr<RssiSource>(new CoreBluetoothSource());
     }
     return std::unique_ptr<RssiSource>(new SyntheticSource(std::move(samples)));
+}
+
+/* Strip address separators (':' '-' and any whitespace) and lowercase, so the same
+ * device compares equal however macOS / config formats it. */
+std::string normalize_bt_addr(const std::string &addr) {
+    std::string out;
+    out.reserve(addr.size());
+    for (char c : addr) {
+        if (c == ':' || c == '-' || c == ' ' || c == '\t') {
+            continue;
+        }
+        out.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+    }
+    return out;
+}
+
+/* True iff the discovered device IS the configured companion. An unset companion or
+ * an empty device id never matches — no companion → never claim presence (§4). */
+bool companion_matches(const std::string &configured, const std::string &device) {
+    if (configured.empty() || device.empty()) {
+        return false;
+    }
+    return normalize_bt_addr(configured) == normalize_bt_addr(device);
 }
 
 } // namespace tether
