@@ -49,9 +49,52 @@ static void test_roll_snapshots_then_resets(void) {
     TEST_ASSERT_EQUAL_UINT64(0, a.deletes);
 }
 
+/* a single straight move -> path == straight-line -> ratio 1.0. Stub 0 -> FAIL. */
+static void test_mouse_straight_ratio_one(void) {
+    mirror_inputagg_t a = {0};
+    inputagg_mouse_move(&a, 10.0, 0.0);
+    TEST_ASSERT_DOUBLE_WITHIN(0.001, 1.0, inputagg_mouse_ratio(&a));
+}
+
+/* right-angle: path 10+10=20 / straight sqrt(200)=14.142 -> 1.41421. Stub 0 -> FAIL. */
+static void test_mouse_right_angle_ratio(void) {
+    mirror_inputagg_t a = {0};
+    inputagg_mouse_move(&a, 10.0, 0.0);
+    inputagg_mouse_move(&a, 0.0, 10.0);
+    TEST_ASSERT_DOUBLE_WITHIN(0.001, 1.41421, inputagg_mouse_ratio(&a));
+}
+
+/* no movement -> ratio 0.0 (absent). Passes against the stub (still a valid contract). */
+static void test_mouse_no_movement_absent(void) {
+    mirror_inputagg_t a = {0};
+    TEST_ASSERT_DOUBLE_WITHIN(0.0001, 0.0, inputagg_mouse_ratio(&a));
+}
+
+/* back-and-forth: net ~0 -> floored -> ratio capped at MAX (10.0). Stub 0 -> FAIL. */
+static void test_mouse_backtrack_ratio_capped(void) {
+    mirror_inputagg_t a = {0};
+    inputagg_mouse_move(&a, 100.0, 0.0);
+    inputagg_mouse_move(&a, -100.0, 0.0);
+    TEST_ASSERT_DOUBLE_WITHIN(0.001, MIRROR_MOUSE_RATIO_MAX, inputagg_mouse_ratio(&a));
+}
+
+/* roll clears the mouse window too. */
+static void test_roll_clears_mouse(void) {
+    mirror_inputagg_t a = {0};
+    inputagg_mouse_move(&a, 10.0, 0.0);
+    mirror_inputagg_t out = {0};
+    inputagg_roll(&a, &out);
+    TEST_ASSERT_DOUBLE_WITHIN(0.0001, 0.0, inputagg_mouse_ratio(&a));
+}
+
 void run_inputagg_tests(void) {
     RUN_TEST(test_reset_zeroes_dirty_window);
     RUN_TEST(test_chars_counted);
     RUN_TEST(test_deletes_counted_separately);
     RUN_TEST(test_roll_snapshots_then_resets);
+    RUN_TEST(test_mouse_straight_ratio_one);
+    RUN_TEST(test_mouse_right_angle_ratio);
+    RUN_TEST(test_mouse_no_movement_absent);
+    RUN_TEST(test_mouse_backtrack_ratio_capped);
+    RUN_TEST(test_roll_clears_mouse);
 }
