@@ -77,7 +77,22 @@ Slice 3A react-entrypoint (RED→GREEN) done. CORE: idea #3 Slice 3B anomaly-rel
 (RED→GREEN) done — a NEW core capability. ORACLE: idea #3 Slice 3C anomaly-emit
 (RED→GREEN) done — the real producer. **Idea #3 (Anomaly-Tripwire) COMPLETE** —
 3A+3B+3C wired + e2e-confirmed by 3D.
-Last completed: **MIRROR input-observe dispatch + delete-keycode classifier (MI-5a)** (commit `d011840`,
+Last completed: **MIRROR real passive CGEventTap input observer — group-A LIVE end-to-end (MI-5b)** (commit
+`e0c4ace`, Day 18). A listen-only CGEventTap (keyDown | mouseMoved) on its own CFRunLoop thread feeds
+`rt->input` via `mirror_observe_event` (raw discarded — privacy §8); installed behind the
+`mirror_set_input_observer` seam, Accessibility-gated via `g_ax_check` (no grant -> observer doesn't start,
+PULSE degrades to temporal). The daemon starts it at boot + calls `mirror_tick_input_minute(rt, time(NULL))`
+each loop (under the lock; the observer thread writes `rt->input` concurrently).
+✅ **LIVE-VERIFIED on hardware** (throwaway harness, Terminal.app w/ Accessibility): real typing counted
+(chars=18, a backspace caught as deletes=1), real mouse wander -> `mouse_path_ratio=2.89`, and the emitted
+`mirror.input.minute` carried the real counts. Manual-tier (pure logic covered MI-1..5a). **group-A is now LIVE
+end-to-end** — real typing/mouse -> MIRROR aggregates -> `mirror.input.minute` -> PULSE (PD-A-3) -> fatigue
+score -> cognitive gate. Both PULSE senses (idle group-B + input group-A) are real. -Werror clean; no new dep.
+The full 2-day PULSE-sensing line (PD-idle-1/2 + PD-A-1/2/3 + MI-1..5b) is proven on real hardware. 1063
+(MI-5b manual-tier, no unit delta). NEXT: a capstone full-loop live-verify (real typing -> exhausted -> gate)
+or a new arc — group-C (ORACLE drift) producer, or a different organ.
+
+Prior milestone: **MIRROR input-observe dispatch + delete-keycode classifier (MI-5a)** (commit `d011840`,
 Day 18). `mirror_keycode_is_delete` (backspace 51 / forward-delete 117) + `mirror_observe_event(rt, kind,
 keycode, dx, dy)` — the passive tap callback's pure core: `MIRROR_INPUT_KEY` feeds `inputagg_key` (char vs
 delete by keycode), `MIRROR_INPUT_MOUSE` feeds `inputagg_mouse_move`. Counts only (privacy §8 — raw discarded);
