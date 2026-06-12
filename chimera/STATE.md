@@ -84,10 +84,13 @@ incompat anyway; abandoned). `sign.sh` auto-detects the first Apple Development 
 `codesign -s … --force --identifier com.umbra.chimera.<m>` signs chaff/echo/mirror/vault/tether/purge (ad-hoc
 `-` fallback). All 6 signed + `codesign --verify --strict` OK (full chain Apple Development → WWDR → Root CA).
 Why it matters: an unsigned binary's TCC grant keys to its content hash (resets every rebuild); a stable signing
-identity keeps a stable designated requirement, so grants persist. The on-disk binaries are signed; the running
-organism still holds the pre-restart (unsigned) MIRROR grant — on the NEXT restart the signed mirror loads and
-MIRROR needs a ONE-TIME Accessibility re-grant, durable thereafter. (sign.sh is standalone — NOT wired into
-build.sh, so a fresh clone without the operator's cert still builds.)
+identity keeps a stable designated requirement, so grants persist.
+✅ **Verified live**: after signing all 6 binaries + `launchctl kickstart -k`, the signed `mirror`
+(Identifier `com.umbra.chimera.mirror`, Apple Development, team `3646TFH55D`) loaded and `mirror.enable` still
+returned `{"ok": true}` — the Accessibility grant carried over to the signed binary (no re-grant needed), then
+`mirror.disable`. So MIRROR is live on a SIGNED, stable identity → its grant now survives rebuilds re-signed
+with the same identity. (sign.sh is standalone — NOT wired into build.sh, so a fresh clone without the
+operator's cert still builds.)
 
 Prior milestone: **MIRROR effector UN-GATED — Accessibility granted, real input-jitter LIVE on hardware**
 (Day 20 — Phase 3, no code change: MIRROR's effector was already written, only the TCC grant was missing).
