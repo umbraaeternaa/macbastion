@@ -77,17 +77,17 @@ Slice 3A react-entrypoint (RED→GREEN) done. CORE: idea #3 Slice 3B anomaly-rel
 (RED→GREEN) done — a NEW core capability. ORACLE: idea #3 Slice 3C anomaly-emit
 (RED→GREEN) done — the real producer. **Idea #3 (Anomaly-Tripwire) COMPLETE** —
 3A+3B+3C wired + e2e-confirmed by 3D.
-Last completed: **DEPLOY DP-2 — `chimera up` raises the FULL organism (all 8 organs)** (commit `0ea9364`,
-Day 19). `CHIMERA_MODULES` extended from echo+purge to all eight: chaff/echo/mirror/vault/tether/purge
-(native) + oracle/pulse (`python=True`). No depends_on — each registers independently; a module that can't
-start is marked failed, never blocks the rest (§7.3 fail-closed). 1 RED->GREEN (supervisor). 1078 -> 1079.
-mypy --strict + ruff clean.
-✅ **LIVE: 7/8 ORGANS UP from one `chimera up`** (Day 19, /tmp/chimera-full): core + echo, mirror, oracle
-(v0.4), pulse, purge, tether, vault all registered; PULSE normal; 6 reflexes armed; VAULT online + locked.
-Only chaff missing — it exits with "cannot read endpoints: data/endpoints.json": it resolves
-`CHAFF_ENDPOINTS_PATH` (default `data/endpoints.json`) relative to CWD, but the supervisor spawns it from a
-different dir. NEXT (DP-3): spawn each module with cwd = its own dir (modules/NAME/) so relative data resolves
--> 8/8. Then live-verify a reflex firing (publish tether.absent -> watch VAULT lock on the running organism).
+Last completed: **DEPLOY DP-3 — spawn each module from its own dir; FULL ORGANISM 8/8 LIVE** (commit
+`2317735`, Day 19). `_spawn_argv` now returns `(argv, env, cwd)` with cwd = the module's own dir
+(modules/NAME/), and `_default_spawn` passes it to Popen — so a module finds files it reads relative to the
+working dir (CHAFF's `data/endpoints.json`). 2 RED->GREEN (cli). 1079 (tests modified, no net new). mypy
+--strict + ruff clean.
+✅ **LIVE: 8/8 ORGANS UP from one `chimera up`** (Day 19, /tmp/chimera-full): core v0.2.0-alpha + chaff, echo,
+mirror, oracle (v0.4), pulse, purge, tether, vault ALL registered; PULSE normal; 6 reflexes armed. The
+complete organism — 19 days of work — runs on the operator's machine with a single command. DP-1 (spawn
+native-or-python) + DP-2 (all 8 in CHIMERA_MODULES) + DP-3 (per-module cwd) got it there. NEXT: live-verify a
+reflex firing on the running organism (publish `tether.absent` -> watch VAULT lock); then a real LaunchAgent
+for persistent boot (deploy/ has the scripts); then the gated effectors (shim sudo, MIRROR/PULSE TCC grants).
 
 Prior milestone: **DEPLOY DP-1 — `_spawn_argv` launches native binaries OR `python -m` modules** (commit
 `c1ab84d`, Day 19). Pure `_spawn_argv(spec, socket_dir)` -> (argv, env): a native module is its own binary
