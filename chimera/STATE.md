@@ -77,14 +77,20 @@ Slice 3A react-entrypoint (RED→GREEN) done. CORE: idea #3 Slice 3B anomaly-rel
 (RED→GREEN) done — a NEW core capability. ORACLE: idea #3 Slice 3C anomaly-emit
 (RED→GREEN) done — the real producer. **Idea #3 (Anomaly-Tripwire) COMPLETE** —
 3A+3B+3C wired + e2e-confirmed by 3D.
-Last completed: **PULSE IdleTracker — the idle sub-signal goes live (PD-idle-1)** (commit `2d7517f`, Day 18).
-PULSE's temporal signal already runs live, but `temporal_signal(..., last_idle_end=None)` hardcoded None — the
-idle sub-signal was dead (only hour-of-day + session contributed). New pure/hermetic `pulse/idle.py`
-`IdleTracker` derives `last_idle_end` from a stream of `(now, idle_seconds)`: idle past `IDLE_GAP_THRESHOLD_S`
-(5 min) opens a gap; falling back below it closes the gap (operator returned) and stamps `last_idle_end = now`.
-The heart of group-B's live idle producer. 5 RED->GREEN. 1028 -> 1033. mypy --strict + ruff clean.
-NEXT (PD-idle-2): the real `ioreg -c IOHIDSystem` HIDIdleTime read behind a seam (manual-tier) + wire the
-tracker into the daemon (`client.py`: feed each tick, pass `last_idle_end=tracker.last_idle_end` instead of None).
+Last completed: **PULSE idle signal LIVE in the daemon (PD-idle-2)** (commit `f57d102`, Day 18). `_compute` no
+longer hardcodes `last_idle_end=None`: each tick the daemon reads system idle via an injectable `idle_reader`
+seam (default `_read_system_idle_seconds` — `/usr/sbin/ioreg` HIDIdleTime ns->s, manual-tier; any failure ->
+None, fail-open §8), feeds the `IdleTracker`, and passes its `last_idle_end` into `temporal_signal`. **PULSE
+now genuinely senses the operator** — continuous work without a break raises temporal fatigue -> the cognitive
+gate adds friction on dangerous actions. ✅ LIVE-VERIFIED end-to-end (real idle 0.319s read off ioreg; tracker
+stamped). Existing client tests made hermetic (`idle_reader -> None`). 2 RED->GREEN. 1033 -> 1035. mypy
+--strict + ruff clean. NEXT (PD-idle): chronotype/session already live; group-A (MIRROR input aggregates) +
+group-C (ORACLE drift) producers remain gated — or a different organ/arc.
+
+Prior milestone: **PULSE IdleTracker — the idle sub-signal goes live (PD-idle-1)** (commit `2d7517f`, Day 18).
+New pure/hermetic `pulse/idle.py` `IdleTracker` derives `last_idle_end` from a stream of `(now, idle_seconds)`:
+idle past `IDLE_GAP_THRESHOLD_S` (5 min) opens a gap; falling back below it closes the gap (operator returned)
+and stamps `last_idle_end = now`. The heart of group-B's live idle producer. 5 RED->GREEN. 1028 -> 1033.
 
 Prior milestone: **`chimera audit --failures` CLI flag — failures filter, locally** (AD-5; commit `51056f7`,
 Day 17). The local `chimera audit` CLI (reads `audit.jsonl` off disk, works even when core is down) now takes
@@ -989,7 +995,7 @@ core, as authority, turns the event into a command.) Slices:
 - Native (VAULT C Unity): 74 passing (6 lexer + 6 parser + 9 evaluator + 6 fail_closed + 3 relock + 7 decide + 7 crypto + 11 commands [VD-1 status + VD-2 create/list + VD-3 create-provisions-KEK + VD-7 delete-removes/no_such_vault + VD-8 policy.update changes/unknown/bad-dsl] + 2 keychain [VD-3 load-or-create] + 15 unlock/mount [VD-4a decision + VD-4b key-derive + VD-4c lock/auto-relock + VD-5 add_file seals + VD-6 decrypt-at-unlock round-trip + VD-8 policy.update refused-with-content/changes-decision + VD-9a unlock-mounts-plaintext + VD-9b lock/relock-unmount] + 2 mount-seam [VD-9a begin/put/end roundtrip + put-without-begin]) — separate C suite, NOT in pytest. VAULT is a live daemon (VD-1..9): create provisions a per-vault Keychain KEK (-> evict has real targets); unlock is state-gated, derives the key, OPENS the sealed files + materialises plaintext into a RAM-backed mount; lock/auto-relock/delete/policy.update unmount (plaintext vanishes); delete drops the vault + evicts its KEK; policy.update re-policies an empty vault. EVERY vault.* method is real; decrypted plaintext is RAM-only. Lone manual-tier path: the real hdiutil RAM-disk mount backend
 - Native (ECHO C Unity): 31 passing (9 shaper — budget + flat-wire invariant + burst + clamps; 7 config — defaults + validation + atomic set + budget bridge; 7 stats — padding ratio + decile histogram + surge; 8 commands — echo.* dispatch over jsonrpc) — separate C suite, NOT in pytest
 - Native (PURGE C Unity): 35 passing (7 dry-run planner — §8 honest-wipe classify + keys-first tier plan; 9 target registry — add/dedup/remove + plan bridge; 7 config — post-action + marker, atomic set; 12 commands — purge.* dispatch, trigger gated -31004) — separate C suite, NOT in pytest
-- Total: 1033 passing (658 default [incl 22 pulse scoring + 24 pulse baseline + 10 pulse assess + 10 pulse temporal + 5 pulse idle [PD-idle-1] + 3 pulse emission + 5 pulse danger-registry + 5 pulse finishers + 8 core gate + 5 core gate-wiring + 7 core override + 3 core gate-override + 5 core override.set + 6 core gate-hardening + 3 core entry + 10 core supervisor + 8 core CLI + 4 core autonomy + 3 core mark-lost + 1 core lock + 1 core graceful-down + 3 core tier0 + 3 core purge + 1 core tether->vault relay + 1 core fan-out relay + 2 core anomaly-obfuscation (chaff+echo) + 1 core de-escalation (recovered stand-down) + 3 ORACLE all-clear (anomaly.cleared hysteresis) + 1 core anomaly-cleared stand-down + 7 core audit store + 2 core audit wiring + 6 core audit surface (render+CLI) + 2 core shim-escalation audit + 3 core pulse->vault reflex + 3 core tether-escalation actuation + 19 core status-view/watch] + 59 integration + 46 CHAFF + 31 ECHO + 35 PURGE + 45 MIRROR + 38 shim + 48 TETHER + 74 VAULT Unity; ollama subset not double-counted)
+- Total: 1035 passing (660 default [incl 22 pulse scoring + 24 pulse baseline + 10 pulse assess + 10 pulse temporal + 5 pulse idle [PD-idle-1] + 5 pulse emission [EM + PD-idle-2 wiring] + 5 pulse danger-registry + 5 pulse finishers + 8 core gate + 5 core gate-wiring + 7 core override + 3 core gate-override + 5 core override.set + 6 core gate-hardening + 3 core entry + 10 core supervisor + 8 core CLI + 4 core autonomy + 3 core mark-lost + 1 core lock + 1 core graceful-down + 3 core tier0 + 3 core purge + 1 core tether->vault relay + 1 core fan-out relay + 2 core anomaly-obfuscation (chaff+echo) + 1 core de-escalation (recovered stand-down) + 3 ORACLE all-clear (anomaly.cleared hysteresis) + 1 core anomaly-cleared stand-down + 7 core audit store + 2 core audit wiring + 6 core audit surface (render+CLI) + 2 core shim-escalation audit + 3 core pulse->vault reflex + 3 core tether-escalation actuation + 19 core status-view/watch] + 59 integration + 46 CHAFF + 31 ECHO + 35 PURGE + 45 MIRROR + 38 shim + 48 TETHER + 74 VAULT Unity; ollama subset not double-counted)
 
 **Open tails (honest tracking, MANIFESTO §4):**
 
