@@ -19,9 +19,14 @@ BIN         := purge
 OUR_OBJS    := $(patsubst %.c,%.o,$(wildcard src/*.c))
 COMMON_OBJS := ../common/jsonrpc.o
 VEND_OBJS   := src/vendor/cjson/cJSON.o
+ASM_OBJS    := $(patsubst %.S,%.o,$(wildcard src/asm/*.S))
 
-$(BIN): $(OUR_OBJS) $(COMMON_OBJS) $(VEND_OBJS)
+$(BIN): $(OUR_OBJS) $(COMMON_OBJS) $(VEND_OBJS) $(ASM_OBJS)
 	$(CC) $^ -o $@
+
+# AArch64 asm (§5.8 dc zva) — assembled by clang.
+src/asm/%.o: src/asm/%.S
+	$(CC) $(INCLUDES) -c $< -o $@
 
 # Vendored objects — relaxed flags (more specific stem wins over src/%.o).
 src/vendor/%.o: src/vendor/%.c
@@ -40,14 +45,14 @@ src/%.o: src/%.c
 test:
 	$(CC) $(TESTCFL) $(wildcard tests/*.c) tests/vendor/unity/unity.c \
 	  $(filter-out src/main.c,$(wildcard src/*.c)) ../common/jsonrpc.c \
-	  src/vendor/cjson/cJSON.c -o run_tests
+	  src/vendor/cjson/cJSON.c $(wildcard src/asm/*.S) -o run_tests
 	./run_tests
 
 format:
 	clang-format -i include/*.h src/*.c tests/test_*.c
 
 clean:
-	rm -f src/*.o src/vendor/cjson/*.o ../common/jsonrpc.o run_tests $(BIN)
+	rm -f src/*.o src/asm/*.o src/vendor/cjson/*.o ../common/jsonrpc.o run_tests $(BIN)
 	rm -rf run_tests.dSYM
 
 .PHONY: test format clean
