@@ -13,6 +13,7 @@ int main(void) {
     run_profile_tests();
     run_exclude_tests();
     run_stats_tests();
+    run_inputagg_tests();
     run_rng_tests();
     run_jsonrpc_tests();
     run_commands_tests();

@@ -6,6 +6,7 @@ void run_perturb_tests(void);
 void run_profile_tests(void);
 void run_exclude_tests(void);
 void run_stats_tests(void);
+void run_inputagg_tests(void);
 void run_rng_tests(void);
 void run_jsonrpc_tests(void);
 void run_commands_tests(void);
