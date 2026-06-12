@@ -6,7 +6,15 @@ with fake spawn / is_registered to pin the launch ORDER and the no-hang timeout 
 """
 
 import pytest
-from core.supervisor import ModuleSpec, Supervisor, topological_waves
+from core.supervisor import CHIMERA_MODULES, ModuleSpec, Supervisor, topological_waves
+
+
+def test_chimera_modules_covers_all_eight_organs():
+    # DP-2: one `chimera up` must raise the whole organism, not just echo+purge.
+    names = {s.name for s in CHIMERA_MODULES}
+    assert names == {"chaff", "echo", "oracle", "mirror", "pulse", "vault", "tether", "purge"}
+    assert {s.name for s in CHIMERA_MODULES if s.python} == {"oracle", "pulse"}  # rest native
+    topological_waves(list(CHIMERA_MODULES))  # still valid waves (no cycle / unknown dep)
 
 
 def _names(waves):

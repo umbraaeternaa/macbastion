@@ -28,10 +28,19 @@ class ModuleSpec:
     python: bool = False  # True -> launched as `python -m <name>`, not a native binary
 
 
-# Modules with a runnable launcher today; grows as more modules become launchable.
+# The full organism: one `chimera up` raises all eight organs. Native modules are their
+# own binary; oracle/pulse are Python packages (python=True -> `python -m <name>`). No
+# depends_on — each registers independently with core, and the reactive web is core-mediated
+# (a module that can't start is marked failed, never blocks the rest — §7.3 fail-closed).
 CHIMERA_MODULES: tuple[ModuleSpec, ...] = (
+    ModuleSpec("chaff"),
     ModuleSpec("echo"),
+    ModuleSpec("mirror"),
+    ModuleSpec("vault"),
+    ModuleSpec("tether"),
     ModuleSpec("purge"),
+    ModuleSpec("oracle", python=True),
+    ModuleSpec("pulse", python=True),
 )
 
 
