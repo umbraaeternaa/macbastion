@@ -5,11 +5,29 @@ green once parse_args / module_binary / launch_agent_plist land. Pure unit-level
 import sys
 from pathlib import Path
 
-from core.__main__ import launch_agent_plist, module_binary, parse_args
+from core.__main__ import _spawn_argv, launch_agent_plist, module_binary, parse_args
+from core.supervisor import ModuleSpec
 
 
 def test_parse_args_none_is_bare_core():
     assert parse_args([]).command is None
+
+
+# -- DP-1: spawn argv for native (binary) vs Python (-m) modules -------------
+
+
+def test_spawn_argv_native_module(tmp_path):
+    argv, env = _spawn_argv(ModuleSpec("echo"), tmp_path)
+    assert argv == [str(module_binary("echo"))]
+    assert env["CHIMERA_SOCKET_DIR"] == str(tmp_path)
+
+
+def test_spawn_argv_python_module(tmp_path):
+    argv, env = _spawn_argv(ModuleSpec("pulse", python=True), tmp_path)
+    assert argv[0] == sys.executable
+    assert argv[1:] == ["-m", "pulse"]
+    assert env["CHIMERA_SOCKET_DIR"] == str(tmp_path)
+    assert env["PYTHONPATH"] == str(module_binary("pulse").parent)
 
 
 def test_parse_args_up():

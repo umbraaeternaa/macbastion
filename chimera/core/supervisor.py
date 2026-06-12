@@ -25,6 +25,7 @@ class ModuleSpec:
 
     name: str
     depends_on: tuple[str, ...] = ()
+    python: bool = False  # True -> launched as `python -m <name>`, not a native binary
 
 
 # Modules with a runnable launcher today; grows as more modules become launchable.
