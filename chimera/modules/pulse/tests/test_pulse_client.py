@@ -172,3 +172,28 @@ async def test_unrelated_event_leaves_group_a_untouched(tmp_path):
     })
     await client._on_event_frame(frame)
     assert client._group_a is None  # an unrelated event never touches group-A
+
+
+# -- PD-C-2: PULSE consumes ORACLE's anomaly as the group-C drift signal -----
+
+
+def test_subscribes_to_oracle_anomaly():
+    assert "oracle.anomaly.detected" in PulseClient.SUBSCRIBE_TOPICS
+
+
+async def test_anomaly_event_feeds_drift_tracker(tmp_path):
+    client = _seeded_client(tmp_path)
+    frame = json.dumps({
+        "jsonrpc": "2.0", "method": "oracle.anomaly.detected", "params": {"score": 0.8},
+    })
+    await client._on_event_frame(frame)
+    # queried right after the observe -> within the window -> the score is the drift
+    assert client._drift.drift(datetime.now().isoformat()) == 0.8
+
+
+async def test_compute_folds_in_drift(tmp_path):
+    client = _seeded_client(tmp_path)
+    base_score, _, _ = await client._compute(NOW_NORMAL)  # no drift
+    client._drift.observe(NOW_NORMAL, 0.9)  # a fresh ORACLE anomaly
+    drift_score, _, _ = await client._compute(NOW_NORMAL)
+    assert drift_score > base_score  # group-C drift raised the fatigue score

@@ -35,6 +35,7 @@ from core.errors import (
 
 from pulse.assess import assess
 from pulse.baseline import BaselineStore
+from pulse.drift import DriftTracker
 from pulse.idle import IdleTracker
 from pulse.input import input_signals
 from pulse.registry import DangerRegistry
@@ -82,8 +83,9 @@ class PulseClient:
         "pulse.calibrate.reset",
     )
     EVENTS: tuple[str, ...] = ("pulse.mode.changed", "pulse.error")
-    # group-A producer: MIRROR pushes a per-minute input-aggregate event we consume (PD-A-3).
-    SUBSCRIBE_TOPICS: tuple[str, ...] = ("mirror.input.minute",)
+    # live producers we consume: MIRROR's per-minute input aggregates (group-A, PD-A-3)
+    # and ORACLE's anomaly score (group-C drift, PD-C-2).
+    SUBSCRIBE_TOPICS: tuple[str, ...] = ("mirror.input.minute", "oracle.anomaly.detected")
 
     def __init__(
         self,
@@ -109,6 +111,8 @@ class PulseClient:
         self._idle = IdleTracker()
         # group-A: latest MIRROR input aggregates mapped to fatigue readings (PD-A-2)
         self._group_a: dict[str, float] | None = None
+        # group-C: ORACLE anomaly score held as a windowed drift signal (PD-C-2)
+        self._drift = DriftTracker()
         self._heartbeat_interval = heartbeat_interval
         self._tick_interval = tick_interval
         self._enabled = True
@@ -209,23 +213,29 @@ class PulseClient:
             await self._close_writer(writer)
 
     async def _on_event_frame(self, line: str) -> None:
-        """Fold a pushed mirror.input.minute aggregate into group-A; ignore everything
-        else (the sub ack, unrelated events). Malformed payload -> ignored (fail-open §8)."""
+        """Fold a pushed event into the live signals — mirror.input.minute -> group-A,
+        oracle.anomaly.detected -> group-C drift; ignore everything else (the sub ack,
+        unrelated events). Malformed payload -> ignored (fail-open §8)."""
         try:
             message = parse_frame(line)
         except Exception:  # noqa: BLE001 — tolerate a malformed frame
             return
-        if not isinstance(message, Notification) or message.method != "mirror.input.minute":
+        if not isinstance(message, Notification):
             return
         params = message.params if isinstance(message.params, dict) else {}
-        try:
-            self._on_input_aggregates(
-                chars=int(params.get("chars", 0)),
-                deletes=int(params.get("deletes", 0)),
-                mouse_path_ratio=params.get("mouse_path_ratio"),
-            )
-        except (TypeError, ValueError):
-            return  # malformed aggregate -> ignore, never crash the consumer
+        if message.method == "mirror.input.minute":
+            try:
+                self._on_input_aggregates(
+                    chars=int(params.get("chars", 0)),
+                    deletes=int(params.get("deletes", 0)),
+                    mouse_path_ratio=params.get("mouse_path_ratio"),
+                )
+            except (TypeError, ValueError):
+                return  # malformed aggregate -> ignore, never crash the consumer
+        elif message.method == "oracle.anomaly.detected":
+            score = params.get("score")
+            if isinstance(score, (int, float)) and not isinstance(score, bool):
+                self._drift.observe(datetime.now().isoformat(), float(score))
 
     async def _dispatch(self, request: Request) -> Response:
         try:
@@ -278,7 +288,7 @@ class PulseClient:
         )
         score, mode = await asyncio.to_thread(
             assess, self._store, now, group_a=self._group_a, temporal=temporal,
-            drift=None, weights=self._weights,
+            drift=self._drift.drift(now), weights=self._weights,
         )
         return score, mode, "temporal"
 
