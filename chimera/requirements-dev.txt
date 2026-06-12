@@ -1,0 +1,6 @@
+# CHIMERA developer tooling (tests + lint + types). Not needed to RUN the organism.
+-r requirements.txt
+pytest==9.0.3
+pytest-asyncio==1.4.0
+ruff==0.15.15
+mypy==2.1.0

@@ -1,0 +1,5 @@
+# CHIMERA runtime dependencies (the organism needs these to run).
+# Allowlist (CLAUDE.md §6): stdlib + these only. Pinned for reproducible installs.
+cryptography==48.0.0   # Fernet at-rest (ORACLE/CHAFF state), VAULT key handling
+ollama==0.6.2          # ORACLE local-LLM anomaly classification (no cloud)
+pydantic==2.13.4       # config + event-envelope schema validation
