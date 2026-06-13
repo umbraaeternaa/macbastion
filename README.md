@@ -1,145 +1,115 @@
-# 🛡️ macbastion
+# 🜲 CHIMERA — a local-first security organism for macOS
 
-> Defensive security toolkit for macOS on Apple Silicon.
-> Hardening, stealth mode, and ongoing audit — from one CLI.
+> Not a collection of tools. **One mind** orchestrating eight specialized native organs —
+> each unique alone, devastating together. It runs entirely on your machine:
+> **no cloud, no telemetry, no recovery paths.**
 
-![status](https://img.shields.io/badge/status-WIP-orange)
-![macOS](https://img.shields.io/badge/macOS-26%2B-blue)
-![arch](https://img.shields.io/badge/arch-Apple%20Silicon-purple)
-![python](https://img.shields.io/badge/python-3.11%2B-yellow)
+![status](https://img.shields.io/badge/status-alpha-orange)
+![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon-purple)
+![python](https://img.shields.io/badge/python-3.13-yellow)
+![tests](https://img.shields.io/badge/tests-1109%20green-brightgreen)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
----
-
-## What it does
-
-**macbastion** is a layered defense system for macOS that gives you:
-
-- 🔍 **Audit** — see exactly what's listening, who's broadcasting, what telemetry runs
-- 🥷 **Stealth mode** — anonymize hostname, kill Apple discovery broadcasts, one-click toggle
-- 🛡 **Hardening** — system configuration that survives reboots
-- 📊 **Menu bar control** — SwiftBar plugin for live status + actions
-
-Built as a **hybrid Python + native C/ARM64** project. Python handles UX and orchestration; native modules handle privileged or low-level work where it actually matters.
-
----
-
-## Why
-
-Modern macOS leaks identity by default:
-
-- `rapportd` broadcasts your computer name on every network (AirDrop / Handoff)
-- `symptomsd` ships network diagnostics to Apple 24/7
-- Apple Analytics + Siri telemetry is on out of the box
-- Microsoft Office, OneDrive, CCleaner, and similar leave dozens of background daemons that fone home
-- Your Wi-Fi MAC is locked to each SSID forever in "Fixed" mode
-
-macbastion gives you visibility into all of that, plus one-click toggles to opt out.
-
----
-
-## Architecture
-The hybrid design is intentional: Python gets you to a working CLI fast, native modules are added where they earn their cost (raw syscalls, hardware features, gauranteed memory ops).
-
----
-
-## Defense layers
-
-| Layer | Status | What it covers |
-|-------|--------|----------------|
-| **L0** Firmware / Boot | ✅ | FileVault, SIP, Gatekeeper, **Full Security** Secure Boot |
-| **L1** System hardening | ✅ | Telemetry off, junk daemons removed, legacy kexts purged |
-| **L1.5** Stealth mimicry | ✅ | Random hostname, mDNS off, Bonjour suppressed, BT toggle |
-| **L2** Firewall | ⏳ | Little Snitch + pf integration |
-| **L3** DNS | 🟢 | Cloudflared DoH (existing), Mullvad fallback (planned) |
-| **L4** Anonymity routing | ⏳ | Mullvad VPN + Tor transparent proxy |
-| **L5** Browser fingerprint | ⏳ | Mullvad Browser, hardened defaults |
-| **L6** OPSEC / identity | ⏳ | Email aliases, password hygiene, Signal |
-| **L7** Storage encryption | 🟢 | FileVault + VeraCrypt containers |
-| **L8** Monitoring | ⏳ | macbastion-grown scanners + kqueue watchers |
-| **L9** Panic mode | ⏳ | Secure wipe (ARM64 `dc zva`), dead-man switch |
+CHIMERA senses you and your environment and reacts autonomously to protect you — then writes
+every action to an audit trail you can question (*"why did my vault lock?"*). It lives in
+[`chimera/`](chimera/); the wider **macbastion** hardening toolkit (below) is its umbrella.
 
 ---
 
 ## Quick start
 
+Requirements: macOS on Apple Silicon · [Homebrew](https://brew.sh) · Python 3.13 · [Ollama](https://ollama.com).
+
 ```bash
 git clone https://github.com/umbraaeternaa/macbastion.git
-cd macbastion
+cd macbastion/chimera
 
-# Python side
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-# Native side
-make -C native/mac_spoof
-
-# SwiftBar (optional)
-brew install --cask swiftbar
-./swiftbar/install.sh
+./setup.sh                          # Homebrew deps + the ORACLE model + venv + all 8 organs
+.venv/bin/python -m core up         # bring the organism alive
+.venv/bin/python -m core status     # see it live
 ```
+
+`setup.sh` configures itself on your Mac — installs the Homebrew C deps + the local LLM model,
+builds every native organ, and never starts anything privileged behind your back. Full guide:
+[`chimera/README.md`](chimera/README.md). Privileged + TCC-gated capabilities are self-signed,
+by hand: [`chimera/deploy/INSTALL.md`](chimera/deploy/INSTALL.md).
 
 ---
 
-## Usage
+## The eight organs
 
-```bash
-# Audit
-macbastion scan ports               # listening sockets + exposure level
+| Organ | Lang | Role |
+|---|---|---|
+| **CHAFF**  | C       | decoy HTTPS traffic — masks real patterns |
+| **ECHO**   | C       | constant-rate bandwidth padding |
+| **ORACLE** | Python  | local LLM (Ollama) anomaly detection |
+| **MIRROR** | C       | humanlike input jitter + privacy-preserving input sensing |
+| **PULSE**  | C / Py  | cognitive-load monitor — adds friction when you're tired |
+| **VAULT**  | C       | time-locked storage; decrypted plaintext lives only in RAM |
+| **TETHER** | C++     | Bluetooth dead-man — auto-locks if your phone leaves |
+| **PURGE**  | C + asm | secure erasure (ARM64 `dc zva`) — the last resort |
 
-# Stealth mode (soft: hostname + broadcast off; AirDrop partial)
-sudo macbastion stealth on          # enable
-sudo macbastion stealth on --hard   # also kill Bluetooth, reboot recommended
-sudo macbastion stealth off         # back to normal AirDrop mode
-macbastion stealth status           # current state
-macbastion stealth status --json    # machine-readable (for SwiftBar)
-```
+A Python **core** is the brain: a JSON-RPC socket server the organs register with, a reactive
+web that turns events into cross-module reflexes, a cognitive gate, and an append-only audit trail.
 
-### Example: port audit on a fresh hardened machine
-Listening Ports
+**How it behaves:** ORACLE flags an anomalous event → the core locks your VAULT, starts CHAFF
+decoy traffic, normalizes bandwidth via ECHO, and heightens TETHER — then stands down when the
+threat clears. Walk away with your phone → TETHER locks the screen through a root shim. Trigger a
+panic → PURGE crypto-shreds the keys and zeroes RAM (operator-target file shred is opt-in).
+
 ---
 
-## Design notes
+## Honest status (MANIFESTO §4 — no imitations)
 
-### Why native modules at all
-Python + `subprocess` is fine for orchestrating commands. But for things like:
+CHIMERA is **alpha**, built in the open. What is real today:
 
-- **Raw `ioctl(SIOCSIFLLADDR)`** — no shell-out, clean exit codes
-- **`dc zva` cache zero** for guaranteed memory wipe — Python can't promise that
-- **`kqueue`** file watchers — much lower overhead than polling
-- **Hardware RNG access via syscall** — direct path to entropy
+- ✅ Core + all 8 organs register and run live; autonomous reflexes fire **and stand down** on real hardware.
+- ✅ ORACLE scores threats reliably with a local LLM (`qwen2.5:7b`): ransomware → ~1.0, routine → ~0.05.
+- ✅ PURGE destruction is real end-to-end (Keychain + VAULT keys + state wipe + RAM zero + opt-in target shred).
+- ✅ TETHER ranges a real BLE beacon; MIRROR injects real input; VAULT encrypts at rest, plaintext RAM-only.
+- ⚠️ Deliberately gated: ECHO's real packet shaping (awaits a packet-root decision, §8); privileged + TCC
+  capabilities need your own self-signed cert + macOS grants (Apple blocks scripting those — done by hand).
+- ❌ **No notarization.** CHIMERA is one machine, one owner — you build and self-sign it locally. By design.
 
-…native C earns its keep.
+It refuses security theatre: it will **not** pretend to "wipe" unencrypted SSD data (wear-levelled flash
+can't guarantee it) — it crypto-shreds keys instead, and tells you the honest limit.
 
-### Why SwiftBar instead of a full Cocoa app
-For a prototype, SwiftBar gives you a menu bar item that executes shell scripts. Zero Xcode setup, zero notarization. Once the workflow is settled, converting to a proper Swift menubar app is straightforward — but ergonomic value comes first.
+---
 
-### Realism about macOS 26 + SIP
-- `rapportd` cannot be live-killed (launchd on-demand XPC respawn under SIP). The `disable` flag is honored at the next boot only.
-- Wi-Fi MAC spoofing via `SIOCSIFLLADDR` fails on Apple Silicon Wi-Fi (Apple-private partition). Apple's own per-SSID rotation is the actual lever; we make sure it's set to *Rotating* on every saved network.
-- `mac_spoof` still works on USB-Ethernet adapters and is wired into the project for L8/L9 use.
+## macbastion — the umbrella toolkit
 
-These are not bugs — they're trade-offs we accept to keep SIP and Full Security enabled.
+The repository is **macbastion**, a layered macOS defense project; CHIMERA is its autonomous core.
+The broader toolkit also gives you:
+
+- 🔍 **Audit** — `macbastion scan ports`: what's listening, what's exposed.
+- 🥷 **Stealth** — `sudo macbastion stealth on`: anonymize hostname, suppress Apple discovery broadcasts.
+- 🛡 **Hardening** — telemetry off, junk daemons removed; SIP + FileVault + Full Security stay **ON**.
+- 📊 **Menu bar** — a SwiftBar plugin for live status.
+
+| Layer | Status | Covers |
+|---|---|---|
+| **L0** Firmware / Boot | ✅ | FileVault, SIP, Gatekeeper, Full Security |
+| **L1** System hardening | ✅ | Telemetry off, junk daemons + legacy kexts purged |
+| **L1.5** Stealth mimicry | ✅ | Random hostname, mDNS off, Bonjour suppressed |
+| **L8** Monitoring | 🟢 | ORACLE anomaly detection + PULSE cognitive load *(CHIMERA)* |
+| **L9** Panic mode | 🟢 | Secure erasure (`dc zva`) + Bluetooth dead-man *(CHIMERA: PURGE + TETHER)* |
 
 ---
 
 ## Support development
 
-CHIMERA is free, open source, and will stay that way. If the project is useful to
-you and you want to support continued development, you can contribute via
-**Monobank Jar** (Ukraine):
+CHIMERA is free, open source, and will stay that way. If it's useful to you and you want to
+support continued development — **Monobank Jar** (Ukraine):
 
 **https://send.monobank.ua/jar/AHaziFXjYX**
 
-<img src="docs/donate.png" alt="Monobank QR Code" width="400"/>
+<img src="docs/donate.png" alt="Monobank QR Code" width="320"/>
 
-See [docs/donate.md](docs/donate.md) for what donations fund — and, just as
-importantly, what they explicitly do **not** change (the MANIFESTO and the
-no-paywall philosophy).
+See [docs/donate.md](docs/donate.md) for what donations fund — and what they explicitly do **not**
+change (the MANIFESTO and the no-paywall philosophy).
 
 ---
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
