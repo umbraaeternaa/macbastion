@@ -34,15 +34,14 @@ reactive web that relays events into reflexes, a cognitive gate, and the audit t
 
 ## Quick start
 
-Requirements: macOS on Apple Silicon · Homebrew · Python 3.11+ · [Ollama](https://ollama.com)
-with a capable model for ORACLE (`ollama pull qwen2.5:7b`; override via `CHIMERA_ORACLE_MODEL`).
+Requirements: macOS on Apple Silicon · [Homebrew](https://brew.sh) · Python 3.13 · [Ollama](https://ollama.com).
+`setup.sh` installs the Homebrew deps and the ORACLE model (`qwen2.5:7b`; override via `CHIMERA_ORACLE_MODEL`) for you.
 
 ```bash
 git clone https://github.com/umbraaeternaa/macbastion.git
 cd macbastion/chimera
 
-brew install openssl@3 libsodium          # native deps
-./build.sh                                # venv + deps + all 8 organs
+./setup.sh                                # Homebrew deps + Ollama model + venv + all 8 organs
 
 .venv/bin/python -m core up               # bring the organism alive
 .venv/bin/python -m core status           # see it live (core + 8 organs + armed reflexes)
