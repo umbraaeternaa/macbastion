@@ -648,6 +648,14 @@ The shim never:
 
 **Any addition to this list requires a formal §8 amendment, not a code change.** This is not bureaucracy; it is the architectural gate on root surface. Every root capability must pass through deliberate review.
 
+### 8.8.1 §8 amendments to the root surface
+
+| Amendment | Adds | Component | Status |
+|-----------|------|-----------|--------|
+| **A1** | ECHO constant-rate packet-shaping (pf anchor + BPF/raw-socket pacing) | a SEPARATE `chimera-echo-shaper` root LaunchDaemon — NOT the shim | **LOCKED** (Day 21) |
+
+A1 leaves the shim's invariants untouched (it still never opens sockets); the shaper is a distinct, narrow, **fail-OPEN**, **opt-in** domain with its own enumerated capability + never-list (EP-1…8). Full review + threat analysis: `docs/ECHO_PACKET.md`.
+
 ---
 
 ## 8.9 Cryptographic primitives & key hierarchy

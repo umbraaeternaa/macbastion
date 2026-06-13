@@ -29,11 +29,11 @@ This file does not expand the boundary — it records how we build inside it.
 
 ## 2. What the shim is NOT (gaps surfaced 2026-06-04)
 
-- **Packet-plane root is OUT (SH-12).** CHAFF Phase A (pf/dtrace) and ECHO
+- **Packet-plane root is OUT of the shim (SH-12).** CHAFF Phase A (pf/dtrace) and ECHO
   (pfctl/BPF/raw socket, `/dev/bpf*`, `/etc/pf.anchors/com.chimera.echo`) need
-  packet-level root, which §8.8 forbids ("never opens network sockets"). This is
-  a separate future track: a §8 amendment or a dedicated packet-helper domain —
-  NOT this shim.
+  packet-level root, which §8.8 forbids ("never opens network sockets"). The separate
+  track is now TAKEN: **§8 Amendment A1** (`ECHO_PACKET.md`, LOCKED Day 21) admits a
+  dedicated `chimera-echo-shaper` domain for ECHO — NOT this shim, which keeps its invariants.
 - **CHAFF code ↔ §8.8 contradiction.** `chaff.profile.*` returns
   `required_capability='privileged_shim'` (commands.c), but §8.8 grants no
   packet capability. CHAFF Phase A stays gated (-31004) even after this shim
@@ -63,7 +63,7 @@ This file does not expand the boundary — it records how we build inside it.
 | SH-9 | Language | (a) C17 (`-Wall -Wextra -Werror`) | Stack-consistent; syscalls (reboot/kill) natural; Swift not in the CHIMERA stack |
 | SH-10 | Failure mode | (a) graceful degrade — shim down → -31004 | Consistent with CHAFF/MIRROR gating; CHIMERA keeps running |
 | SH-11 | Destructive op safety | (a) reboot never in autotests (stubbed; config-flag + double-confirm) | Safety over coverage; dry-run/stub for destructive ops |
-| SH-12 | Packet-plane root | (a) CHAFF/ECHO packet-root OUT — separate §8 amendment track | Honest to the §8.8 boundary; does not smuggle sockets into the shim |
+| SH-12 | Packet-plane root | (a) CHAFF/ECHO packet-root OUT of the shim — separate track NOW TAKEN via §8 Amendment A1 (`ECHO_PACKET.md`, a distinct `chimera-echo-shaper` domain) | Honest to the §8.8 boundary; does not smuggle sockets into the shim |
 
 ---
 

@@ -150,8 +150,8 @@ To be resolved during implementation.
 
 ## 9. Status
 
-**Planned.** No code yet.
+**Live module; real packet-shaping authorized (A1) but not yet built.** ECHO's daemon runs and serves `echo.*` over the wire — shaper budget, config, stats (31 native tests). Its real interface-level traffic normalization needs packet-plane root, now authorized by **§8 Amendment A1** (`../ECHO_PACKET.md`): a separate, opt-in, fail-OPEN `chimera-echo-shaper` domain. The privileged shaper ships as the gated slices in A1 §5.
 
-Depends on CHAFF being implemented first (shares profile data and IPC infrastructure). Cannot ship before CHAFF reaches stable.
+Cooperates with CHAFF (accounts CHAFF traffic as real; A1/EP-6 paces padding onto CHAFF's real outbound HTTPS rather than discarding it).
 
 No imitations. No stubs. (See MANIFESTO §4.)
