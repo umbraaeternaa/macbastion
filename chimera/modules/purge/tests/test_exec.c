@@ -1,10 +1,12 @@
 /* PG-exec: the tier executor runs a plan's enabled tiers in key-first order via the seams.
  * Hermetic — counting stubs replace the no-op tier actions; nothing is destroyed. */
 #include <stddef.h>
+#include <string.h>
 
 #include "unity.h"
 
 #include "exec.h"
+#include "secrets.h"
 #include "tests.h"
 
 static int g_t0, g_t1, g_t3;
@@ -82,9 +84,27 @@ static void test_execute_null_plan_destroys_nothing(void) {
     reset_seams();
 }
 
+/* Integration: with NO injected stub, the executor's REAL default tier3 action zeroes a
+ * registered sensitive buffer in RAM — proves the secrets registry is wired into exec. */
+static void test_execute_tier3_really_wipes_registered_ram(void) {
+    reset_seams();        /* tier3 falls back to its real default (purge_secret_clear_all) */
+    purge_secret_reset();
+    unsigned char buf[48];
+    memset(buf, 0xAA, sizeof buf);
+    TEST_ASSERT_EQUAL_INT(0, purge_secret_register(buf, sizeof buf));
+    purge_plan_t plan = {0, 0, 0, 0, 1}; /* tier3 only */
+    purge_exec_result_t r = purge_execute(&plan);
+    TEST_ASSERT_EQUAL_INT(1, r.tier3_done);
+    for (size_t i = 0; i < sizeof buf; i++) {
+        TEST_ASSERT_EQUAL_UINT8(0x00, buf[i]); /* tier3 zeroed real RAM */
+    }
+    purge_secret_reset();
+}
+
 void run_exec_tests(void) {
     RUN_TEST(test_execute_runs_all_enabled_tiers);
     RUN_TEST(test_execute_skips_disabled_tier1);
     RUN_TEST(test_execute_records_tier_failure);
     RUN_TEST(test_execute_null_plan_destroys_nothing);
+    RUN_TEST(test_execute_tier3_really_wipes_registered_ram);
 }

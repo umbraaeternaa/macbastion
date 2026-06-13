@@ -15,5 +15,6 @@ int main(void) {
     run_commands_tests();
     run_wipe_tests();
     run_exec_tests();
+    run_secrets_tests();
     return UNITY_END();
 }

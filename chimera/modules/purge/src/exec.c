@@ -1,10 +1,14 @@
-/* exec — the PURGE tier executor. Skeleton slice: tier actions are honest NO-OP stubs
- * (they record intent on stderr and destroy NOTHING, §4). Order is key-first (§3):
- * tier0 -> tier1 -> tier3. Tier-2 per-target shred is a later slice; the planned count is
- * carried through from the dry-run plan so callers see what WOULD be shredded. */
+/* exec — the PURGE tier executor. Runs a plan's enabled tiers key-first (§3):
+ * tier0 -> tier1 -> tier3. tier3 is LIVE — its default action is the real RAM-wipe
+ * (purge_secret_clear_all: purge_wipe() every registered sensitive buffer, §5.8). tier0
+ * (Keychain evict) and tier1 (VAULT KEK crypto-shred) are still honest NO-OP stubs (§4):
+ * they record intent and destroy NOTHING until their gated slices land. Tier-2 per-target
+ * shred is a later slice; the planned count is carried through from the dry-run plan. */
 #include "exec.h"
 
 #include <stdio.h>
+
+#include "secrets.h"
 
 static int noop_tier0(void) {
     fprintf(stderr, "purge: NO-OP tier0 (evict CHIMERA Keychain + state DBs) — skeleton\n");
@@ -14,18 +18,15 @@ static int noop_tier1(void) {
     fprintf(stderr, "purge: NO-OP tier1 (crypto-shred VAULT KEKs) — skeleton\n");
     return 0;
 }
-static int noop_tier3(void) {
-    fprintf(stderr, "purge: NO-OP tier3 (RAM/cache zero via dc zva) — skeleton\n");
-    return 0;
-}
 
 static purge_tier_fn g_tier0 = noop_tier0;
 static purge_tier_fn g_tier1 = noop_tier1;
-static purge_tier_fn g_tier3 = noop_tier3;
+/* tier3 is LIVE: the real RAM-wipe over registered sensitive buffers (secrets.c, §5.8). */
+static purge_tier_fn g_tier3 = purge_secret_clear_all;
 
 void purge_set_tier0_action(purge_tier_fn fn) { g_tier0 = fn ? fn : noop_tier0; }
 void purge_set_tier1_action(purge_tier_fn fn) { g_tier1 = fn ? fn : noop_tier1; }
-void purge_set_tier3_action(purge_tier_fn fn) { g_tier3 = fn ? fn : noop_tier3; }
+void purge_set_tier3_action(purge_tier_fn fn) { g_tier3 = fn ? fn : purge_secret_clear_all; }
 
 purge_exec_result_t purge_execute(const purge_plan_t *plan) {
     purge_exec_result_t r = {0, 0, 0, 0};
