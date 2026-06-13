@@ -1,0 +1,5 @@
+# build artifacts
+*.o
+/chimera-echo-shaper
+/run_tests
+*.dSYM/
