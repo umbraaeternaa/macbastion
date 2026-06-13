@@ -151,13 +151,14 @@ char *purge_commands_dispatch(purge_runtime_t *rt, const char *method, const cJS
          * stubs (§4) — they destroy nothing yet; real effects land behind later slices. The
          * trigger is single-shot: firing disarms, so a re-trigger needs a fresh arm. */
         purge_plan_t plan = purge_plan_targets(&rt->targets, 1, 1);
-        purge_exec_result_t res = purge_execute(&plan);
+        purge_exec_result_t res = purge_execute(&plan, &rt->targets);
         rt->armed = 0;
         cJSON *r = cJSON_CreateObject();
         cJSON_AddBoolToObject(r, "fired", 1);
         cJSON_AddNumberToObject(r, "tier0", res.tier0_done);
         cJSON_AddNumberToObject(r, "tier1", res.tier1_done);
         cJSON_AddNumberToObject(r, "tier2_shred", res.tier2_shred);
+        cJSON_AddNumberToObject(r, "tier2_skip", res.tier2_skip);
         cJSON_AddNumberToObject(r, "tier3", res.tier3_done);
         return jsonrpc_serialize_response(id, r);
     }

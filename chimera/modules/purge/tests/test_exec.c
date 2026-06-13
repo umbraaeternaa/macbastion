@@ -10,6 +10,7 @@
 #include "exec.h"
 #include "secrets.h"
 #include "statefiles.h"
+#include "targets.h"
 #include "tests.h"
 
 static int g_t0, g_t1, g_t3;
@@ -37,6 +38,7 @@ static void inject_counting_seams(void) {
 static void reset_seams(void) {
     purge_set_tier0_action(NULL);
     purge_set_tier1_action(NULL);
+    purge_set_tier2_action(NULL);
     purge_set_tier3_action(NULL);
 }
 
@@ -45,10 +47,10 @@ static void reset_seams(void) {
 static void test_execute_runs_all_enabled_tiers(void) {
     inject_counting_seams();
     purge_plan_t plan = {1, 1, 3, 0, 1};
-    purge_exec_result_t r = purge_execute(&plan);
+    purge_exec_result_t r = purge_execute(&plan, NULL); /* tier2 off — covered separately */
     TEST_ASSERT_EQUAL_INT(1, r.tier0_done);
     TEST_ASSERT_EQUAL_INT(1, r.tier1_done);
-    TEST_ASSERT_EQUAL_INT(3, r.tier2_shred); /* carried from the plan */
+    TEST_ASSERT_EQUAL_INT(0, r.tier2_shred); /* no targets registry -> no tier2 effect */
     TEST_ASSERT_EQUAL_INT(1, r.tier3_done);
     TEST_ASSERT_EQUAL_INT(1, g_t0);
     TEST_ASSERT_EQUAL_INT(1, g_t1);
@@ -59,7 +61,7 @@ static void test_execute_runs_all_enabled_tiers(void) {
 static void test_execute_skips_disabled_tier1(void) {
     inject_counting_seams();
     purge_plan_t plan = {1, 0, 0, 0, 1}; /* tier1 off */
-    purge_exec_result_t r = purge_execute(&plan);
+    purge_exec_result_t r = purge_execute(&plan, NULL);
     TEST_ASSERT_EQUAL_INT(1, r.tier0_done);
     TEST_ASSERT_EQUAL_INT(0, r.tier1_done);
     TEST_ASSERT_EQUAL_INT(0, g_t1); /* tier1 action NOT invoked */
@@ -71,7 +73,7 @@ static void test_execute_records_tier_failure(void) {
     inject_counting_seams();
     purge_set_tier1_action(fail_action); /* tier1 fails */
     purge_plan_t plan = {1, 1, 0, 0, 1};
-    purge_exec_result_t r = purge_execute(&plan);
+    purge_exec_result_t r = purge_execute(&plan, NULL);
     TEST_ASSERT_EQUAL_INT(0, r.tier1_done); /* failure recorded */
     TEST_ASSERT_EQUAL_INT(1, r.tier0_done); /* other tiers still run */
     TEST_ASSERT_EQUAL_INT(1, r.tier3_done);
@@ -80,7 +82,7 @@ static void test_execute_records_tier_failure(void) {
 
 static void test_execute_null_plan_destroys_nothing(void) {
     inject_counting_seams();
-    purge_exec_result_t r = purge_execute(NULL);
+    purge_exec_result_t r = purge_execute(NULL, NULL);
     TEST_ASSERT_EQUAL_INT(0, r.tier0_done);
     TEST_ASSERT_EQUAL_INT(0, r.tier3_done);
     TEST_ASSERT_EQUAL_INT(0, g_t0); /* no action invoked on a NULL plan */
@@ -96,7 +98,7 @@ static void test_execute_tier3_really_wipes_registered_ram(void) {
     memset(buf, 0xAA, sizeof buf);
     TEST_ASSERT_EQUAL_INT(0, purge_secret_register(buf, sizeof buf));
     purge_plan_t plan = {0, 0, 0, 0, 1}; /* tier3 only */
-    purge_exec_result_t r = purge_execute(&plan);
+    purge_exec_result_t r = purge_execute(&plan, NULL);
     TEST_ASSERT_EQUAL_INT(1, r.tier3_done);
     for (size_t i = 0; i < sizeof buf; i++) {
         TEST_ASSERT_EQUAL_UINT8(0x00, buf[i]); /* tier3 zeroed real RAM */
@@ -118,10 +120,50 @@ static void test_execute_tier0_really_removes_registered_file(void) {
     TEST_ASSERT_EQUAL_INT(0, access(p, F_OK)); /* exists now */
     TEST_ASSERT_EQUAL_INT(0, purge_statefile_register(p));
     purge_plan_t plan = {1, 0, 0, 0, 0}; /* tier0 only */
-    purge_exec_result_t r = purge_execute(&plan);
+    purge_exec_result_t r = purge_execute(&plan, NULL);
     TEST_ASSERT_EQUAL_INT(1, r.tier0_done);
     TEST_ASSERT_EQUAL_INT(-1, access(p, F_OK)); /* tier0 deleted it from disk */
     purge_statefile_reset();
+}
+
+/* Integration: Tier-2 removes ENCRYPTED operator targets (real unlink) but REFUSES
+ * unencrypted ones (§8 honest-wipe) — proves the executor's real tier2 over the registry. */
+static void test_execute_tier2_shreds_encrypted_refuses_plain(void) {
+    reset_seams(); /* tier2 uses its real default (unlink) */
+    purge_targets_t targets;
+    purge_targets_init(&targets);
+    const char *enc = "/tmp/chimera_pg_tier2_enc.tmp";
+    const char *plain = "/tmp/chimera_pg_tier2_plain.tmp";
+    FILE *f = fopen(enc, "w");
+    if (f != NULL) {
+        fputs("x", f);
+        fclose(f);
+    }
+    f = fopen(plain, "w");
+    if (f != NULL) {
+        fputs("x", f);
+        fclose(f);
+    }
+    purge_target_add(&targets, enc, 1);   /* encrypted -> SHRED */
+    purge_target_add(&targets, plain, 0); /* unencrypted -> REFUSE */
+    purge_plan_t plan = purge_plan_targets(&targets, 1, 1);
+    purge_exec_result_t r = purge_execute(&plan, &targets);
+    TEST_ASSERT_EQUAL_INT(1, r.tier2_shred);       /* encrypted target removed */
+    TEST_ASSERT_EQUAL_INT(1, r.tier2_skip);        /* unencrypted refused */
+    TEST_ASSERT_EQUAL_INT(-1, access(enc, F_OK));  /* encrypted gone from disk */
+    TEST_ASSERT_EQUAL_INT(0, access(plain, F_OK)); /* unencrypted UNTOUCHED (§8 honesty) */
+    unlink(plain);                                 /* cleanup the refused file */
+    reset_seams();
+}
+
+/* A NULL targets registry disables Tier-2 entirely — no shred, no skip. */
+static void test_execute_tier2_null_targets_is_noop(void) {
+    reset_seams();
+    purge_plan_t plan = {0, 0, 0, 0, 0};
+    purge_exec_result_t r = purge_execute(&plan, NULL);
+    TEST_ASSERT_EQUAL_INT(0, r.tier2_shred);
+    TEST_ASSERT_EQUAL_INT(0, r.tier2_skip);
+    reset_seams();
 }
 
 void run_exec_tests(void) {
@@ -131,4 +173,6 @@ void run_exec_tests(void) {
     RUN_TEST(test_execute_null_plan_destroys_nothing);
     RUN_TEST(test_execute_tier3_really_wipes_registered_ram);
     RUN_TEST(test_execute_tier0_really_removes_registered_file);
+    RUN_TEST(test_execute_tier2_shreds_encrypted_refuses_plain);
+    RUN_TEST(test_execute_tier2_null_targets_is_noop);
 }
