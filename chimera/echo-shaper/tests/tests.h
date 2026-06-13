@@ -4,5 +4,6 @@
 
 void run_shaper_tests(void);
 void run_anchor_tests(void);
+void run_protocol_tests(void);
 
 #endif /* SHAPER_TESTS_H */

@@ -7,14 +7,17 @@
 # The daemon binary + pf path + auth land in later gated slices (A1 §5). No external libs.
 CC := clang
 
-INCLUDES := -Iinclude
+# -Isrc/vendor/cjson + -I../modules/common: the shared jsonrpc (JE-1) for the dispatch layer.
+# Still NO network libs — UNIX-domain sockets only, like the shim (§8.8).
+INCLUDES := -Iinclude -Isrc/vendor/cjson -I../modules/common
 STRICT   := -std=c17 -Wall -Wextra -Werror -O2 $(INCLUDES)
 TESTCFL  := -std=c17 -Wall -Wextra -O2 $(INCLUDES) -Itests/vendor/unity -DUNITY_INCLUDE_DOUBLE
 
-# Tests link our logic + Unity, no -Werror (a third-party macro warning never blocks the suite).
+# Tests link our logic + shared jsonrpc + vendored cJSON + Unity, no -Werror (a third-party
+# macro warning never blocks the suite).
 test:
 	$(CC) $(TESTCFL) $(wildcard tests/*.c) tests/vendor/unity/unity.c \
-	  $(wildcard src/*.c) -o run_tests
+	  $(wildcard src/*.c) ../modules/common/jsonrpc.c src/vendor/cjson/cJSON.c -o run_tests
 	./run_tests
 
 format:

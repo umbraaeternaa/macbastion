@@ -11,5 +11,6 @@ int main(void) {
     UNITY_BEGIN();
     run_shaper_tests();
     run_anchor_tests();
+    run_protocol_tests();
     return UNITY_END();
 }
