@@ -1,0 +1,7 @@
+/* Per-file Unity test-group runners, invoked by test_runner.c's single main(). */
+#ifndef SHAPER_TESTS_H
+#define SHAPER_TESTS_H
+
+void run_shaper_tests(void);
+
+#endif /* SHAPER_TESTS_H */
