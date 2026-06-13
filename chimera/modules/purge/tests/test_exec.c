@@ -1,12 +1,15 @@
 /* PG-exec: the tier executor runs a plan's enabled tiers in key-first order via the seams.
  * Hermetic — counting stubs replace the no-op tier actions; nothing is destroyed. */
 #include <stddef.h>
+#include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "unity.h"
 
 #include "exec.h"
 #include "secrets.h"
+#include "statefiles.h"
 #include "tests.h"
 
 static int g_t0, g_t1, g_t3;
@@ -101,10 +104,31 @@ static void test_execute_tier3_really_wipes_registered_ram(void) {
     purge_secret_reset();
 }
 
+/* Integration: with NO injected stub, the executor's REAL default tier0 action removes a
+ * registered CHIMERA state file from disk (throwaway /tmp) — proves statefiles is wired in. */
+static void test_execute_tier0_really_removes_registered_file(void) {
+    reset_seams();        /* tier0 falls back to its real default (purge_statefile_remove_all) */
+    purge_statefile_reset();
+    const char *p = "/tmp/chimera_pg_exec_tier0.tmp";
+    FILE *f = fopen(p, "w");
+    if (f != NULL) {
+        fputs("throwaway", f);
+        fclose(f);
+    }
+    TEST_ASSERT_EQUAL_INT(0, access(p, F_OK)); /* exists now */
+    TEST_ASSERT_EQUAL_INT(0, purge_statefile_register(p));
+    purge_plan_t plan = {1, 0, 0, 0, 0}; /* tier0 only */
+    purge_exec_result_t r = purge_execute(&plan);
+    TEST_ASSERT_EQUAL_INT(1, r.tier0_done);
+    TEST_ASSERT_EQUAL_INT(-1, access(p, F_OK)); /* tier0 deleted it from disk */
+    purge_statefile_reset();
+}
+
 void run_exec_tests(void) {
     RUN_TEST(test_execute_runs_all_enabled_tiers);
     RUN_TEST(test_execute_skips_disabled_tier1);
     RUN_TEST(test_execute_records_tier_failure);
     RUN_TEST(test_execute_null_plan_destroys_nothing);
     RUN_TEST(test_execute_tier3_really_wipes_registered_ram);
+    RUN_TEST(test_execute_tier0_really_removes_registered_file);
 }

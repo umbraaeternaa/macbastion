@@ -9,5 +9,6 @@ void run_commands_tests(void);
 void run_wipe_tests(void);
 void run_exec_tests(void);
 void run_secrets_tests(void);
+void run_statefiles_tests(void);
 
 #endif /* PURGE_TESTS_H */
