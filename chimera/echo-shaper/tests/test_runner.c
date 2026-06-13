@@ -12,5 +12,6 @@ int main(void) {
     run_shaper_tests();
     run_anchor_tests();
     run_protocol_tests();
+    run_peercred_tests();
     return UNITY_END();
 }
