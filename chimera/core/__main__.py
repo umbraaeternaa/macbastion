@@ -23,6 +23,7 @@ from typing import Any
 from core.audit import AuditLog
 from core.broker import EventBroker
 from core.config import CoreConfig
+from core.echo_shaper_client import EchoShaperClient
 from core.lifecycle import Lifecycle
 from core.override import OverrideStore
 from core.registry import Registry
@@ -42,6 +43,7 @@ def build_core(config: CoreConfig) -> Server:
     return Server(
         config, registry, lifecycle, broker, TokenIssuer(),
         override_store=override, shim_client=ShimClient(),
+        echo_shaper_client=EchoShaperClient() if config.echo_shaper_enabled else None,
     )
 
 

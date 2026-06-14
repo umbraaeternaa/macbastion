@@ -46,6 +46,10 @@ class CoreConfig(BaseSettings):
     log_retention_days: int = 30
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
+    # ECHO packet-shaper (§8 Amendment A1, EP-4): opt-in, OFF by default. When true, build_core
+    # wires an EchoShaperClient so core.echo.shape/unshape reach the separate root daemon.
+    echo_shaper_enabled: bool = False
+
     @field_validator("socket_dir", "state_dir", "log_dir", "config_file", mode="before")
     @classmethod
     def _normalize_paths(cls, v: object) -> Path:
