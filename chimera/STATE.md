@@ -88,7 +88,8 @@ shaper.* JSON-RPC routing, auth-first + per-boot-secret gate on the pf ops (root
 Then peercred (`peercred.c`): LOCAL_PEERCRED peer auth + resolver seam, deny-by-default (root-free) — echo-shaper now 20.
 Then the listening UNIX socket (`server.c`): listen/accept/close, AF_UNIX only, root-free — echo-shaper now 22.
 Then the per-boot secret (`secret.c`): 32-byte CSPRNG hex + constant-time compare, in-memory (mirrors shim SS-3), root-free — echo-shaper now 24.
-NEXT: main.c ties listen -> peercred -> dispatch with the generated secret (root-free), then real pfctl/dnctl on live pf — per-command root approval. Distribution also shipped this session: `setup.sh` one-command clone-and-run
+Then `main.c` ties the daemon (Day 22): per-boot secret -> `shaper_server_listen` -> accept loop -> peercred authorize -> `read_line` -> `shaper_protocol_dispatch` -> write (root-free, mirrors the shim's serve-one-request loop minus attest/ownership); `make` builds `chimera-echo-shaper` clean under -Werror, and a live socket smoke confirmed the full wiring (shaper.ping -> pong, unknown -> -31002, anchor.load-without-secret -> -31007) — echo-shaper still 24 (glue, no unit delta, like the shim's untested main).
+NEXT: the real pfctl/dnctl on LIVE pf — load ECHO's throwaway dummynet anchor + measure to validate the CANDIDATE rule (`anchor.c`); needs root, per-command operator approval. Distribution also shipped this session: `setup.sh` one-command clone-and-run
 plus a CHIMERA-flagship root README (the GitHub landing).
 
 Prior (Day 21): **PURGE tier2 real per-target shred — LIVE (operator targets, §8 honest-wipe)**
