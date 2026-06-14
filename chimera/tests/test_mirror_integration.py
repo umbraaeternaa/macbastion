@@ -156,7 +156,7 @@ async def test_mirror_profile_set_roundtrip(mirror_binary: Path, tmp_path: Path)
         await server.stop()
 
 
-async def test_mirror_enable_deferred(mirror_binary: Path, tmp_path: Path) -> None:
+async def test_mirror_enable_grant_dependent(mirror_binary: Path, tmp_path: Path) -> None:
     cfg = _write_config(tmp_path)
     server, registry = _make_core(tmp_path)
     await server.start()
@@ -166,8 +166,14 @@ async def test_mirror_enable_deferred(mirror_binary: Path, tmp_path: Path) -> No
         resp = await _roundtrip(
             tmp_path / "core.sock", '{"jsonrpc":"2.0","id":3,"method":"mirror.enable"}\n'
         )
-        assert resp.error is not None
-        assert resp.error["code"] == -31004
+        # mirror.enable is grant-dependent (modules/mirror/src/commands.c): -31004 when
+        # Accessibility is NOT granted (CI / a fresh binary), or {ok: True} once the operator
+        # has granted it (this machine, post-install). Both are correct — assert the gate code
+        # WHEN it defers, and a real enable otherwise.
+        if resp.error is not None:
+            assert resp.error["code"] == -31004
+        else:
+            assert resp.result["ok"] is True
     finally:
         proc.terminate()
         await server.stop()
