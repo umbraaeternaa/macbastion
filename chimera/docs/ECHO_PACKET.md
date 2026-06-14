@@ -54,7 +54,7 @@ its invariants are untouched.
 
 ---
 
-## 3. Locked decisions (EP-1 … EP-8)
+## 3. Locked decisions (EP-1 … EP-9)
 
 | # | Decision | Choice | Rationale |
 |---|----------|--------|-----------|
@@ -66,6 +66,7 @@ its invariants are untouched.
 | **EP-6** | The padding "sink" (the §8 open question) | **Pace REAL + CHAFF traffic up to the rate — padding rides CHAFF's real outbound HTTPS, not /dev/null** | Discarded padding fools no on-path observer. CHAFF already emits real decoy HTTPS to real endpoints; ECHO fills the gap to constant-rate with it. Honest limit: with CHAFF off, ECHO cannot fully normalize (documented, not faked) |
 | **EP-7** | Reuse | Defined for ECHO; **CHAFF Phase A may later reuse this domain** (its own amendment if scope grows) | One reviewed packet domain, not many |
 | **EP-8** | Accepted residual risk (T5) | A compromised shaper could see ECHO-anchor traffic *volume/timing* (never payloads) and could disable shaping | Bounded blast radius; mitigated by EP-1/2/4/5 + minimal auditable code |
+| **EP-9** | Where the required main-ruleset hook is installed (added Day 22 after live validation, §7) | **Install-time, ONCE** — `dummynet-anchor "com.chimera.echo"` is added to `/etc/pf.conf` at opt-in install (operator-approved, with backup); the **runtime daemon touches ONLY its own anchor** | F1 (§7) proved a bare sub-anchor is inert — a parent hook is required. Confining the single main-ruleset touch to a one-time, audited install action preserves EP-2's runtime boundary (no runtime main-pf reloads → cannot clobber dynamically-inserted system anchors). Narrow exception to the §2 never-list, ratified by the operator Day 22 (2026-06-14) |
 
 ---
 
@@ -137,14 +138,17 @@ restore — per-command operator approval, FAIL-OPEN throughout. No persistent c
   unaffected. Constant-rate normalization needs BOTH `in` and `out`. The CANDIDATE rule
   (out-only) is to be corrected to in+out.
 
-### ⚠️ Tension with the §2 never-list — needs operator ratification
+### §2 never-list — narrow exception RATIFIED as EP-9 (Day 22)
 
-F1 means the shaper must **modify the main pf ruleset** (add/remove one hook line), which the
-§2 never-list ("touches any `pf` rules other than its own `com.chimera.echo` anchor") currently
-forbids. Proposed narrow exception, pending the operator's explicit ratification:
+F1 means the shaper needs a parent hook in the main pf ruleset, which the §2 never-list
+("touches any `pf` rules other than its own `com.chimera.echo` anchor") otherwise forbids. The
+operator ratified the narrow exception **option A — install-time** (EP-9):
 
-> The shaper MAY add exactly one line — `dummynet-anchor "com.chimera.echo"` — to the main
-> ruleset, loaded as a SUPERSET that preserves every existing rule, with a stock backup and
-> FAIL-OPEN restore (`pfctl -f /etc/pf.conf`) on stop/crash. It touches no other rule.
+> The `dummynet-anchor "com.chimera.echo"` line is added to `/etc/pf.conf` ONCE at opt-in
+> install (operator-approved, with a stock backup). The anchor is empty until the daemon loads
+> its rules, so the line is inert while ECHO is off. The RUNTIME daemon touches ONLY its own
+> `com.chimera.echo` anchor (`pfctl -a`) + the dummynet pipe — it never reloads the main
+> ruleset. Uninstall removes the line; FAIL-OPEN (a flushed/empty anchor passes all traffic).
 
-Until ratified this stays a documented finding; the locked EP-1…EP-8 are unchanged.
+This confines the single main-ruleset touch to install-time and preserves EP-2's runtime
+boundary. The locked EP-1…EP-8 are unchanged; EP-9 records this exception.
