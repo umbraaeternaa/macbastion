@@ -40,6 +40,16 @@ if ! command -v ollama >/dev/null 2>&1; then
   echo "    installing ollama ..."
   brew install ollama
 fi
+# The brew formula installs the binary but does NOT start the server; both `ollama pull`
+# below and ORACLE at runtime need it reachable. Start it if it isn't already up.
+if ! curl -s --max-time 3 http://localhost:11434/api/version >/dev/null 2>&1; then
+  echo "    starting ollama server ..."
+  ollama serve >/dev/null 2>&1 &
+  for _ in $(seq 1 20); do
+    curl -s --max-time 1 http://localhost:11434/api/version >/dev/null 2>&1 && break
+    sleep 0.5
+  done
+fi
 if ollama list 2>/dev/null | grep -q "$ORACLE_MODEL"; then
   echo "    model $ORACLE_MODEL present"
 else
@@ -57,6 +67,9 @@ cat <<'EOF'
     Bring the organism alive (non-privileged — runs unsigned):
       .venv/bin/python -m core up        # core + all 8 organs
       .venv/bin/python -m core status    # see it live
+
+    (ORACLE's brain needs the Ollama server running — this setup started it; the Ollama
+     menubar app keeps it up across reboots, or run `ollama serve`.)
 
     Run it permanently (starts at login, restarts if it crashes):
       .venv/bin/python -m core plist > ~/Library/LaunchAgents/com.umbra.chimera.plist

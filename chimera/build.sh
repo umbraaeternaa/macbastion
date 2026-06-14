@@ -17,6 +17,13 @@ for dep in openssl@3 libsodium; do
   }
 done
 
+# --- Python 3.11+ (the project floor; an older python3 builds an unusable venv) ---
+if ! python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
+  echo "MISSING: Python 3.11+ (found: $(python3 -V 2>&1))." >&2
+  echo "  Install a newer python3 (e.g. brew install python@3.12), then re-run ./build.sh" >&2
+  exit 1
+fi
+
 # --- Python venv + dependencies ---
 echo "==> python venv + deps"
 [ -d .venv ] || python3 -m venv .venv
