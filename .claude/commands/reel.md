@@ -1,41 +1,72 @@
 ---
 description: Generate today's CHIMERA Instagram reel (MP4 + medium description + hashtags) from the session, then close the day
-allowed-tools: Bash, Read, Write, Glob
+allowed-tools: Bash, Read, Write, Glob, WebSearch
 ---
 
 # /reel — daily CHIMERA Instagram reel
 
-Generate the day's build-in-public reel: a 45s vertical (1080x1920) MP4 with the
-cyberpunk/Interstellar style, the Umbra creature, the 8-module ring, a NEW DnB track
-each time, and a closing monobank QR + GitHub. Then produce a MEDIUM Instagram
-description (what we did today, what we hit, how we fixed it, where we go next) and
-hashtags. This is the LAST ritual of the working day, AFTER `/handoff`.
+Generate the day's build-in-public reel: a 45s vertical (1080x1920) MP4 in the evolving
+cyberpunk→**anime cel-shaded** style (see Creative direction), with the Umbra creature, the
+8-module ring, a NEW **beautiful, trend-checked** track each time, and a closing monobank QR +
+GitHub. Then produce a MEDIUM Instagram description (what we did today, what we hit, how we
+fixed it, where we go next) and hashtags. This is the LAST ritual of the working day,
+AFTER `/handoff`.
 
 Pipeline scripts live in `.claude/scripts/`: `reel.py` (SVG frames), `music.py`
-(numpy MULTI-GENRE synth — random genre x key x scale x progression x tempo each run),
-`render.py` (rasteriser), `build_all.sh` (orchestrator). Style spec:
+(numpy/scipy multi-genre synth — 14 band genres + jazz/blues/classical engines; random
+genre x key x scale x progression x tempo + a generated melody each run), `render.py`
+(rasteriser), `build_all.sh` (orchestrator). Style spec:
 `/Users/macbook/Downloads/#1/MD/video md/CHIMERA_video (1).md` (§2 colours, §5 caption
 tone, §13 honest numbering).
 
-## Creative direction — EVOLVE EVERY DAY (operator directive, standing)
+## Creative direction — EVOLVE EVERY DAY (operator directive, standing — Day 22 intensified)
 
-The reel is NOT a fixed template. **Every day it must CHANGE and GROW** — never repeat the
-same frames; add or swap elements each time. Keep it logical, readable, presentable, bright,
-fun, educational, multifaceted, innovative, hi-tech. Draw FREELY from this palette as your
-toolbox for BOTH visuals and audio:
+The reel is NOT a fixed template. **Every day it must CHANGE and GROW — boldly, with maximum
+evolution, colour, dynamism and motion.** Never repeat the same frames; add or swap elements
+each time and push FURTHER than yesterday. Keep it logical and readable — but bright, daring,
+multifaceted, innovative, hi-tech, alive.
 
-- hi-tech · physics · quantum physics · mechanics · ALL programming languages · galaxies ·
-  deep space · depth · rich colours — on top of the established canon: the Umbra creature,
-  the 8-module arsenal ring (per-module glyphs + readouts), the Interstellar black-hole core,
-  the neural-net "mind" layer, the operator HUD console (telemetry/gauges/oscilloscope), data
-  streams, heavy camera motion + beat-synced flashes.
+### Look — toward Japanese ANIME / a real animated film (мультфільм)
+
+The house style EVOLVES from cyberpunk motion-graphics TOWARD a cel-shaded **anime / cartoon**
+feel. Each run, push the look in that direction:
+
+- **Cel shading:** flat colour fills + hard ink outlines (not only neon strokes); bold,
+  saturated anime palettes; gradient anime skies / cosmic backdrops.
+- **Anime FX:** speed lines, impact/flash frames on the beat, lens flare + bloom, sakura
+  petals / embers / floating particles, light rays, "manga" cut-in panels.
+- **An expressive Umbra:** redraw the creature with a large reflective anime eye and real
+  emotion/expression; sakuga-style flowing cloak/hair sway; a readable character, not a blob.
+- **Maximum movement:** more camera energy, parallax, smear frames, beat-synced motion — the
+  frame should feel alive and animated, like a real cartoon, not a static diagram.
+
+Keep the established canon as the WORLD inside that anime look: the Umbra creature, the
+8-module arsenal ring (per-module glyphs + readouts), the Interstellar black-hole core, the
+neural-net "mind" layer, the operator HUD console (telemetry/gauges/oscilloscope), data
+streams. Draw FREELY from hi-tech · physics · quantum physics · mechanics · ALL programming
+languages · galaxies · deep space · depth · rich colour as your toolbox.
+
+### Sound — beautiful, varied, IN-TREND music (check the trends every run)
+
+`music.py` is a local multi-genre synth (numpy/scipy, royalty-free, no cloud). BEFORE
+composing, **WebSearch the current music trends** — what BPM / genres / sub-styles are
+charting now — and let that steer the pick. Choose from the full roster:
+pop · techno · drum-n-bass · jungle · deep house · deep progressive · electronic/electro ·
+new wave · indie · indie-pop · **jazz · blues · classical** (`music.py --genre NAME`; omit
+to randomise). Aim for a track that is genuinely DIFFERENT every run AND genuinely BEAUTIFUL /
+likeable / on-trend — real melody + warm timbres, not just a beat over a riff.
+
+### Discipline
 
 Reuse the proven scaffold (camera, fades, QR, timeline, `variant_seed` daily palette/camera
-rotation) but bring something genuinely NEW each day — a new element, scene, or motif. The
-music must be genuinely different every run (never the same track twice). ALWAYS smoke-test a
-few `reel.frame(ts)` PNGs via Read BEFORE the full ~8-12 min render, and self-review the look.
+rotation) but bring something genuinely NEW each day — a new element, scene, motif, or one step
+further into the anime look. ALWAYS smoke-test a few `reel.frame(ts)` PNGs via Read BEFORE the
+full ~8-12 min render, and self-review the look. HONESTY (§4): this is trend-INFORMED
+*procedural* art + on-device synthesis — not sampled music or AI-generated anime frames. Push
+the craft; never fake the source.
 
 ## Preconditions
+
 - Run AFTER `/handoff` (the journal is the source for the description).
 - The reel venv + DejaVu font are installed (Phase 0). If `cairosvg` import fails,
   cairo is found via `DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib`.
@@ -64,7 +95,9 @@ few `reel.frame(ts)` PNGs via Read BEFORE the full ~8-12 min render, and self-re
      (e.g. `PULSE :: BASELINE + ASSESS`), `subtitle`: a short evocative line.
 
 5. **Render (background, ~5 min machine time, video is 45s):**
-   `bash .claude/scripts/build_all.sh` with `run_in_background` + sandbox disabled.
+   First WebSearch the current music trend (see "Sound" above) and, if a clear genre fits,
+   set it in `build_all.sh`'s `music.py` call (`--genre NAME`); otherwise let it randomise.
+   Then `bash .claude/scripts/build_all.sh` with `run_in_background` + sandbox disabled.
    When it completes, read its output: the MP4 path, the QR line (must say `QR OK ->
    https://send.monobank.ua/jar/...`), and the ffprobe dims (1080x1920, ~45s).
    If `QR NOT DECODED` — reduce grain (alls=4 -> 2) or enlarge the QR card, re-run.
@@ -85,9 +118,12 @@ few `reel.frame(ts)` PNGs via Read BEFORE the full ~8-12 min render, and self-re
    that QR works, and the description/hashtags — then state "Сесію дня N закрито".
 
 ## Rules
+
 - All communication with the operator in Ukrainian; explain each command before running.
 - Verify day/test numbers against STATE + git, never invent (§13 honest numbering).
-- A genuinely DIFFERENT track every run — `music.py` randomises genre x key x scale x
-  progression x tempo, NOT just a new beat over the same riff (the day-12 fix).
-- EVOLVE the visuals every day (see "Creative direction" above) — never ship the same frames.
+- A genuinely DIFFERENT **and beautiful** track every run — WebSearch current trends first,
+  then `music.py` (genre x key x scale x progression x tempo + melody; 14 band genres + the
+  jazz/blues/classical engines), NOT just a new beat over the same riff (the day-12 fix).
+- EVOLVE the visuals every day toward the **anime/cartoon** look (see "Creative direction") —
+  never ship the same frames; more colour, motion and boldness than yesterday.
 - The video is 45s; "кілька хвилин" only refers to render time, never the video length.
