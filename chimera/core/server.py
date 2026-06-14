@@ -39,6 +39,7 @@ from pydantic import ValidationError
 from core.audit import AuditLog
 from core.broker import Event, EventBroker, Subscription, SubscriptionClosedError
 from core.config import CoreConfig
+from core.echo_shaper_client import EchoShaperClient, EchoShaperError
 from core.envelope import (
     Notification,
     Request,
@@ -97,6 +98,8 @@ class Server:
             "core.override.set",
             "core.lock",
             "core.purge",
+            "core.echo.shape",
+            "core.echo.unshape",
         }
     )
     # Per-method routing deadlines (§6.8); anything else uses the config default.
@@ -146,6 +149,7 @@ class Server:
         token_issuer: TokenIssuer,
         override_store: OverrideStore | None = None,
         shim_client: ShimClient | None = None,
+        echo_shaper_client: EchoShaperClient | None = None,
         audit_log: AuditLog | None = None,
     ) -> None:
         self._config = config
@@ -155,6 +159,7 @@ class Server:
         self._token_issuer = token_issuer
         self._override_store = override_store
         self._shim_client = shim_client
+        self._echo_shaper_client = echo_shaper_client
         # Reflex audit trail (AD-1): every reflex core actuates is recorded here, so the
         # operator can answer "why did my vault lock?" post-hoc. Always on — defaults to
         # audit.jsonl beside the sockets when not injected.
@@ -204,6 +209,10 @@ class Server:
                     result = await self._handle_lock()
                 elif method == "core.purge":
                     result = await self._handle_purge()
+                elif method == "core.echo.shape":
+                    result = await self._handle_echo_shape(request.params)
+                elif method == "core.echo.unshape":
+                    result = await self._handle_echo_unshape()
                 else:
                     result = self._dispatch_core(method, request.params, conn)
                 return Response(jsonrpc="2.0", id=request.id, result=result)
@@ -254,6 +263,31 @@ class Server:
             raise RpcError(code=ChimeraError.PRECONDITION_FAILED, message="shim unavailable")
         self._broker.publish(Event(topic="purge.imminent", payload={}))
         return await run_tier0(self._shim_client, self._config.state_dir)
+
+    async def _handle_echo_shape(
+        self, params: dict[str, Any] | list[Any] | None
+    ) -> dict[str, Any]:
+        """core.echo.shape (operator command, §8 A1 / EP-2) — turn ECHO constant-rate shaping
+        ON at rate_kbps via the SEPARATE root echo-shaper. Opt-in (EP-4): an absent client is a
+        precondition failure, not an error."""
+        if self._echo_shaper_client is None:
+            raise RpcError(code=ChimeraError.PRECONDITION_FAILED, message="echo-shaper unavailable")
+        rate = params.get("rate_kbps") if isinstance(params, dict) else None
+        if not isinstance(rate, int) or isinstance(rate, bool) or rate <= 0:
+            raise RpcError(code=JSONRPC_INVALID_PARAMS, message="rate_kbps must be a positive int")
+        try:
+            return await self._echo_shaper_client.shape(rate)
+        except EchoShaperError as exc:
+            raise RpcError(code=ChimeraError.PRECONDITION_FAILED, message=str(exc)) from exc
+
+    async def _handle_echo_unshape(self) -> dict[str, Any]:
+        """core.echo.unshape (operator command) — turn ECHO shaping OFF (FAIL-OPEN restore)."""
+        if self._echo_shaper_client is None:
+            raise RpcError(code=ChimeraError.PRECONDITION_FAILED, message="echo-shaper unavailable")
+        try:
+            return await self._echo_shaper_client.unshape()
+        except EchoShaperError as exc:
+            raise RpcError(code=ChimeraError.PRECONDITION_FAILED, message=str(exc)) from exc
 
     def _handle_override_set(
         self, params: dict[str, Any] | list[Any] | None, conn: Connection
