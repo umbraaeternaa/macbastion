@@ -153,3 +153,49 @@ operator ratified the narrow exception **option A — install-time** (EP-9):
 
 This confines the single main-ruleset touch to install-time and preserves EP-2's runtime
 boundary. The locked EP-1…EP-8 are unchanged; EP-9 records this exception.
+
+---
+
+## 8. EP-6 floor-filling — design + deferral (Day 22)
+
+EP-6 (the §3 "padding sink" decision) resolved that ECHO's padding rides CHAFF's real outbound,
+not /dev/null. With the packet-shaper now complete, here is the honest state of the padding
+itself.
+
+### What "constant-rate" needs
+
+A flat on-wire line has two halves:
+
+- **Ceiling** — cap the rate at R so bursts can't spike the line. **DONE**: the kernel dummynet
+  pipe (`dnctl pipe … config bw R`, validated §7) holds this in-kernel, both directions.
+- **Floor** — when the operator is idle, real traffic drops below R and the line sags; to keep
+  it flat, idle bandwidth must be *filled* up to R with padding. **NOT built.**
+
+### The model already exists (userspace)
+
+`modules/echo` already computes the floor decision purely: `echo_shape(queued, budget, burst)`
+returns `{real_send, padding}` with `padding = max(0, budget - real_send)` — exactly the bytes
+needed to hold the wire at `budget`. What is missing is *running* it against the real wire.
+
+### Why a faithful implementation is a research-grade feedback loop
+
+The `echo_shape` model assumes ECHO mediates the byte stream (it sees `queued`). The real
+architecture does NOT: shaping lives on the packet plane (pf/dummynet via the shaper), where
+ECHO never sees individual bytes. A faithful floor-filler is therefore a closed loop:
+
+1. measure the current outbound rate (the shaper's `dnctl show` pipe byte counters),
+2. compute the deficit `R − current`,
+3. drive CHAFF to emit ~that many bytes of real decoy traffic (EP-6: ride CHAFF, never
+   /dev/null) — CHAFF today exposes start/stop + a multiplier, not "emit exactly N bytes".
+
+### Status: DESIGNED, DEFERRED (MANIFESTO §4)
+
+Deferred deliberately, not forgotten:
+
+- The **ceiling** (the main volume-fingerprint win) is already live in-kernel.
+- The floor's marginal benefit is **threat-model-dependent** and it **burns bandwidth**
+  continuously (a real cost on a metered link) — so it is rightly opt-in and not default.
+- A half-wired floor-filler would be an imitation (§4). The honest move is to record the design
+  here and ship the complete, real ceiling now; the loop is re-opened when the threat model
+  justifies its cost. `shaper.pace` stays an explicit no-op until then (the userspace pacer the
+  original spec imagined is largely vestigial — dummynet paces in-kernel).
