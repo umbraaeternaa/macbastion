@@ -100,3 +100,51 @@ Every privileged step is run only with the operator's explicit per-command appro
 SHIM.md SH-12 records the track as taken, ECHO.md §9 reflects it. Implementation ships as the
 gated slices in §5, each with per-command root approval. (MANIFESTO §4 — decision record; the
 code is still to come, nothing is faked.)
+
+---
+
+## 7. Live-pf validation (Day 22, 2026-06-14) — proven recipe + findings
+
+EP-2's pf-anchor path was validated on the operator's LIVE kernel (M2, macOS 26, pf already
+Enabled). A throwaway dummynet pipe + anchor was loaded, measured, and torn down with full
+restore — per-command operator approval, FAIL-OPEN throughout. No persistent change.
+
+### Result (measured)
+
+- Baseline download: ~5.1–6.0 MB/s.
+- With `dnctl pipe 1337 config bw 2Mbit/s` + `dummynet in all pipe 1337`: **229,831 B/s ≈
+  1.84 Mbit/s** — right at the cap. `dnctl show` confirmed traffic through pipe 1337
+  (2.88 MB, with drops enforcing the rate). ~25× reduction; restore to stock clean.
+- **ECHO bandwidth shaping works on this kernel.**
+
+### Proven recipe (what actually shapes)
+
+1. Install a parent hook: load a SUPERSET main ruleset = stock `/etc/pf.conf` **plus one line**
+   `dummynet-anchor "com.chimera.echo"`, via `pfctl -f`.
+2. `dnctl pipe 1337 config bw <rate>`.
+3. Load the rule(s) into the hooked anchor: `pfctl -a "com.chimera.echo" -f <file>`, where the
+   file holds `dummynet in all pipe 1337` (and/or `out`).
+4. Restore: `pfctl -f /etc/pf.conf` ; `dnctl pipe 1337 delete`.
+
+### Findings for the implementation (`echo-shaper/src/anchor.c`)
+
+- **F1 — a parent hook is REQUIRED.** A sub-anchor loaded with `pfctl -a … -f` alone is INERT:
+  the active ruleset had no `dummynet-anchor` for it (nesting under the stock `com.apple/*`
+  hook did NOT carry the dummynet rule). The shaper must add its own
+  `dummynet-anchor "com.chimera.echo"` to the main ruleset (superset load) and restore stock
+  in `clear()`. The current `anchor.c` does only step 3 → it would load an inert anchor.
+- **F2 — direction.** `dummynet out all` shapes only OUTBOUND; a download (inbound) is
+  unaffected. Constant-rate normalization needs BOTH `in` and `out`. The CANDIDATE rule
+  (out-only) is to be corrected to in+out.
+
+### ⚠️ Tension with the §2 never-list — needs operator ratification
+
+F1 means the shaper must **modify the main pf ruleset** (add/remove one hook line), which the
+§2 never-list ("touches any `pf` rules other than its own `com.chimera.echo` anchor") currently
+forbids. Proposed narrow exception, pending the operator's explicit ratification:
+
+> The shaper MAY add exactly one line — `dummynet-anchor "com.chimera.echo"` — to the main
+> ruleset, loaded as a SUPERSET that preserves every existing rule, with a stock backup and
+> FAIL-OPEN restore (`pfctl -f /etc/pf.conf`) on stop/crash. It touches no other rule.
+
+Until ratified this stays a documented finding; the locked EP-1…EP-8 are unchanged.
