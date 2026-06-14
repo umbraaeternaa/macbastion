@@ -76,6 +76,24 @@ async def test_classify_malformed_json_raises_internal(tmp_path):
     assert exc.value.code == JSONRPC_INTERNAL_ERROR  # MD-B-4a: no fake 0.5
 
 
+async def test_classify_recovers_truncated_score(tmp_path):
+    # A 7B response cut off mid-reasoning: the score is present but the JSON never closes.
+    # Robustness — salvage the safety-critical score rather than failing the whole detection.
+    det = Detector(
+        FakeLlm('{"score": 0.92, "reasoning": "ransomware mass-encryption detec'),
+        _store(tmp_path),
+    )
+    result = await det.classify(EVENT)
+    assert result["score"] == 0.92
+
+
+async def test_classify_recovers_fenced_json(tmp_path):
+    # The model wraps the object in a ```json fence — salvage the outermost object.
+    det = Detector(FakeLlm('```json\n{"score": 0.4, "reasoning": "x"}\n```'), _store(tmp_path))
+    result = await det.classify(EVENT)
+    assert result["score"] == 0.4
+
+
 def test_threshold_default_and_set(tmp_path):
     det = Detector(FakeLlm(), _store(tmp_path))
     assert det.get_threshold() == 0.7

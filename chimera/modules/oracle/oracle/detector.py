@@ -15,6 +15,7 @@ raise NotImplementedError.
 
 import asyncio
 import json
+import re
 from typing import Any
 
 from core.errors import (
@@ -30,6 +31,12 @@ from oracle.prompt import RESPONSE_SCHEMA, build_prompt
 
 DEFAULT_THRESHOLD = 0.7
 RECENT_LIMIT = 50
+
+# Salvage patterns for a fenced/truncated LLM response (a 7B model occasionally cuts the JSON
+# off mid-string or wraps it in a ```json fence). The reasoning pattern tolerates an
+# unterminated string (truncated mid-value).
+_SCORE_RE = re.compile(r'"score"\s*:\s*(-?[0-9]+(?:\.[0-9]+)?)')
+_REASONING_RE = re.compile(r'"reasoning"\s*:\s*"((?:[^"\\]|\\.)*)')
 
 
 class Detector:
@@ -111,16 +118,24 @@ class Detector:
 
         context_factors is lenient (EP-1): a missing/invalid array defaults to []
         — a 1B model may omit it. score/reasoning stay strict (MD-B-4a).
+
+        Robustness: a 7B model occasionally wraps the object in a ```json fence or cuts it off
+        mid-string. We try strict json.loads first, then salvage (trim to the outermost object,
+        else regex-extract the score). Only a response with NO recoverable score is malformed and
+        still raises (MANIFESTO §4 — we never invent a score).
         """
         try:
             data = json.loads(raw)
             score = float(data["score"])
             reasoning = str(data["reasoning"])
+            factors = data.get("context_factors", [])
         except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
-            raise RpcError(
-                code=JSONRPC_INTERNAL_ERROR, message="LLM returned malformed output"
-            ) from e
-        factors = data.get("context_factors", [])
+            salvaged = Detector._salvage(raw)
+            if salvaged is None:
+                raise RpcError(
+                    code=JSONRPC_INTERNAL_ERROR, message="LLM returned malformed output"
+                ) from e
+            score, reasoning, factors = salvaged
         if not isinstance(factors, list) or not all(isinstance(x, str) for x in factors):
             factors = []
         return {
@@ -128,6 +143,33 @@ class Detector:
             "reasoning": reasoning,
             "context_factors": factors,
         }
+
+    @staticmethod
+    def _salvage(raw: str) -> tuple[float, str, list[str]] | None:
+        """Best-effort recovery from a fenced/truncated response: returns (score, reasoning,
+        factors) when a score is extractable, else None — never invents one."""
+        # 1) Trim a ```json fence / surrounding prose to the outermost {...} and retry.
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start != -1 and end > start:
+            try:
+                obj = json.loads(raw[start : end + 1])
+                return float(obj["score"]), str(obj.get("reasoning", "")), obj.get(
+                    "context_factors", []
+                )
+            except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+                pass
+        # 2) Truncated mid-object (no usable closing brace): regex-pull the score (+ reasoning).
+        m = _SCORE_RE.search(raw)
+        if m is None:
+            return None
+        try:
+            score = float(m.group(1))
+        except ValueError:
+            return None
+        rm = _REASONING_RE.search(raw)
+        reasoning = rm.group(1) if rm else "(recovered from truncated output)"
+        return score, reasoning, []
 
     def get_threshold(self) -> float:
         """Current anomaly threshold (baseline_meta, falls back to the seed)."""
