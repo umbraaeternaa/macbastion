@@ -119,6 +119,37 @@ C++17 is therefore justified here and only here. No other module should adopt it
 
 **Companion side** (the phone) is out of scope for this module. It is either the phone's existing BLE identity or a small signed-beacon app — a separate artifact, specified later if needed.
 
+### Demo — a reproducible companion beacon
+
+The companion only has to do ONE thing: **advertise a fixed BLE service UUID**. macOS hides
+device MACs, so TETHER matches on that advertised service UUID, not a hardware address — set
+`companion_id` (in TETHER's `config.json`) to the UUID your beacon broadcasts. CHIMERA's example
+UUID spells the project: `6368696D-6572-6100-0000-000000000001` (`chimera` in ASCII).
+
+Pick any reliable advertiser (steadiest first):
+
+1. **A configurable BLE tag** (nRF52 / a generic iBeacon dev-tag) set to advertise the service
+   UUID — hands-free and the most reliable for an unattended dead-man.
+2. **A phone advertiser app** broadcasting that UUID. nRF Connect works but advertises flakily; a
+   dedicated "BLE peripheral" app is steadier.
+3. **A spare Mac / Raspberry Pi** advertising the UUID (CoreBluetooth / BlueZ).
+
+Then:
+
+1. Put it in TETHER's config: `{"companion_id": "6368696D-6572-6100-0000-000000000001"}`.
+2. Confirm TETHER hears it: `tether.status` → a non-zero `rssi_smoothed` and a `NEAR`/present
+   `state` mean the scanner is locked on. No RSSI ⇒ the advertiser isn't broadcasting that UUID
+   (or the TETHER binary lacks Bluetooth permission).
+3. Run the dead-man: with the beacon present, carry it out of range. After the grace period
+   TETHER emits `tether.escalation` and **core** actuates the ladder — L1 lock screen (shim),
+   L2 lock the vault — and, **only if you ran `tether.l3.arm`**, L3 PURGE. Bring it back before
+   L3 → `tether.recovered` → the posture stands down (the vault stays locked — re-open is always
+   deliberate).
+
+Honest limits (§4): the beacon must advertise *continuously* (a sleeping phone radio = apparent
+absence = a false dead-man trip); and TETHER claims presence only for the exact configured UUID
+(an unset `companion_id` never matches — no companion, no presence).
+
 **Escalation actions are core-enforced, not TETHER-enforced.** TETHER only detects absence and emits `tether.escalation` events. Core is what actually calls `vault.lock` (L2) and `purge.trigger` (L3). This keeps the destructive capability auditable in one place (core) and means disabling TETHER cannot leave a half-armed dead-man behind.
 
 ---
