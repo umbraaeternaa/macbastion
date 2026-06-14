@@ -2,6 +2,7 @@
  * §6 error codes. Hermetic — a recording anchor backend; no root, no real pf, no socket. */
 #include <stddef.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "unity.h"
 
@@ -52,6 +53,15 @@ static int result_true(char *resp, const char *key) {
     cJSON_Delete(j);
     return v;
 }
+/* extract result.<key> as a malloc'd string (caller frees), or NULL if absent/not a string. */
+static char *result_string(char *resp, const char *key) {
+    cJSON *j = cJSON_Parse(resp);
+    cJSON *r = cJSON_GetObjectItem(j, "result");
+    cJSON *v = cJSON_GetObjectItem(r, key);
+    char *out = cJSON_IsString(v) ? strdup(v->valuestring) : NULL;
+    cJSON_Delete(j);
+    return out;
+}
 
 static cJSON *id1(void) { return cJSON_CreateNumber(1); }
 
@@ -69,6 +79,30 @@ static void test_ping_authorized_pongs(void) {
     cJSON *id = id1();
     char *r = shaper_protocol_dispatch("shaper.ping", NULL, id, 1, "S3CRET");
     TEST_ASSERT_EQUAL_INT(1, result_true(r, "pong"));
+    free(r);
+    cJSON_Delete(id);
+}
+
+static void test_handshake_authorized_returns_secret(void) {
+    reset();
+    cJSON *id = id1();
+    /* C2a: an authorized (peercred=operator) peer gets the per-boot secret to use on pf ops. */
+    char *r = shaper_protocol_dispatch("shaper.handshake", NULL, id, 1, "PER-BOOT-SECRET");
+    char *got = result_string(r, "secret");
+    TEST_ASSERT_NOT_NULL(got);
+    TEST_ASSERT_EQUAL_STRING("PER-BOOT-SECRET", got);
+    free(got);
+    free(r);
+    cJSON_Delete(id);
+}
+
+static void test_handshake_unauthorized_refused(void) {
+    reset();
+    cJSON *id = id1();
+    /* Auth-first: an unauthorized peer never receives the secret. */
+    char *r = shaper_protocol_dispatch("shaper.handshake", NULL, id, 0, "PER-BOOT-SECRET");
+    TEST_ASSERT_EQUAL_INT(SHAPER_RPC_NOT_AUTHORIZED, err_code(r));
+    TEST_ASSERT_NULL(result_string(r, "secret"));
     free(r);
     cJSON_Delete(id);
 }
@@ -125,6 +159,8 @@ static void test_anchor_remove_with_secret_clears(void) {
 void run_protocol_tests(void) {
     RUN_TEST(test_unauthorized_is_refused);
     RUN_TEST(test_ping_authorized_pongs);
+    RUN_TEST(test_handshake_authorized_returns_secret);
+    RUN_TEST(test_handshake_unauthorized_refused);
     RUN_TEST(test_unknown_method_capability_missing);
     RUN_TEST(test_anchor_load_requires_secret);
     RUN_TEST(test_anchor_load_with_secret_applies);

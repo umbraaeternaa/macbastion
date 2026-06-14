@@ -1,6 +1,7 @@
 /* protocol — JSON-RPC dispatch for the ECHO packet-shaper (§8 Amendment A1, EP-5). Auth-first
- * (peercred verdict), then the shaper whitelist; every pf op is privileged and gated on the
- * per-boot secret (peercred alone is NOT enough). §6 error codes. PURE — never touches the
+ * (peercred verdict); shaper.handshake hands the per-boot secret to the authorized core
+ * (peercred-only, EP-10), then each whitelisted pf op is gated on that secret (peercred alone
+ * is NOT enough for the pf ops). §6 error codes. PURE — never touches the
  * socket. shaper.pace is an honest no-op for now: the dummynet pipe (set by anchor.load) already
  * shapes IN KERNEL, so the userspace pacer the spec describes is a later (possibly vestigial) slice. */
 #include "protocol.h"
@@ -27,6 +28,18 @@ char *shaper_protocol_dispatch(const char *method, const cJSON *params, const cJ
     if (method != NULL && strcmp(method, "shaper.ping") == 0) {
         cJSON *result = cJSON_CreateObject();
         cJSON_AddBoolToObject(result, "pong", 1);
+        return jsonrpc_serialize_response(id, result);
+    }
+    /* C2a: hand the per-boot secret to the authorized (peercred=operator) core, which then
+     * presents it on the pf ops. peercred-only by ratified design (EP-10): the shaper's ops are
+     * FAIL-OPEN / low-stakes (EP-8), so — unlike the shim's destructive ops — no SecCode
+     * attestation gates the handoff. Reaching here means authorized==1 (auth-first, above). */
+    if (method != NULL && strcmp(method, "shaper.handshake") == 0) {
+        if (secret == NULL) {
+            return jsonrpc_serialize_error(id, SHAPER_RPC_NOT_AUTHORIZED, "no secret", NULL);
+        }
+        cJSON *result = cJSON_CreateObject();
+        cJSON_AddStringToObject(result, "secret", secret);
         return jsonrpc_serialize_response(id, result);
     }
     shaper_op_t op = shaper_op_from_method(method);
