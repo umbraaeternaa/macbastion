@@ -5,15 +5,17 @@
  * per connection against the per-boot secret. The pf/dnctl effects behind the dispatch are
  * still FAIL-OPEN no-ops (shaper_execute / anchor seam) — the real pf path lands in a later
  * gated slice on a throwaway anchor, with per-command root approval (§4: no stub that
- * pretends). ROOT-FREE: opens only a UNIX-domain socket (§8.8), never a network socket, and
- * runs no privileged op. No socket-path ownership here — that chmod/chown is a SEPARATE root
- * seam (server.h), deliberately out of this root-free skeleton. */
+ * pretends). Opens only a UNIX-domain socket (§8.8), never a network socket. By default it
+ * runs no privileged op; under `-m privileged` it applies the SS-0(b) socket-ownership
+ * chown/chmod (C1) so the non-root core can reach the socket — root-only, off by default. */
+#include <pwd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
 #include "jsonrpc.h"
+#include "ownership.h"
 #include "peercred.h"
 #include "protocol.h"
 #include "secret.h"
@@ -70,12 +72,17 @@ static void serve_one(int conn, uid_t operator_uid, const char *secret) {
 int main(int argc, char **argv) {
     const char *socket_path = DEFAULT_SOCKET_PATH;
     uid_t operator_uid = getuid();
+    int privileged = 0;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--socket-path") == 0 && i + 1 < argc) {
             socket_path = argv[++i];
         } else if (strcmp(argv[i], "--operator-uid") == 0 && i + 1 < argc) {
             operator_uid = (uid_t)strtoul(argv[++i], NULL, 10);
+        } else if (strcmp(argv[i], "-m") == 0 && i + 1 < argc &&
+                   strcmp(argv[i + 1], "privileged") == 0) {
+            privileged = 1;
+            i++;
         } else {
             fprintf(stderr, "chimera-echo-shaper: unknown arg %s\n", argv[i]);
             return 2;
@@ -86,6 +93,18 @@ int main(int argc, char **argv) {
     if (listen_fd < 0) {
         fprintf(stderr, "chimera-echo-shaper: cannot bind %s\n", socket_path);
         return 1;
+    }
+    if (privileged) {
+        /* Reach the socket to the operator's primary group so the non-root core can connect
+         * (C1, mirrors the shim's SS-0(b)) — not the shaper's own root group. */
+        gid_t operator_group = getgid();
+        const struct passwd *pw = getpwuid(operator_uid);
+        if (pw != NULL) {
+            operator_group = pw->pw_gid;
+        }
+        if (shaper_ownership_apply(socket_path, operator_group) != SHAPER_OK) {
+            fprintf(stderr, "chimera-echo-shaper: ownership_apply failed (need root)\n");
+        }
     }
 
     /* Per-boot secret (EP-5): generated in memory at load, never on disk. */

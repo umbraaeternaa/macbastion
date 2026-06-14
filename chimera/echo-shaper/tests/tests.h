@@ -8,5 +8,6 @@ void run_protocol_tests(void);
 void run_peercred_tests(void);
 void run_server_tests(void);
 void run_secret_tests(void);
+void run_ownership_tests(void);
 
 #endif /* SHAPER_TESTS_H */

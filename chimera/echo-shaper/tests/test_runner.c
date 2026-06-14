@@ -15,5 +15,6 @@ int main(void) {
     run_peercred_tests();
     run_server_tests();
     run_secret_tests();
+    run_ownership_tests();
     return UNITY_END();
 }

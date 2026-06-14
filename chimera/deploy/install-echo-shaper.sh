@@ -90,6 +90,8 @@ install_shaper() {
         <string>$SOCKET</string>
         <string>--operator-uid</string>
         <string>$op_uid</string>
+        <string>-m</string>
+        <string>privileged</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
