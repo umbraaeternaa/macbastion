@@ -2,6 +2,7 @@
 *.o
 /tether
 /companion-beacon
+/ble-probe
 /run_tests
 
 # runtime state

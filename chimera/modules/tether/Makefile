@@ -34,8 +34,9 @@ VEND_OBJS := src/vendor/cjson/cJSON.o
 UNITY_OBJ := tests/vendor/unity/unity.o
 TEST_OBJS := $(patsubst %.cpp,%.o,$(wildcard tests/*.cpp))
 
-$(BIN): src/main.o $(CPP_OBJS) $(MM_OBJS) $(C_OBJS) $(VEND_OBJS)
-	$(CXX) $^ $(FRAMEWORKS) -o $@
+$(BIN): src/main.o $(CPP_OBJS) $(MM_OBJS) $(C_OBJS) $(VEND_OBJS) src/tether.plist
+	$(CXX) $(filter-out src/tether.plist,$^) $(FRAMEWORKS) \
+	  -Wl,-sectcreate,__TEXT,__info_plist,src/tether.plist -o $@
 
 # companion-beacon — a standalone CoreBluetooth advertiser: the turnkey/demo dead-man companion
 # (the mirror of cb_scanner.mm). Manual-tier like the scanner. The embedded __info_plist carries
@@ -43,6 +44,13 @@ $(BIN): src/main.o $(CPP_OBJS) $(MM_OBJS) $(C_OBJS) $(VEND_OBJS)
 companion: src/companion_beacon.mm src/companion_beacon.plist
 	$(CXX) $(MMSTRICT) src/companion_beacon.mm $(FRAMEWORKS) \
 	  -Wl,-sectcreate,__TEXT,__info_plist,src/companion_beacon.plist -o companion-beacon
+
+# ble-probe — a standalone scanner over our real cb_scanner: prints live RSSI/seen for a
+# service UUID. Durable re-build of the lost /tmp probe; proves the Mac sees the companion
+# (e.g. a Samsung running nRF Connect on our UUID) before the full dead-man. Manual-tier.
+probe: src/ble_probe.mm src/ble_probe.plist src/cb_scanner.o
+	$(CXX) $(MMSTRICT) src/ble_probe.mm src/cb_scanner.o $(FRAMEWORKS) \
+	  -Wl,-sectcreate,__TEXT,__info_plist,src/ble_probe.plist -o ble-probe
 
 # C++ objects — strict.
 src/%.o: src/%.cpp
@@ -76,6 +84,6 @@ format:
 	clang-format -i include/*.hpp include/*.h src/*.cpp tests/test_*.cpp
 
 clean:
-	rm -f $(BIN) companion-beacon run_tests src/main.o $(CPP_OBJS) $(MM_OBJS) $(C_OBJS) $(VEND_OBJS) $(UNITY_OBJ) $(TEST_OBJS)
+	rm -f $(BIN) companion-beacon ble-probe run_tests src/main.o $(CPP_OBJS) $(MM_OBJS) $(C_OBJS) $(VEND_OBJS) $(UNITY_OBJ) $(TEST_OBJS)
 
-.PHONY: test format clean companion
+.PHONY: test format clean companion probe

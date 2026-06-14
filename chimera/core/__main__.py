@@ -143,6 +143,10 @@ def _spawn_argv(
     env = {
         "CHIMERA_SOCKET_DIR": str(socket_dir),
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        # HOME so a module can resolve ~/.config paths (e.g. TETHER's companion config).
+        # Without it the supervisor's scratch env silently breaks any module that reads
+        # ~/.config — TETHER could never find its companion_id when launched by the organism.
+        "HOME": os.environ.get("HOME", os.path.expanduser("~")),
     }
     if spec.python:
         env["PYTHONPATH"] = str(module_dir)

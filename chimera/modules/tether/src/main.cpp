@@ -81,7 +81,17 @@ int main(int argc, char **argv) {
     tether::TetherRuntime rt;
     tether::DaemonConfig dcfg;
     std::string companion_id;
-    apply_config(rt, dcfg, companion_id, std::getenv("TETHER_CONFIG_PATH"));
+    /* Config path: explicit TETHER_CONFIG_PATH wins; otherwise the spec's default
+     * ~/.config/chimera/tether/config.json. The supervisor spawns modules with a minimal
+     * env (no TETHER_CONFIG_PATH), so without this default the organism-launched daemon
+     * could never read the operator's companion config. Missing file → defaults intact. */
+    std::string cfg_path;
+    if (const char *p = std::getenv("TETHER_CONFIG_PATH"); p && p[0]) {
+        cfg_path = p;
+    } else if (const char *home = std::getenv("HOME"); home && home[0]) {
+        cfg_path = std::string(home) + "/.config/chimera/tether/config.json";
+    }
+    apply_config(rt, dcfg, companion_id, cfg_path.empty() ? nullptr : cfg_path.c_str());
     /* Env override (live testing): point TETHER at a companion UUID without editing
      * config — e.g. TETHER_COMPANION_ID=6368696D-6572-6100-0000-000000000001. */
     if (const char *env_cid = std::getenv("TETHER_COMPANION_ID"); env_cid && env_cid[0]) {
