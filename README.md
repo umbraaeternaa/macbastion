@@ -6,8 +6,8 @@
 
 ![status](https://img.shields.io/badge/status-alpha-orange)
 ![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon-purple)
-![python](https://img.shields.io/badge/python-3.13-yellow)
-![tests](https://img.shields.io/badge/tests-1109%20green-brightgreen)
+![python](https://img.shields.io/badge/python-3.11%2B-yellow)
+![tests](https://img.shields.io/badge/tests-1133%20green-brightgreen)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
 CHIMERA senses you and your environment and reacts autonomously to protect you — then writes
@@ -18,7 +18,7 @@ every action to an audit trail you can question (*"why did my vault lock?"*). It
 
 ## Quick start
 
-Requirements: macOS on Apple Silicon · [Homebrew](https://brew.sh) · Python 3.13 · [Ollama](https://ollama.com).
+Requirements: macOS on Apple Silicon · [Homebrew](https://brew.sh) · Python 3.11+ · [Ollama](https://ollama.com).
 
 ```bash
 git clone https://github.com/umbraaeternaa/macbastion.git
@@ -41,7 +41,7 @@ by hand: [`chimera/deploy/INSTALL.md`](chimera/deploy/INSTALL.md).
 | Organ | Lang | Role |
 |---|---|---|
 | **CHAFF**  | C       | decoy HTTPS traffic — masks real patterns |
-| **ECHO**   | C       | constant-rate bandwidth padding |
+| **ECHO**   | C       | constant-rate bandwidth shaping (real pf/dummynet) |
 | **ORACLE** | Python  | local LLM (Ollama) anomaly detection |
 | **MIRROR** | C       | humanlike input jitter + privacy-preserving input sensing |
 | **PULSE**  | C / Py  | cognitive-load monitor — adds friction when you're tired |
@@ -67,8 +67,10 @@ CHIMERA is **alpha**, built in the open. What is real today:
 - ✅ ORACLE scores threats reliably with a local LLM (`qwen2.5:7b`): ransomware → ~1.0, routine → ~0.05.
 - ✅ PURGE destruction is real end-to-end (Keychain + VAULT keys + state wipe + RAM zero + opt-in target shred).
 - ✅ TETHER ranges a real BLE beacon; MIRROR injects real input; VAULT encrypts at rest, plaintext RAM-only.
-- ⚠️ Deliberately gated: ECHO's real packet shaping (awaits a packet-root decision, §8); privileged + TCC
-  capabilities need your own self-signed cert + macOS grants (Apple blocks scripting those — done by hand).
+- ✅ ECHO's constant-rate packet shaping is real — a separate root shaper daemon (§8 Amendment A1) drives a
+  pf/dummynet anchor **validated on live pf** (~25× rate cut measured); opt-in, off by default.
+- ⚠️ Privileged + TCC capabilities need your own self-signed cert + macOS grants (Apple blocks scripting
+  those — done by hand).
 - ❌ **No notarization.** CHIMERA is one machine, one owner — you build and self-sign it locally. By design.
 
 It refuses security theatre: it will **not** pretend to "wipe" unencrypted SSD data (wear-levelled flash
