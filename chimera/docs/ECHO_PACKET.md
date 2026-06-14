@@ -54,7 +54,7 @@ its invariants are untouched.
 
 ---
 
-## 3. Locked decisions (EP-1 … EP-9)
+## 3. Locked decisions (EP-1 … EP-10)
 
 | # | Decision | Choice | Rationale |
 |---|----------|--------|-----------|
@@ -67,6 +67,7 @@ its invariants are untouched.
 | **EP-7** | Reuse | Defined for ECHO; **CHAFF Phase A may later reuse this domain** (its own amendment if scope grows) | One reviewed packet domain, not many |
 | **EP-8** | Accepted residual risk (T5) | A compromised shaper could see ECHO-anchor traffic *volume/timing* (never payloads) and could disable shaping | Bounded blast radius; mitigated by EP-1/2/4/5 + minimal auditable code |
 | **EP-9** | Where the required main-ruleset hook is installed (added Day 22 after live validation, §7) | **Install-time, ONCE** — `dummynet-anchor "com.chimera.echo"` is added to `/etc/pf.conf` at opt-in install (operator-approved, with backup); the **runtime daemon touches ONLY its own anchor** | F1 (§7) proved a bare sub-anchor is inert — a parent hook is required. Confining the single main-ruleset touch to a one-time, audited install action preserves EP-2's runtime boundary (no runtime main-pf reloads → cannot clobber dynamically-inserted system anchors). Narrow exception to the §2 never-list, ratified by the operator Day 22 (2026-06-14) |
+| **EP-10** | `shaper.handshake` authentication (added Day 22, C2a) | **peercred-only** — the per-boot secret is handed to any peer the kernel reports as the operator uid; NO SecCode attestation | The shaper's ops are FAIL-OPEN / low-stakes (EP-8: volume/timing only, never payloads), unlike the shim's destructive ops where SecCode attestation is warranted. Adding it would force a Security/CoreFoundation framework onto the deliberately minimal, no-framework shaper. Narrow deviation from EP-5's "attested peer" wording, ratified by the operator Day 22 (2026-06-14) |
 
 ---
 
