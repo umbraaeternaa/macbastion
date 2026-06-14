@@ -128,11 +128,14 @@ UUID spells the project: `6368696D-6572-6100-0000-000000000001` (`chimera` in AS
 
 Pick any reliable advertiser (steadiest first):
 
-1. **A configurable BLE tag** (nRF52 / a generic iBeacon dev-tag) set to advertise the service
-   UUID — hands-free and the most reliable for an unattended dead-man.
-2. **A phone advertiser app** broadcasting that UUID. nRF Connect works but advertises flakily; a
-   dedicated "BLE peripheral" app is steadier.
-3. **A spare Mac / Raspberry Pi** advertising the UUID (CoreBluetooth / BlueZ).
+1. **CHIMERA's built-in `companion-beacon`** (recommended — turnkey, in-repo): build it once with
+   `make -C modules/tether companion`, then run `./modules/tether/companion-beacon` on the Apple
+   device you carry (a spare Mac / iPad / an iPhone via Xcode). With no args it advertises the
+   default project UUID — so it matches TETHER out of the box; first run prompts for the Bluetooth
+   grant. Override with `companion-beacon <service-uuid> <local-name>`.
+2. **A configurable BLE tag** (nRF52 / a generic iBeacon dev-tag) set to advertise the service
+   UUID — hands-free, most reliable for an unattended, pocketable dead-man.
+3. **A phone advertiser app** broadcasting that UUID (nRF Connect works but advertises flakily).
 
 Then:
 

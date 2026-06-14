@@ -1,6 +1,7 @@
 # build artifacts
 *.o
 /tether
+/companion-beacon
 /run_tests
 
 # runtime state

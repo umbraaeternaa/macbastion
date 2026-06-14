@@ -37,6 +37,13 @@ TEST_OBJS := $(patsubst %.cpp,%.o,$(wildcard tests/*.cpp))
 $(BIN): src/main.o $(CPP_OBJS) $(MM_OBJS) $(C_OBJS) $(VEND_OBJS)
 	$(CXX) $^ $(FRAMEWORKS) -o $@
 
+# companion-beacon — a standalone CoreBluetooth advertiser: the turnkey/demo dead-man companion
+# (the mirror of cb_scanner.mm). Manual-tier like the scanner. The embedded __info_plist carries
+# NSBluetoothAlwaysUsageDescription so macOS prompts for the Bluetooth grant with a reason.
+companion: src/companion_beacon.mm src/companion_beacon.plist
+	$(CXX) $(MMSTRICT) src/companion_beacon.mm $(FRAMEWORKS) \
+	  -Wl,-sectcreate,__TEXT,__info_plist,src/companion_beacon.plist -o companion-beacon
+
 # C++ objects — strict.
 src/%.o: src/%.cpp
 	$(CXX) $(CXXSTRICT) -c $< -o $@
@@ -69,6 +76,6 @@ format:
 	clang-format -i include/*.hpp include/*.h src/*.cpp tests/test_*.cpp
 
 clean:
-	rm -f $(BIN) run_tests src/main.o $(CPP_OBJS) $(MM_OBJS) $(C_OBJS) $(VEND_OBJS) $(UNITY_OBJ) $(TEST_OBJS)
+	rm -f $(BIN) companion-beacon run_tests src/main.o $(CPP_OBJS) $(MM_OBJS) $(C_OBJS) $(VEND_OBJS) $(UNITY_OBJ) $(TEST_OBJS)
 
-.PHONY: test format clean
+.PHONY: test format clean companion
