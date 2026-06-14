@@ -1314,7 +1314,7 @@ core, as authority, turns the event into a command.) Slices:
 
 `chimera/proto/` — still empty (`.gitkeep`).
 
-**Tooling:** `pyproject.toml` + `uv.lock` + `.venv` (Python 3.13.9); ruff + mypy (strict) + pytest configured. Direct deps: cryptography, pydantic(-settings), **ollama==0.6.2** (§6-allowed; httpx + anyio/certifi transitive). pytest markers: `integration`, `ollama`. Native C deps (Homebrew, fail-fast in each Makefile, §6 allowlist): openssl@3 + sqlite3 (CHAFF), **libsodium (VAULT crypto — XChaCha20-Poly1305/Argon2id/secure-mem)**.
+**Tooling:** `pyproject.toml` + `uv.lock` + `.venv` (Python 3.13.9 dev; **requires-python floor lowered to `>=3.11` Day 22** for wider clone-and-run reach — ruff `target-version=py311` + mypy `python_version=3.11` statically enforce 3.11-compat, the lone PEP695 `type` alias in `envelope.py` became a classic `TypeAlias`; honest limit: no live 3.11 interpreter here, so the guarantee is static, not a 3.11 runtime run); ruff + mypy (strict) + pytest configured. Direct deps: cryptography, pydantic(-settings), **ollama==0.6.2** (§6-allowed; httpx + anyio/certifi transitive). pytest markers: `integration`, `ollama`. Native C deps (Homebrew, fail-fast in each Makefile, §6 allowlist): openssl@3 + sqlite3 (CHAFF), **libsodium (VAULT crypto — XChaCha20-Poly1305/Argon2id/secure-mem)**.
 
 **Tests:**
 

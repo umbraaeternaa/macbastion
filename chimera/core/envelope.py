@@ -1,7 +1,7 @@
 """JSON-RPC 2.0 wire format (§6.4)."""
 
 import json
-from typing import Any, Literal, Self
+from typing import Any, Literal, Self, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, StrictInt, StrictStr, model_validator
 
@@ -44,7 +44,7 @@ class Notification(BaseModel):
     params: dict[str, Any] | list[Any] | None = None
 
 
-type Message = Request | Response | Notification
+Message: TypeAlias = Request | Response | Notification
 
 
 def parse(data: str) -> Message:
