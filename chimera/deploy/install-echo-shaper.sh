@@ -5,8 +5,10 @@
 # LaunchDaemon plist, AND adds the ONE required pf hook — dummynet-anchor "com.chimera.echo" —
 # to /etc/pf.conf (with a backup), so the runtime daemon's anchor is actually evaluated (F1,
 # ECHO_PACKET §7). The runtime daemon then touches ONLY its own anchor; this installer is the
-# single, audited main-ruleset touch the operator ratified (EP-9). YOU run this — never CI,
-# never core.
+# single, audited main-ruleset touch the operator ratified (EP-9). The hook is added to the
+# FILE only and takes effect at the NEXT REBOOT — this installer never runs a live `pfctl -f`
+# of the main ruleset (doing so flushes dynamically-inserted system anchors and once dropped
+# the operator's Wi-Fi). YOU run this — never CI, never core.
 #
 #   sudo bash deploy/install-echo-shaper.sh              # install + add hook + bootstrap
 #   sudo bash deploy/install-echo-shaper.sh --uninstall  # bootout + remove hook + remove
@@ -74,7 +76,10 @@ install_shaper() {
   install -m 0755 "$SRC" "$DEST"
 
   add_hook                                          # EP-9: declare our dummynet anchor in main pf
-  pfctl -f "$PF_CONF" 2>/dev/null || echo "[!] pfctl -f $PF_CONF failed (is pf enabled? try: sudo pfctl -E)"
+  # DELIBERATELY no live `pfctl -f` here. Reloading the MAIN ruleset at runtime FLUSHES the
+  # anchors that system services insert dynamically (the /etc/pf.conf header warns of exactly
+  # this) — it once dropped the operator's Wi-Fi. The hook is a file edit that loads cleanly at
+  # the NEXT BOOT, the same way the stock com.apple anchors do; shaping activates after a reboot.
 
   cat > "$PLIST" <<PLISTEOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -111,6 +116,7 @@ PLISTEOF
   echo "    binary: $DEST"
   echo "    socket: $SOCKET   operator-uid: $op_uid"
   echo "    pf hook: $HOOK  ->  $PF_CONF"
+  echo "    NOTE: the pf hook activates at the NEXT REBOOT (no live pfctl reload, by design)."
 }
 
 uninstall() {
@@ -118,8 +124,10 @@ uninstall() {
   launchctl bootout system "$PLIST" 2>/dev/null || true
   rm -f "$PLIST" "$DEST"
   remove_hook                                       # EP-9: pull our line back out of main pf
-  pfctl -f "$PF_CONF" 2>/dev/null || true           # FAIL-OPEN: reload stock; never wedge the net
-  echo "[*] uninstalled $LABEL"
+  # No live `pfctl -f` (the very call that broke the network). The file is back to stock and
+  # loads cleanly at the next reboot; the running ruleset keeps the now-inert hook until then,
+  # which shapes nothing (an empty anchor is a no-op). To drop it immediately, reboot.
+  echo "[*] uninstalled $LABEL (pf.conf restored to stock; effective at next reboot)"
 }
 
 case "${1:-}" in
