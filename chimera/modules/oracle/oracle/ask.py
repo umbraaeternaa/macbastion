@@ -98,11 +98,15 @@ class Asker:
 
     @staticmethod
     def _parse_intent(raw: str) -> dict[str, Any]:
-        """Parse the LLM intent; any failure degrades to {'query_type': 'unknown'}."""
+        """Parse the LLM intent; any failure degrades to {'query_type': 'unknown'}.
+
+        Robustness (mirrors detector salvage): a ```json-fenced or prose-decorated response is
+        recovered by re-parsing the outermost {...} before degrading — so a valid intent the
+        model merely decorated still routes, while genuinely-unparseable output safely degrades."""
         try:
             data = json.loads(raw)
         except (json.JSONDecodeError, TypeError):
-            return {"query_type": "unknown"}
+            data = Asker._salvage_object(raw)
         if not isinstance(data, dict) or data.get("query_type") not in (
             "first_seen",
             "period",
@@ -110,6 +114,19 @@ class Asker:
         ):
             return {"query_type": "unknown"}
         return data
+
+    @staticmethod
+    def _salvage_object(raw: str) -> dict[str, Any] | None:
+        """Re-parse the outermost {...} from a fenced/decorated response, or None."""
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start == -1 or end <= start:
+            return None
+        try:
+            obj = json.loads(raw[start : end + 1])
+        except (json.JSONDecodeError, TypeError):
+            return None
+        return obj if isinstance(obj, dict) else None
 
     @staticmethod
     def _shape(query_used: str, raw_result: dict[str, Any] | None) -> dict[str, Any]:

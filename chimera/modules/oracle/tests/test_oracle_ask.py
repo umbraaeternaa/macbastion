@@ -48,6 +48,19 @@ def test_intent_schema_has_query_type_enum():
     assert INTENT_SCHEMA["required"] == ["query_type"]
 
 
+def test_parse_intent_salvages_fenced_intent():
+    # A ```json-fenced but otherwise valid intent should route, not degrade to 'unknown'
+    # (mirrors detector salvage — robustness for a 7B model that decorates its output).
+    intent = Asker._parse_intent('```json\n{"query_type":"first_seen","source":"chaff"}\n```')
+    assert intent["query_type"] == "first_seen"
+    assert intent["source"] == "chaff"
+
+
+def test_parse_intent_unrecoverable_degrades_to_unknown():
+    # Genuinely unparseable -> the safe graceful degrade is preserved (no fabricated intent).
+    assert Asker._parse_intent("not json at all")["query_type"] == "unknown"
+
+
 async def test_ask_routes_first_seen(tmp_path):
     store = _store(tmp_path)
     _rec(store, "2026-06-01T10:00:00+00:00", "chaff", "request.sent")
