@@ -71,8 +71,10 @@ static int saw(const char *substr) {
 static void test_build_rules_routes_through_pipe(void) {
     char buf[128];
     TEST_ASSERT_EQUAL_INT(0, shaper_anchor_build_rules(buf, sizeof buf));
-    TEST_ASSERT_NOT_NULL(strstr(buf, "dummynet"));
-    TEST_ASSERT_NOT_NULL(strstr(buf, "pipe"));
+    /* F2 (§7, validated Day 22): constant-rate normalization shapes BOTH directions — `out`
+     * alone leaves downloads (inbound) unshaped. */
+    TEST_ASSERT_NOT_NULL(strstr(buf, "dummynet in all pipe"));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "dummynet out all pipe"));
 }
 
 static void test_build_rules_rejects_tiny_buffer(void) {

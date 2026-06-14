@@ -2,8 +2,8 @@
  * dummynet pf anchor that routes outbound traffic through CHIMERA's rate-limited pipe. The pf
  * actions run through an INJECTABLE backend so the lifecycle + fail-OPEN logic are tested
  * root-free; the real backend (write file + posix_spawn pfctl/dnctl) needs root and runs only
- * with per-command operator approval. The anchor RULE itself is a CANDIDATE pending validation
- * against live pf (the next, root slice). */
+ * with per-command operator approval. The anchor RULE was VALIDATED on live pf (§7, Day 22):
+ * it shapes BOTH directions, and the required parent hook is installed at opt-in install (EP-9). */
 #ifndef SHAPER_ANCHOR_H
 #define SHAPER_ANCHOR_H
 
@@ -12,9 +12,9 @@
 #define SHAPER_ANCHOR_NAME "com.chimera.echo"
 #define SHAPER_ANCHOR_PATH "/etc/pf.anchors/com.chimera.echo"
 
-/* Write the pf-anchor file content (routes outbound through CHIMERA's dummynet pipe) into buf.
- * Returns 0 on success, -1 if buf is NULL or too small. CANDIDATE rule — pending live-pf
- * validation. Pure (no I/O). */
+/* Write the pf-anchor file content (routes BOTH directions through CHIMERA's dummynet pipe)
+ * into buf. Returns 0 on success, -1 if buf is NULL or too small. VALIDATED on live pf (§7).
+ * Pure (no I/O). */
 int shaper_anchor_build_rules(char *buf, size_t bufsz);
 
 /* Injectable backend so tests record without root/pf. A NULL ops (or after a reset) restores

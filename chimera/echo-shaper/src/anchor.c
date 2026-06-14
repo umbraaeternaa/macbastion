@@ -18,13 +18,18 @@
 
 extern char **environ;
 
-/* CANDIDATE anchor content — routes outbound through CHIMERA's pipe. Pending validation
- * against live pf in the next (root) slice before we trust it actually shapes. */
+/* VALIDATED anchor content (§7, Day 22) — routes BOTH directions through CHIMERA's pipe so
+ * constant-rate normalization covers download (in) and upload (out); `out` alone left inbound
+ * traffic unshaped (F2). The required parent `dummynet-anchor "com.chimera.echo"` hook is added
+ * to the main ruleset at opt-in install time (EP-9), NOT here — at runtime we touch only this
+ * anchor + the pipe. If that hook is absent the rule is simply inert (FAIL-OPEN: traffic flows). */
 int shaper_anchor_build_rules(char *buf, size_t bufsz) {
     if (buf == NULL || bufsz == 0) {
         return -1;
     }
-    int n = snprintf(buf, bufsz, "dummynet out all pipe " SHAPER_PIPE "\n");
+    int n = snprintf(buf, bufsz,
+                     "dummynet in all pipe "  SHAPER_PIPE "\n"
+                     "dummynet out all pipe " SHAPER_PIPE "\n");
     return (n > 0 && (size_t)n < bufsz) ? 0 : -1;
 }
 
