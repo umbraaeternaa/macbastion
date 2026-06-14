@@ -11,6 +11,10 @@
 #include "protocol.h"
 #include "tests.h"
 
+/* A realistic 64-hex per-boot secret (slice D: the dispatch length-checks to SHAPER_SECRET_HEX_LEN
+ * before the constant-time compare). */
+#define TEST_SECRET64 "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
+
 /* recording anchor backend: count file writes (= apply) and removes (= clear). */
 static int g_writes;
 static int g_removes;
@@ -134,8 +138,8 @@ static void test_anchor_load_with_secret_applies(void) {
     cJSON *id = id1();
     cJSON *p = cJSON_CreateObject();
     cJSON_AddNumberToObject(p, "rate_kbps", 100);
-    cJSON_AddStringToObject(p, "secret", "S3CRET");
-    char *r = shaper_protocol_dispatch("shaper.anchor.load", p, id, 1, "S3CRET");
+    cJSON_AddStringToObject(p, "secret", TEST_SECRET64);
+    char *r = shaper_protocol_dispatch("shaper.anchor.load", p, id, 1, TEST_SECRET64);
     TEST_ASSERT_EQUAL_INT(1, result_true(r, "ok"));
     TEST_ASSERT_EQUAL_INT(1, g_writes); /* anchor really applied via the backend */
     free(r);
@@ -147,10 +151,24 @@ static void test_anchor_remove_with_secret_clears(void) {
     reset();
     cJSON *id = id1();
     cJSON *p = cJSON_CreateObject();
-    cJSON_AddStringToObject(p, "secret", "S3CRET");
-    char *r = shaper_protocol_dispatch("shaper.anchor.remove", p, id, 1, "S3CRET");
+    cJSON_AddStringToObject(p, "secret", TEST_SECRET64);
+    char *r = shaper_protocol_dispatch("shaper.anchor.remove", p, id, 1, TEST_SECRET64);
     TEST_ASSERT_EQUAL_INT(1, result_true(r, "ok"));
     TEST_ASSERT_EQUAL_INT(1, g_removes); /* anchor really cleared (fail-OPEN) */
+    free(r);
+    cJSON_Delete(p);
+    cJSON_Delete(id);
+}
+
+static void test_anchor_load_wrong_length_secret_refused(void) {
+    reset();
+    cJSON *id = id1();
+    cJSON *p = cJSON_CreateObject();
+    cJSON_AddNumberToObject(p, "rate_kbps", 100);
+    cJSON_AddStringToObject(p, "secret", "abc"); /* authorized peer, but a wrong-length secret */
+    char *r = shaper_protocol_dispatch("shaper.anchor.load", p, id, 1, TEST_SECRET64);
+    TEST_ASSERT_EQUAL_INT(SHAPER_RPC_NOT_AUTHORIZED, err_code(r));
+    TEST_ASSERT_EQUAL_INT(0, g_writes); /* the length guard rejects before applying */
     free(r);
     cJSON_Delete(p);
     cJSON_Delete(id);
@@ -164,5 +182,6 @@ void run_protocol_tests(void) {
     RUN_TEST(test_unknown_method_capability_missing);
     RUN_TEST(test_anchor_load_requires_secret);
     RUN_TEST(test_anchor_load_with_secret_applies);
+    RUN_TEST(test_anchor_load_wrong_length_secret_refused);
     RUN_TEST(test_anchor_remove_with_secret_clears);
 }

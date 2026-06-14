@@ -11,6 +11,7 @@
 
 #include "anchor.h"
 #include "jsonrpc.h"
+#include "secret.h"
 #include "shaper.h"
 
 static char *ok_response(const cJSON *id) {
@@ -47,11 +48,13 @@ char *shaper_protocol_dispatch(const char *method, const cJSON *params, const cJ
         return jsonrpc_serialize_error(id, SHAPER_RPC_CAPABILITY_MISSING, "capability missing",
                                        NULL);
     }
-    /* Every pf op is privileged -> require the per-boot secret (NOT peercred alone). The
-     * constant-time secret compare is a later slice (D); a plain match suffices for the seam. */
+    /* Every pf op is privileged -> require the per-boot secret (NOT peercred alone). Slice D:
+     * constant-time compare over the full fixed length (no early-exit timing leak), guarded by a
+     * length check so the fixed-length compare never reads past a short input. */
     const cJSON *s = params ? cJSON_GetObjectItem(params, "secret") : NULL;
     const char *provided = cJSON_IsString(s) ? s->valuestring : NULL;
-    if (secret == NULL || provided == NULL || strcmp(provided, secret) != 0) {
+    if (secret == NULL || provided == NULL || strlen(provided) != SHAPER_SECRET_HEX_LEN
+        || !shaper_secret_equal(provided, secret)) {
         return jsonrpc_serialize_error(id, SHAPER_RPC_NOT_AUTHORIZED, "secret required", NULL);
     }
 
