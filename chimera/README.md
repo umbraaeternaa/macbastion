@@ -21,7 +21,7 @@ The organism senses you and your environment, and reacts autonomously to protect
 | Organ | Lang | Role |
 |---|---|---|
 | CHAFF  | C      | decoy HTTPS traffic — masks real patterns |
-| ECHO   | C      | constant-rate bandwidth padding |
+| ECHO   | C      | constant-rate bandwidth shaping (real pf/dummynet) |
 | ORACLE | Python | local LLM (Ollama) anomaly detection |
 | MIRROR | C      | humanlike input jitter + privacy-preserving input sensing |
 | PULSE  | C / Py | cognitive-load monitor — friction when you're tired |
@@ -34,7 +34,7 @@ reactive web that relays events into reflexes, a cognitive gate, and the audit t
 
 ## Quick start
 
-Requirements: macOS on Apple Silicon · [Homebrew](https://brew.sh) · Python 3.13 · [Ollama](https://ollama.com).
+Requirements: macOS on Apple Silicon · [Homebrew](https://brew.sh) · Python 3.11+ · [Ollama](https://ollama.com).
 `setup.sh` installs the Homebrew deps and the ORACLE model (`qwen2.5:7b`; override via `CHIMERA_ORACLE_MODEL`) for you.
 
 ```bash
@@ -62,7 +62,7 @@ Optional — **stable identity** so macOS permission grants (Accessibility for M
 Bluetooth for TETHER) survive rebuilds:
 
 ```bash
-./sign.sh            # signs the native binaries with your Apple Development / Developer ID identity
+./sign.sh            # signs the native binaries with your Apple Development (or any) code-signing identity
 ./sign.sh -          # or ad-hoc (valid signature, but no stable identity)
 ```
 
@@ -88,10 +88,13 @@ Most real OS effectors are now **un-gated and verified on hardware**:
   (Keychain evict, reboot) are authorized over an authenticated channel. The whole organism is
   code-signed with a stable identity, so grants survive rebuilds (`sign.sh`).
 
-The remaining frontier is deliberately gated, not faked (MANIFESTO §4): **ECHO** (and CHAFF's
-kernel packet-shaping) need packet-level root, which the security model (§8.8) withholds — a
-separate, explicit decision; and **PURGE**'s secure-erase engine stays unbuilt until armed by a
-conscious opt-in — no module ever pretends to do what it cannot. We build for a year, not a week.
+**ECHO** now shapes for real: a separate root shaper daemon (§8 Amendment A1 — the explicit
+packet-root decision §8.8 demanded) drives a pf/dummynet anchor validated on live hardware
+(~25× rate cut measured), opt-in and off by default. **PURGE**'s destruction is real end-to-end
+too — Keychain + VAULT-key crypto-shred + state wipe + RAM zero + opt-in target shred — and it
+fires only on a conscious opt-in, never autonomously. What stays deliberately deferred (MANIFESTO
+§4, not faked): ECHO's floor-filling padding (a research-grade CHAFF feedback loop — the rate
+ceiling already holds in-kernel) and CHAFF's own kernel packet-shaping. We build for a year, not a week.
 
 ## Philosophy
 
