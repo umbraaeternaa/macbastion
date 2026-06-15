@@ -73,9 +73,14 @@ UUID is rejected; `unpair()` re-pins. Wired live — `cb_scanner.mm` captures `C
 → `CoreBluetoothSource` feeds `CompanionPin`, so a heard advertiser counts as present ONLY if it IS
 the pinned device. Verified on hardware (tether still senses the Samsung at ~-63 dBm; a 2nd
 UUID-advertiser is now rejected). Closes the BLE-spoofability gap the dead-man demo itself flags.
-tether **52 → 57** tests; RED→GREEN→live. Honest tail (§4): the pin is per-session (in-memory) —
-persisting it across restarts / explicit operator pairing is a later slice. Commits `9600c19`
-(logic) + `1faf267` (live wiring).
+tether **52 → 59** tests; RED→GREEN→live. **Persistence LOGIC added** (`CompanionPin(state_path)`:
+load on construct / save on first pin / delete on unpair → the bond survives a restart) but
+**deliberately NOT activated live**: with a random-address beacon a stale persisted pin could lock
+the operator out with NO self-heal (in-memory re-pins on restart; persistent would not), and there
+is no `tether.unpair` recovery lever yet — so the live source stays on the self-healing in-memory
+pin until `tether.unpair` / a stable companion identity lands (live-system safety). Honest tail
+(§4): per-session pin live; persistence wired-but-dormant. Commits `9600c19` (logic) + `1faf267`
+(live wiring) + `6abc929` (persistence logic).
 
 Code phase: all 8 core modules implemented (ETAP 2 closed). ETAP 3 underway —
 Step 0 (CHAFF spec align), Step 1A (config request_timeout_s), Step 1B
