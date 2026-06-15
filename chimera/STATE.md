@@ -89,8 +89,11 @@ LaunchAgent (own responsible process) — and even re-signed with ble-probe's id
 for Bluetooth, while ble-probe (same `cb_scanner` code, interactive) works. macOS won't honour tether's grant
 as a daemon. A **deep-research workflow is running** for the exact recipe (likely a proper `.app` bundle, or a
 TCC reset+re-grant). Until then the **bridge is the working interim**. NEXT: apply the research's clean grant
-fix → drop the bridge → make it reboot-persistent (LaunchAgents). Separate latent bug still open: tether
-crashes on teardown (SIGTERM) — `malloc … 0x100000000` — teardown only, no runtime impact.
+fix → drop the bridge → make it reboot-persistent (LaunchAgents). Teardown-crash (`malloc … 0x100000000`,
+= image base, a free in main's destructor chain on SIGTERM) — INVESTIGATED Day 23: does NOT reproduce in 4
+clean controlled runs (-O0, -O2+g, signed, 12s-lived); only surfaced during the chaotic duplicate-tether /
+rapid `kickstart -k` storm, which the `handle_failure` external-skip fix resolved. Zero runtime impact;
+NOT masked; low-priority — re-chase only if it recurs in clean single-tether operation (then there's a repro).
 
 **PRIOR (Day 22): TCC responsibility launcher — tcc-disclaim.** `tools/tcc-disclaim/` posix_spawns a module
 with `responsibility_spawnattrs_setdisclaim()` so a supervisor-spawned daemon is its own TCC subject (commits
