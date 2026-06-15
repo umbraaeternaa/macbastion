@@ -10,6 +10,7 @@
 
 #include "cJSON.h"
 
+#include "pin.hpp"
 #include "tether.hpp"
 
 namespace tether {
@@ -18,7 +19,8 @@ namespace tether {
 struct TetherRuntime {
     PresenceConfig presence;
     EscalationConfig escalation;
-    bool companion_paired = false; /* false until pairing lands (gated) */
+    bool companion_paired = false; /* legacy flag; status now reflects pin.paired() */
+    CompanionPin pin;              /* anti-spoof companion pin; tether.unpair clears it */
     Presence state = Presence::PRESENT;
     Stage escalation_stage = Stage::NONE;
     double rssi_smoothed = 0.0;

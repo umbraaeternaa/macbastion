@@ -141,6 +141,20 @@ static void test_heighten_emit_only(void) {
     cJSON_Delete(root);
 }
 
+/* tether.unpair is the recovery lever: it clears the pinned companion so a stale or wrong
+ * pin can be forgotten and re-paired (and makes persistent pinning safe to enable). RED:
+ * unpair is still gated, so it returns an error with no "result" — this FAILS until GREEN. */
+static void test_unpair_clears_pin(void) {
+    TetherRuntime rt;
+    rt.pin.accept("A8:79:8D:90:1C:83"); /* a companion is pinned */
+    cJSON *root = dispatch_parse(&rt, "tether.unpair", nullptr);
+    cJSON *result = cJSON_GetObjectItemCaseSensitive(root, "result");
+    TEST_ASSERT_NOT_NULL(result); /* FAILS in RED: gated -> error, no result */
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(result, "ok")));
+    TEST_ASSERT_FALSE(rt.pin.paired()); /* the pin is cleared */
+    cJSON_Delete(root);
+}
+
 void run_commands_tests(void) {
     RUN_TEST(test_status_reports_l3_disarmed);
     RUN_TEST(test_l3_arm_sets_flag);
@@ -152,4 +166,5 @@ void run_commands_tests(void) {
     RUN_TEST(test_heighten_sets_flag);
     RUN_TEST(test_relax_restores_base);
     RUN_TEST(test_heighten_emit_only);
+    RUN_TEST(test_unpair_clears_pin);
 }

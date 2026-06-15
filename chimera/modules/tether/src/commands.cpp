@@ -24,7 +24,7 @@ char *commands_dispatch(TetherRuntime *rt, const char *method, const cJSON *para
         cJSON *r = cJSON_CreateObject();
         cJSON_AddStringToObject(r, "state", presence_name(rt->state));
         cJSON_AddNumberToObject(r, "rssi_smoothed", rt->rssi_smoothed);
-        cJSON_AddBoolToObject(r, "companion_paired", rt->companion_paired);
+        cJSON_AddBoolToObject(r, "companion_paired", rt->pin.paired());
         cJSON_AddStringToObject(r, "escalation_stage", stage_name(rt->escalation_stage));
         cJSON_AddBoolToObject(r, "l3_armed", rt->escalation.l3_armed);
         cJSON_AddBoolToObject(r, "heightened", rt->heightened);
@@ -123,9 +123,19 @@ char *commands_dispatch(TetherRuntime *rt, const char *method, const cJSON *para
         return jsonrpc_serialize_response(id, r);
     }
 
+    if (std::strcmp(method, "tether.unpair") == 0) {
+        /* Recovery: forget the pinned companion (in-memory + on-disk) so a stale or wrong
+         * pin can be re-paired. This is what makes persistent pinning safe to enable. */
+        rt->pin.unpair();
+        cJSON *r = cJSON_CreateObject();
+        cJSON_AddBoolToObject(r, "ok", 1);
+        cJSON_AddBoolToObject(r, "paired", rt->pin.paired());
+        return jsonrpc_serialize_response(id, r);
+    }
+
     if (std::strcmp(method, "tether.pair.start") == 0 ||
-        std::strcmp(method, "tether.pair.confirm") == 0 ||
-        std::strcmp(method, "tether.unpair") == 0) {
+        std::strcmp(method, "tether.pair.confirm") == 0) {
+        /* Explicit IRK pairing still needs Keychain / Secure Enclave entitlements (gated). */
         return jsonrpc_serialize_error(id, TETHER_RPC_PRECONDITION_FAILED,
                                        "pairing gated: Keychain/Secure Enclave entitlements",
                                        nullptr);
