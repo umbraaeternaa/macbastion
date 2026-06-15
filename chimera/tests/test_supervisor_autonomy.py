@@ -64,6 +64,21 @@ def test_handle_failure_unknown_module_ignored(tmp_path):
     assert spawned == []
 
 
+def test_handle_failure_skips_external(tmp_path):
+    # an external module (its own LaunchAgent) is restarted by launchd KeepAlive, NOT by us —
+    # the supervisor must not respawn it on FAILED (else it duplicates the launchd-run daemon).
+    lc = _failed_lifecycle("t", tmp_path)
+    spawned = []
+
+    def spawn(spec):
+        spawned.append(spec.name)
+        return _FakeProc()
+
+    sup = Supervisor([ModuleSpec("t", external=True)], spawn=spawn, is_registered=lambda n: True)
+    assert sup.handle_failure("t", lc) is False
+    assert spawned == []
+
+
 def test_on_state_changed_only_acts_on_failed(tmp_path):
     lc = _failed_lifecycle("a", tmp_path)
     sup, spawned = _sup()

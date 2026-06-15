@@ -159,6 +159,8 @@ class Supervisor:
         spec = next((s for s in self._specs if s.name == name), None)
         if spec is None:
             return False
+        if spec.external:
+            return False  # external modules restart via their own LaunchAgent (KeepAlive), not us
         try:
             if lifecycle.state_of(name) != ModuleState.FAILED:
                 return False
