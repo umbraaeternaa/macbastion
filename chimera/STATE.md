@@ -15,7 +15,7 @@
 | MIRROR | C     | `a951c92` | §5.4 — behavioral noise inject  |
 | PULSE  | C+Py  | `5f5b64a` | §5.5 — cognitive load monitor   |
 | VAULT  | C     | `1fdc517` | §5.6 — time-locked storage      |
-| TETHER | C++   | `3b5fca9` | §5.7 — proximity dead-man       |
+| TETHER | C++   | `3c1791d` | §5.7 — proximity dead-man       |
 | PURGE  | C+Asm | `4a3c9df` | §5.8 — secure erasure (panic)   |
 
 All 8 of 8 module specifications complete. Part 2 (§5) closed.
@@ -66,7 +66,20 @@ the architectural document is whole and authoritative. No spec work remains.
 
 ## Code status
 
-**LATEST (Day 22, 2026-06-15): TETHER companion pinning (anti-spoof) — logic + live wiring.**
+**LATEST (Day 22, 2026-06-15): TETHER anti-spoof — source-sharing wiring (unpair now bites live).**
+The live `CoreBluetoothSource` now BORROWS the runtime's `CompanionPin` by reference (ONE shared
+object) instead of owning a private copy: `make_source(companion_id, CompanionPin&)`, `main` passes
+`rt.pin`, and a `pinned()` accessor exposes the live bond. So `tether.unpair` (which clears `rt.pin`)
+now resets the RUNNING scanner, and `tether.status.companion_paired` reflects the real live pin — the
+anti-spoof recovery lever bites live. The daemon loop is single-threaded (`handle_inbound` and `src.next`
+run sequentially) → no data race. Proven hermetically (`test_source_borrows_shared_pin`: pinning via the
+shared handle is seen by the source, an external `unpair()` resets its view — a private copy would fail
+the unpair assert). tether **60 → 61** tests; /check ALL GREEN. Commit `3c1791d`. **Persistent pinning
+stays DEFERRED** (stale-pin lockout risk with a random-address beacon + no self-heal — live-system safety);
+this wiring is the prerequisite that makes enabling it safe. Live daemon rebuild+re-sign+restart pending
+(so the running tether picks up the new code).
+
+**PRIOR (Day 22): TETHER companion pinning (anti-spoof) — logic + live wiring.**
 `CompanionPin` (trust-on-first-use) binds presence to ONE device identity: the first companion
 seen is pinned (normalised via `normalize_bt_addr`); any other device advertising the same service
 UUID is rejected; `unpair()` re-pins. Wired live — `cb_scanner.mm` captures `CBPeripheral.identifier`
@@ -76,13 +89,10 @@ UUID-advertiser is now rejected). Closes the BLE-spoofability gap the dead-man d
 tether **52 → 60** tests; RED→GREEN→live. **Persistence LOGIC added** (`CompanionPin(state_path)`:
 load on construct / save on first pin / delete on unpair → the bond survives a restart). **`tether.unpair`
 RECOVERY ungated** (clears the runtime pin in-memory + on-disk; `pair.start/confirm` stay gated on
-IRK/Keychain) — the lever that makes persistent pinning safe to enable. Still **NOT activated live**:
-the command clears the *runtime* `CompanionPin`, but the live `CoreBluetoothSource` still owns its
-own pin — the remaining wiring is to SHARE `rt.pin` with the source so unpair bites live; then
-persistence can be turned on safely. Until then the live source stays on the self-healing in-memory
-pin (live-system safety: a random-address beacon + stale persisted pin could lock the operator out
-with no self-heal). Commits `9600c19` (logic) + `1faf267` (live wiring) + `6abc929` (persistence) +
-`40e63da` (unpair recovery).
+IRK/Keychain) — the lever that makes persistent pinning safe to enable. (Source-sharing wiring now
+DONE — see LATEST `3c1791d`: the live source borrows `rt.pin`, so unpair bites live. Persistence still
+deferred until that's exercised on-device.) Commits `9600c19` (logic) + `1faf267` (live wiring) +
+`6abc929` (persistence) + `40e63da` (unpair recovery).
 
 Code phase: all 8 core modules implemented (ETAP 2 closed). ETAP 3 underway —
 Step 0 (CHAFF spec align), Step 1A (config request_timeout_s), Step 1B
