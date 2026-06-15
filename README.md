@@ -16,6 +16,21 @@ every action to an audit trail you can question (*"why did my vault lock?"*). It
 
 ---
 
+## ⚡ The dead-man switch
+
+Pair CHIMERA to your phone over Bluetooth. **Walk away — your Mac locks itself** (vault sealed,
+screen locked) on its own authority. **Come back — it stands down, but never auto-unlocks.**
+BLE is spoofable, so making "return" an unlock would be a backdoor for anyone holding your phone.
+**Proximity is a key that only locks — coming back is always your password.**
+
+<!-- TODO(launch): drop docs/dead-man-demo.gif here once the 60-second screen-recording is cut -->
+> 📹 **Live, no edits:** phone leaves → `tether.absent → vault.lock` → `tether.escalation →
+> shim.lock` (the screen locks) → you return → `tether.recovered → stand-down` (still locked; you
+> type your own password). Every reflex lands in an audit trail you can question. Proven on real
+> hardware — including an Android phone as the beacon.
+
+---
+
 ## Quick start
 
 Requirements: macOS on Apple Silicon · [Homebrew](https://brew.sh) · Python 3.11+ · [Ollama](https://ollama.com).
@@ -109,6 +124,14 @@ support continued development — **Monobank Jar** (Ukraine):
 
 See [docs/donate.md](docs/donate.md) for what donations fund — and what they explicitly do **not**
 change (the MANIFESTO and the no-paywall philosophy).
+
+---
+
+## Who builds this
+
+Built solo, in the open, by **Volodymyr Natoptanyi** (*Umbra* · [@umbraaeternaa](https://github.com/umbraaeternaa)) —
+a macOS security & privacy engineer. Available for consulting on endpoint hardening, native
+daemons, and privacy systems → **[umbraaeternaa.github.io](https://umbraaeternaa.github.io)**
 
 ---
 
