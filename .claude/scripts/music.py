@@ -33,8 +33,8 @@ SR = 44100
 
 # Band/electronic genres (grid engine) + acoustic engines (own structure).
 BAND_GENRES = [
-    "house", "deep_house", "techno", "dnb", "jungle", "liquid", "trance", "psytrance",
-    "deep_progressive", "electro", "new_wave", "pop", "indie", "indie_pop",
+    "tech_house", "house", "deep_house", "techno", "dnb", "jungle", "liquid", "trance",
+    "psytrance", "deep_progressive", "electro", "new_wave", "pop", "indie", "indie_pop",
 ]
 ACOUSTIC_GENRES = ["jazz", "blues", "classical"]
 GENRES = BAND_GENRES + ACOUSTIC_GENRES
@@ -43,8 +43,12 @@ GENRES = BAND_GENRES + ACOUSTIC_GENRES
 # harmony: pad | stab | pluck | epiano | arp_chords    lead: None | arp | melody | squelch
 # bass:    sub | rolling | reese | psy                 major: None(any) | True | False
 PROFILES = {
+    # --- tech house: the dominant club sound (mid-2026, ~128 BPM) — punchy club kick,
+    #     sidechain pump, rolling offbeat bass, claps on 2&4, a hooky offbeat pluck riff. ---
+    "tech_house":       dict(bpm=128, bars=1, kick="club", k=[0,4,8,12], clap=[4,12], snare=[], hat="offbeat",
+                             bass="rolling", harmony="stab", lead="riff", major=None, swing=0.0, wet=0.16, sidechain=0.8),
     "house":            dict(bpm=124, bars=1, kick="house", k=[0,4,8,12], clap=[4,12], snare=[], hat="offbeat",
-                             bass="sub", harmony="stab", lead=None, major=None, swing=0.0, wet=0.18),
+                             bass="sub", harmony="stab", lead=None, major=None, swing=0.0, wet=0.18, sidechain=0.6),
     "deep_house":       dict(bpm=122, bars=1, kick="house", k=[0,4,8,12], clap=[4,12], snare=[], hat="shaker",
                              bass="sub", harmony="pad", lead=None, major=None, swing=0.04, wet=0.30),
     "techno":           dict(bpm=132, bars=1, kick="techno", k=[0,4,8,12], clap=[], snare=[], hat="16th",
@@ -234,6 +238,12 @@ VOICES = {
 # --- drums -----------------------------------------------------------------
 def _kick(rng, style):
     n = int(0.22 * SR); t = np.arange(n) / SR
+    if style == "club":
+        # tight, punchy club kick: fast pitch drop + saturated body + a short click transient
+        f = 52 + (150 - 52) * np.exp(-t * 70)
+        body = np.tanh(np.sin(2 * np.pi * np.cumsum(f) / SR) * 1.5) * np.exp(-t * 26)
+        click = rng.standard_normal(n) * np.exp(-t * 900) * 0.35
+        return (body + click).astype(np.float32)
     if style == "house":
         f = 50 + (130 - 50) * np.exp(-t * 55); dec = 20
     elif style == "techno":
@@ -271,6 +281,22 @@ def _place(buf, s, at, g=1.0):
     i = int(at * SR); j = min(len(buf), i + len(s))
     if i < len(buf):
         buf[i:j] += s[: j - i] * g
+
+
+def _sidechain_env(n, onsets, recover_s, depth=0.75):
+    """Club sidechain: the gain dips to (1-depth) on each kick onset, then recovers
+    exponentially over recover_s — the signature 4-on-floor pump that makes the bass and
+    pads 'breathe' under the kick. Returns a [0..1] gain array of length n."""
+    g = np.ones(n, dtype=np.float32)
+    rec = max(1, int(recover_s * SR))
+    curve = (1.0 - depth * np.exp(-np.linspace(0.0, 6.0, rec))).astype(np.float32)
+    for at in onsets:
+        i = int(at * SR)
+        if i >= n:
+            continue
+        j = min(n, i + rec)
+        g[i:j] = np.minimum(g[i:j], curve[: j - i])
+    return g
 
 
 def _reverb(x, rng, wet):
@@ -421,6 +447,16 @@ def synth_band(genre, dur, seed):
         lead = _melody_line(rng, scale, bass_base, prog, dur, beat, block,
                             VOICES["lead"] if is_major is None else VOICES["epiano"],
                             dens=0.62, gain=0.20, oct_off=24, swing=p["swing"])
+    elif lkind == "riff":
+        # hooky syncopated pluck riff on chord tones, hitting the "and" of each beat — the
+        # tech-house bounce. A fixed motif so it's catchy + repeats (a hook, not a wander).
+        motif = (0, 2, 1, 2, 0, 1, 2, 1)
+        for b in range(nb):
+            cmid = chord_midis[b % len(chord_midis)]
+            for q in range(4 * p["bars"]):
+                mm = cmid[motif[q % len(motif)] % 3] + 12
+                _place(lead, VOICES["pluck"](_m2f(mm), int(beat * 0.5 * SR), rng),
+                        b * block + q * beat + beat * 0.5, 0.22)
     elif lkind in ("arp", "squelch"):
         for s in range(int(dur / step)):
             note = chords[(s // 4) % len(chords)][s % 3] * 2
@@ -430,6 +466,16 @@ def synth_band(genre, dur, seed):
             else:
                 v = _lpf(_saw(note, sl), 300 + 2500 * np.abs(np.sin(2 * np.pi * 0.5 * (s * step)))) * np.exp(-tt * 4)
             _place(lead, (v * 0.18).astype(np.float32), s * step, 1.0)
+
+    # sidechain pump (club): the kick ducks bass + harmony + lead, which then breathe back —
+    # the signature 4-on-floor pump. Depth from the profile (absent/0 = off, classic genres).
+    sc = p.get("sidechain", 0.0)
+    if sc:
+        onsets = [b * block + s * step for b in range(nb) for s in p["k"]]
+        g = _sidechain_env(n, onsets, beat, depth=sc)
+        bass = bass * g
+        harm = harm * g
+        lead = lead * g
 
     mix = drums * 0.9 + bass * 0.85 + harm + lead
     return _finalize(mix, rng, p["wet"]), f"{genre} | {NOTE_NAMES[root_pc]} {sname} | {bpm}bpm"
