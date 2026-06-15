@@ -23,6 +23,30 @@ bool SyntheticSource::next(Sample &out) {
     return true;
 }
 
+bool LiveFileSource::next(Sample &out) {
+    out.clean_disconnect = false;
+    std::ifstream in(path_);
+    if (!in) {
+        out.rssi = 0.0;
+        out.seen = false; /* no feed yet -> honest absent (§4) */
+        return true;
+    }
+    std::string line, last;
+    while (std::getline(in, line)) {
+        if (!line.empty()) {
+            last = line;
+        }
+    }
+    out.seen = last.find("PRESENT") != std::string::npos;
+    double rssi = 0.0;
+    const std::size_t p = last.find("rssi=");
+    if (p != std::string::npos) {
+        rssi = std::atof(last.c_str() + p + 5);
+    }
+    out.rssi = rssi;
+    return true;
+}
+
 CoreBluetoothSource::CoreBluetoothSource(std::string companion_id, CompanionPin &pin)
     : scanner_(companion_id.empty() ? nullptr : cb_scanner_start(companion_id.c_str())),
       pin_(pin) {}
@@ -54,6 +78,11 @@ bool CoreBluetoothSource::next(Sample &out) {
 }
 
 std::unique_ptr<RssiSource> make_source(const std::string &companion_id, CompanionPin &pin) {
+    /* Bridge: if TETHER_FEED_FILE is set, take presence from an external Bluetooth-authorized
+     * scanner's feed (ble-probe) instead of our own (possibly TCC-denied) CoreBluetooth. */
+    if (const char *feed = std::getenv("TETHER_FEED_FILE"); feed && feed[0]) {
+        return std::unique_ptr<RssiSource>(new LiveFileSource(feed));
+    }
     /* Production (no env) → the real CoreBluetooth source ranging companion_id and
      * SHARING `pin` (the runtime's CompanionPin — so tether.unpair resets it live; an
      * empty companion_id keeps it honestly empty — no companion, no presence, §4).

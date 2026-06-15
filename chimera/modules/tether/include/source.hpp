@@ -40,6 +40,20 @@ class SyntheticSource : public RssiSource {
     std::size_t pos_;
 };
 
+/* Live-feed source (TE-bridge): reads presence from a text file that an EXTERNAL,
+ * already-Bluetooth-authorized scanner (the ble-probe tool) appends to. Each next()
+ * parses the last line ("... PRESENT  rssi= -60 dBm ..." -> seen + rssi; "absent" ->
+ * not seen). Lets the dead-man run on ble-probe's working Bluetooth grant when the
+ * tether daemon itself is denied TCC (a bridge while the clean grant fix lands). */
+class LiveFileSource : public RssiSource {
+  public:
+    explicit LiveFileSource(std::string path) : path_(std::move(path)) {}
+    bool next(Sample &out) override;
+
+  private:
+    std::string path_;
+};
+
 /* The real BLE source — a CoreBluetooth (.mm) central scanner that ranges the
  * companion advertising `companion_id` (a BLE service UUID). Backed by cb_scanner.mm
  * (manual-tier: Bluetooth hardware + TCC). An empty companion_id, Bluetooth off, or a
