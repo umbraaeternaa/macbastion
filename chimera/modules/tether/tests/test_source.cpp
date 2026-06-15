@@ -76,6 +76,28 @@ static void test_live_file_source_parses_feed(void) {
     std::remove(path);
 }
 
+/* Presence decision (anti-spoof × random-address): heard on the service UUID is enough UNLESS
+ * identity-pinning is enabled. A RANDOM-ADDRESS companion (e.g. a phone with BLE privacy / RPA)
+ * gets a rotating macOS identifier, so identity-pinning would reject it after each rotation —
+ * for such companions pinning is OFF and presence = heard-on-UUID. Stable-address companions
+ * keep the TOFU identity pin (a fake beacon on the same UUID is still rejected). */
+static void test_resolve_seen_random_address_skips_pin(void) {
+    tether::CompanionPin pin;
+    /* pin DISABLED (random-address): heard on UUID == present, identity ignored even as it rotates */
+    TEST_ASSERT_TRUE(tether::resolve_seen(true, false, pin, "AA:11:22:33:44:55"));
+    TEST_ASSERT_TRUE(tether::resolve_seen(true, false, pin, "BB:66:77:88:99:00")); /* rotated addr, still present */
+    TEST_ASSERT_FALSE(tether::resolve_seen(false, false, pin, "AA:11:22:33:44:55")); /* not heard -> absent */
+    TEST_ASSERT_FALSE(pin.paired()); /* pinning OFF never bound an identity */
+}
+
+static void test_resolve_seen_stable_address_enforces_pin(void) {
+    tether::CompanionPin pin;
+    /* pin ENABLED (stable-address): TOFU binds the first, rejects an impostor on the same UUID */
+    TEST_ASSERT_TRUE(tether::resolve_seen(true, true, pin, "A8:79:8D:90:1C:83"));  /* pins it */
+    TEST_ASSERT_TRUE(tether::resolve_seen(true, true, pin, "A8:79:8D:90:1C:83"));  /* same -> present */
+    TEST_ASSERT_FALSE(tether::resolve_seen(true, true, pin, "18:E7:B0:77:30:B3")); /* impostor rejected */
+}
+
 void run_source_tests(void) {
     RUN_TEST(test_normalize_lowercases_and_strips_separators);
     RUN_TEST(test_companion_matches_case_and_separator_insensitive);
@@ -83,4 +105,6 @@ void run_source_tests(void) {
     RUN_TEST(test_companion_empty_config_never_matches);
     RUN_TEST(test_source_borrows_shared_pin);
     RUN_TEST(test_live_file_source_parses_feed);
+    RUN_TEST(test_resolve_seen_random_address_skips_pin);
+    RUN_TEST(test_resolve_seen_stable_address_enforces_pin);
 }

@@ -64,7 +64,7 @@ class CoreBluetoothSource : public RssiSource {
     /* Borrows the runtime's CompanionPin (ONE shared object) — so tether.unpair clears
      * THAT pin and the change bites this running source. An empty companion_id keeps the
      * scanner unstarted (no Bluetooth/TCC) → an honest empty source (§4). */
-    CoreBluetoothSource(std::string companion_id, CompanionPin &pin);
+    CoreBluetoothSource(std::string companion_id, CompanionPin &pin, bool pin_enabled = true);
     ~CoreBluetoothSource() override;
     CoreBluetoothSource(const CoreBluetoothSource &) = delete;
     CoreBluetoothSource &operator=(const CoreBluetoothSource &) = delete;
@@ -73,8 +73,9 @@ class CoreBluetoothSource : public RssiSource {
     bool pinned() const { return pin_.paired(); }
 
   private:
-    void *scanner_;     /* opaque cb_scanner_t* (cb_scanner.mm); nullptr when unconfigured */
-    CompanionPin &pin_; /* anti-spoof: SHARED with the runtime (tether.unpair clears it) */
+    void *scanner_;      /* opaque cb_scanner_t* (cb_scanner.mm); nullptr when unconfigured */
+    CompanionPin &pin_;  /* anti-spoof: SHARED with the runtime (tether.unpair clears it) */
+    bool pin_enabled_;   /* false for a RANDOM-ADDRESS companion (identity rotates, can't pin) */
 };
 
 /* Choose the daemon's source. With TETHER_SYNTHETIC_RSSI set (tests/dev only) →
@@ -82,7 +83,8 @@ class CoreBluetoothSource : public RssiSource {
  * `companion_id` and SHARING `pin` (the runtime's CompanionPin — so tether.unpair
  * resets the live source). Production never sets the env; an empty companion_id
  * keeps the source honestly empty (no companion configured → no presence). */
-std::unique_ptr<RssiSource> make_source(const std::string &companion_id, CompanionPin &pin);
+std::unique_ptr<RssiSource> make_source(const std::string &companion_id, CompanionPin &pin,
+                                        bool pin_enabled = true);
 
 /* Companion identity (TE-real). A BLE/Classic address as macOS reports it
  * ("A8:79:8D:90:1C:83"). normalize strips separators + lowercases so the same
@@ -91,6 +93,12 @@ std::unique_ptr<RssiSource> make_source(const std::string &companion_id, Compani
  * matches (no companion → never claim presence, MANIFESTO §4). Pure + hermetic. */
 std::string normalize_bt_addr(const std::string &addr);
 bool companion_matches(const std::string &configured, const std::string &device);
+
+/* Presence decision (anti-spoof × random-address). Heard on the service UUID (scanner_seen) is
+ * enough UNLESS pin_enabled — then the discovered identity must match the TOFU pin (anti-spoof
+ * for stable-address companions). A random-address companion sets pin_enabled=false (its macOS
+ * identifier rotates, so identity-pinning would reject it after each rotation). Pure + hermetic. */
+bool resolve_seen(bool scanner_seen, bool pin_enabled, CompanionPin &pin, const std::string &device_id);
 
 } // namespace tether
 

@@ -47,9 +47,9 @@ bool LiveFileSource::next(Sample &out) {
     return true;
 }
 
-CoreBluetoothSource::CoreBluetoothSource(std::string companion_id, CompanionPin &pin)
+CoreBluetoothSource::CoreBluetoothSource(std::string companion_id, CompanionPin &pin, bool pin_enabled)
     : scanner_(companion_id.empty() ? nullptr : cb_scanner_start(companion_id.c_str())),
-      pin_(pin) {}
+      pin_(pin), pin_enabled_(pin_enabled) {}
 
 CoreBluetoothSource::~CoreBluetoothSource() {
     if (scanner_) {
@@ -72,12 +72,13 @@ bool CoreBluetoothSource::next(Sample &out) {
     /* Anti-spoof: a heard advertiser counts as the companion only if it IS the pinned
      * device (TOFU). A different device on the same service UUID is ignored — a fake
      * beacon can no longer pose as the companion (presence never fabricated, §4). */
-    out.seen = (seen != 0) && pin_.accept(device_id);
+    out.seen = resolve_seen(seen != 0, pin_enabled_, pin_, device_id);
     out.clean_disconnect = false; /* BLE adv ranging has no clean-disconnect signal */
     return true;
 }
 
-std::unique_ptr<RssiSource> make_source(const std::string &companion_id, CompanionPin &pin) {
+std::unique_ptr<RssiSource> make_source(const std::string &companion_id, CompanionPin &pin,
+                                        bool pin_enabled) {
     /* Bridge: if TETHER_FEED_FILE is set, take presence from an external Bluetooth-authorized
      * scanner's feed (ble-probe) instead of our own (possibly TCC-denied) CoreBluetooth. */
     if (const char *feed = std::getenv("TETHER_FEED_FILE"); feed && feed[0]) {
@@ -90,11 +91,11 @@ std::unique_ptr<RssiSource> make_source(const std::string &companion_id, Compani
      * sequence. Format: {"samples":[{"rssi":-50,"seen":true,"clean":false}, ...]}. */
     const char *path = std::getenv("TETHER_SYNTHETIC_RSSI");
     if (!path) {
-        return std::unique_ptr<RssiSource>(new CoreBluetoothSource(companion_id, pin));
+        return std::unique_ptr<RssiSource>(new CoreBluetoothSource(companion_id, pin, pin_enabled));
     }
     std::ifstream in(path);
     if (!in) {
-        return std::unique_ptr<RssiSource>(new CoreBluetoothSource(companion_id, pin));
+        return std::unique_ptr<RssiSource>(new CoreBluetoothSource(companion_id, pin, pin_enabled));
     }
     std::stringstream ss;
     ss << in.rdbuf();
@@ -102,7 +103,7 @@ std::unique_ptr<RssiSource> make_source(const std::string &companion_id, Compani
 
     cJSON *root = cJSON_Parse(json.c_str());
     if (!root) {
-        return std::unique_ptr<RssiSource>(new CoreBluetoothSource(companion_id, pin));
+        return std::unique_ptr<RssiSource>(new CoreBluetoothSource(companion_id, pin, pin_enabled));
     }
     std::vector<Sample> samples;
     cJSON *arr = cJSON_GetObjectItemCaseSensitive(root, "samples");
@@ -121,7 +122,7 @@ std::unique_ptr<RssiSource> make_source(const std::string &companion_id, Compani
     }
     cJSON_Delete(root);
     if (samples.empty()) {
-        return std::unique_ptr<RssiSource>(new CoreBluetoothSource(companion_id, pin));
+        return std::unique_ptr<RssiSource>(new CoreBluetoothSource(companion_id, pin, pin_enabled));
     }
     return std::unique_ptr<RssiSource>(new SyntheticSource(std::move(samples)));
 }
@@ -147,6 +148,17 @@ bool companion_matches(const std::string &configured, const std::string &device)
         return false;
     }
     return normalize_bt_addr(configured) == normalize_bt_addr(device);
+}
+
+bool resolve_seen(bool scanner_seen, bool pin_enabled, CompanionPin &pin,
+                  const std::string &device_id) {
+    if (!scanner_seen) {
+        return false; /* not heard on the service UUID -> absent (§4) */
+    }
+    if (!pin_enabled) {
+        return true; /* random-address companion: presence = heard on the UUID (no identity pin) */
+    }
+    return pin.accept(device_id); /* stable-address: TOFU identity pin (anti-spoof) */
 }
 
 } // namespace tether

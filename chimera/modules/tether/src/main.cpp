@@ -34,7 +34,7 @@ void core_socket_path(char *out, std::size_t outsz) {
 /* Apply config.json over runtime + daemon defaults (non-fatal — a missing or
  * malformed file leaves defaults intact, like MIRROR). */
 void apply_config(tether::TetherRuntime &rt, tether::DaemonConfig &dcfg,
-                  std::string &companion_id, const char *path) {
+                  std::string &companion_id, bool &random_address, const char *path) {
     if (!path) {
         return;
     }
@@ -66,6 +66,13 @@ void apply_config(tether::TetherRuntime &rt, tether::DaemonConfig &dcfg,
     if (cJSON_IsNumber(grace)) {
         rt.escalation.grace_ms = static_cast<long>(grace->valuedouble);
     }
+    /* companion_random_address: true for a phone using BLE privacy (rotating RPA) — then identity
+     * pinning is OFF (it would reject the companion after each address rotation) and presence is
+     * matched on the service UUID alone. Default false keeps the anti-spoof identity pin. */
+    cJSON *ra = cJSON_GetObjectItemCaseSensitive(root, "companion_random_address");
+    if (cJSON_IsBool(ra)) {
+        random_address = cJSON_IsTrue(ra);
+    }
     cJSON_Delete(root);
 }
 
@@ -81,6 +88,7 @@ int main(int argc, char **argv) {
     tether::TetherRuntime rt;
     tether::DaemonConfig dcfg;
     std::string companion_id;
+    bool companion_random_address = false; /* config: a phone using a rotating RPA -> no identity pin */
     /* Config path: explicit TETHER_CONFIG_PATH wins; otherwise the spec's default
      * ~/.config/chimera/tether/config.json. The supervisor spawns modules with a minimal
      * env (no TETHER_CONFIG_PATH), so without this default the organism-launched daemon
@@ -91,7 +99,8 @@ int main(int argc, char **argv) {
     } else if (const char *home = std::getenv("HOME"); home && home[0]) {
         cfg_path = std::string(home) + "/.config/chimera/tether/config.json";
     }
-    apply_config(rt, dcfg, companion_id, cfg_path.empty() ? nullptr : cfg_path.c_str());
+    apply_config(rt, dcfg, companion_id, companion_random_address,
+                 cfg_path.empty() ? nullptr : cfg_path.c_str());
     /* Env override (live testing): point TETHER at a companion UUID without editing
      * config — e.g. TETHER_COMPANION_ID=6368696D-6572-6100-0000-000000000001. */
     if (const char *env_cid = std::getenv("TETHER_COMPANION_ID"); env_cid && env_cid[0]) {
@@ -103,7 +112,8 @@ int main(int argc, char **argv) {
     /* Share the runtime's CompanionPin with the live BLE source: the source pins the
      * first companion seen (TOFU), and tether.unpair (which clears rt.pin) now resets
      * the running source — the anti-spoof recovery lever bites live. */
-    std::unique_ptr<tether::RssiSource> src = tether::make_source(companion_id, rt.pin);
+    std::unique_ptr<tether::RssiSource> src =
+        tether::make_source(companion_id, rt.pin, /*pin_enabled=*/!companion_random_address);
 
     char sock[1024];
     core_socket_path(sock, sizeof(sock));
