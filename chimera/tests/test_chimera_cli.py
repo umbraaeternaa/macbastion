@@ -14,6 +14,7 @@ from core.__main__ import (
     _launch_agent_path,
     _module_python,
     _spawn_argv,
+    external_agent_plist,
     launch_agent_plist,
     module_binary,
     parse_args,
@@ -52,6 +53,18 @@ def test_spawn_argv_native_wrapped_through_disclaim(tmp_path, monkeypatch):
 def test_disclaim_launcher_path():
     # Resolves to tools/tcc-disclaim/tcc-disclaim under the chimera root.
     assert _disclaim_launcher() == _chimera_root() / "tools" / "tcc-disclaim" / "tcc-disclaim"
+
+
+def test_tether_external_agent_plist(tmp_path):
+    # TETHER's own LaunchAgent: launchd runs the binary DIRECTLY (own TCC subject → Bluetooth
+    # grant binds), NOT via tcc-disclaim; reads ~/.config via HOME; finds core via SOCKET_DIR.
+    xml = external_agent_plist("tether", tmp_path)
+    assert "<string>com.umbra.chimera.tether</string>" in xml
+    assert f"<string>{module_binary('tether')}</string>" in xml
+    assert "tcc-disclaim" not in xml  # launchd gives it a clean TCC identity — no wrapper
+    assert "<key>HOME</key>" in xml  # so it resolves ~/.config/chimera/tether/config.json
+    assert str(tmp_path) in xml  # CHIMERA_SOCKET_DIR -> finds core.sock
+    assert "<key>KeepAlive</key>" in xml and "<key>RunAtLoad</key>" in xml
 
 
 def test_spawn_argv_python_module(tmp_path, monkeypatch):

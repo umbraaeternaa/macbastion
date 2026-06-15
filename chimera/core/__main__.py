@@ -263,9 +263,46 @@ def launch_agent_plist(socket_dir: Path) -> str:
     )
 
 
+def external_agent_plist(name: str, socket_dir: Path) -> str:
+    """LaunchAgent plist for an EXTERNAL native module (e.g. TETHER): launchd runs the module
+    binary DIRECTLY so the daemon is its OWN TCC subject — its Bluetooth / Accessibility grant
+    binds, unlike a supervisor-spawned child (which TCC attributes to the Python interpreter and
+    silently denies). It connects to the SAME core socket; KeepAlive retries until core's socket
+    exists and restarts it on crash. HOME is set so it resolves ~/.config/chimera/<name>/."""
+    binary = module_binary(name)
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
+        '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+        '<plist version="1.0">\n'
+        "<dict>\n"
+        "    <key>Label</key>\n"
+        f"    <string>com.umbra.chimera.{name}</string>\n"
+        "    <key>ProgramArguments</key>\n"
+        f"    <array>\n        <string>{binary}</string>\n    </array>\n"
+        "    <key>EnvironmentVariables</key>\n"
+        "    <dict>\n"
+        "        <key>CHIMERA_SOCKET_DIR</key>\n"
+        f"        <string>{socket_dir}</string>\n"
+        "        <key>HOME</key>\n"
+        f"        <string>{Path.home()}</string>\n"
+        "    </dict>\n"
+        "    <key>WorkingDirectory</key>\n"
+        f"    <string>{binary.parent}</string>\n"
+        "    <key>RunAtLoad</key>\n    <true/>\n"
+        "    <key>KeepAlive</key>\n    <true/>\n"
+        "</dict>\n</plist>\n"
+    )
+
+
 def _launch_agent_path() -> Path:
     """Where CHIMERA's persistence agent lives: the per-user LaunchAgents dir."""
     return Path.home() / "Library/LaunchAgents/com.umbra.chimera.plist"
+
+
+def _external_agent_path(name: str) -> Path:
+    """Per-user LaunchAgent path for an external module: com.umbra.chimera.<name>.plist."""
+    return Path.home() / f"Library/LaunchAgents/com.umbra.chimera.{name}.plist"
 
 
 def _bootstrap_argv(plist: Path) -> list[str]:
@@ -296,6 +333,16 @@ def _install(config: CoreConfig) -> int:
         print(f"wrote plist at {plist}, but `launchctl bootstrap` failed:")
         print(f"  {done.stderr.strip()}")
         return 1
+    # External modules get their OWN LaunchAgent (own TCC subject — e.g. TETHER's Bluetooth
+    # grant binds). Write + (re)load each; failure is non-fatal (the rest of the organism runs).
+    for spec in CHIMERA_MODULES:
+        if not spec.external:
+            continue
+        ap = _external_agent_path(spec.name)
+        ap.write_text(external_agent_plist(spec.name, config.socket_dir))
+        subprocess.run(_bootout_argv(ap), capture_output=True, check=False)  # noqa: S603
+        subprocess.run(_bootstrap_argv(ap), capture_output=True, check=False)  # noqa: S603
+        print(f"  external agent: {spec.name} -> {ap}")
     print(f"CHIMERA installed — runs at login, restarts on crash.\n  plist: {plist}")
     print("  remove any time with:  python -m core uninstall")
     return 0
@@ -308,6 +355,13 @@ def _uninstall() -> int:
     subprocess.run(_bootout_argv(plist), capture_output=True, check=False)  # noqa: S603
     existed = plist.exists()
     plist.unlink(missing_ok=True)
+    # Also unload + remove each external module's own agent (e.g. TETHER).
+    for spec in CHIMERA_MODULES:
+        if not spec.external:
+            continue
+        ap = _external_agent_path(spec.name)
+        subprocess.run(_bootout_argv(ap), capture_output=True, check=False)  # noqa: S603
+        ap.unlink(missing_ok=True)
     if existed:
         print(f"CHIMERA uninstalled — agent unloaded, plist removed ({plist}).")
     else:
