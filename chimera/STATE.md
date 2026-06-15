@@ -1,6 +1,6 @@
 # CHIMERA — Project State Snapshot
 
-> Updated: 2026-06-13
+> Updated: 2026-06-15
 > Version: 0.1.0-alpha (genesis)
 
 ---
@@ -15,7 +15,7 @@
 | MIRROR | C     | `a951c92` | §5.4 — behavioral noise inject  |
 | PULSE  | C+Py  | `5f5b64a` | §5.5 — cognitive load monitor   |
 | VAULT  | C     | `1fdc517` | §5.6 — time-locked storage      |
-| TETHER | C++   | `62d8636` | §5.7 — proximity dead-man       |
+| TETHER | C++   | `bc79453` | §5.7 — proximity dead-man       |
 | PURGE  | C+Asm | `4a3c9df` | §5.8 — secure erasure (panic)   |
 
 All 8 of 8 module specifications complete. Part 2 (§5) closed.
@@ -66,34 +66,35 @@ the architectural document is whole and authoritative. No spec work remains.
 
 ## Code status
 
-**LATEST (Day 23, 2026-06-15): live dead-man WORKING via ble-probe bridge + TETHER own LaunchAgent + anti-spoof × random-address. ⚠️ OPEN TAIL #1 narrowed to the clean grant.**
-The dead-man is **PROVEN end-to-end on the operator's real Samsung + Mac**: beacon OFF → `tether.absent →
-vault.lock` + `escalation → shim.lock` (his screen actually locked — real teeth); beacon ON → `tether.recovered
-→ stand-down`. Three pieces landed:
+**LATEST (Day 23, 2026-06-15): ✅ OPEN TAIL #1 CLOSED — the dead-man is FULLY NATIVE.** TETHER's Bluetooth grant
+binds to the daemon via a signed **`.app` bundle**; the ble-probe bridge is **DROPPED**; the native dead-man is
+**reboot-persistent**. Commit `bc79453`.
+Root cause: a bare signed Mach-O launched by a LaunchAgent is TCC-attributed by absolute path (client_type=1) and
+the Bluetooth grant never binds to the daemon — denied across tcc-disclaim + own-LaunchAgent + re-sign attempts,
+while ble-probe (same `cb_scanner`, interactive) worked. **Fix: wrap tether in a real `.app` bundle**
+(`CFBundleIdentifier` + `Info.plist`, signed AS the bundle) → macOS attributes the TCC request to the bundle id
+(client_type=0), so the grant binds + persists across rebuilds.
 
-- **TETHER as its OWN LaunchAgent** — `ModuleSpec.external`; supervisor skips external in BOTH `up()` and
-  `handle_failure` (else core respawns a duplicate); `external_agent_plist` (runs the binary directly =
-  own TCC subject, no tcc-disclaim) + install/uninstall wiring. Commits `7289996`, `3ce2ecc`, `ed18af1`.
-- **ble-probe bridge** (`LiveFileSource`, `6069b25`): the `ble-probe` tool IS Bluetooth-authorized (run
-  interactively) and sees the companion; tether reads its feed (`TETHER_FEED_FILE`) and runs its FULL
-  Monitor/ladder/events on it. THIS makes the live dead-man work TODAY (rides ble-probe's grant). Runs now
-  as orphan processes: `ble-probe > /tmp/chimera_feed` + a feed-tether (`CHIMERA_SOCKET_DIR` at the live
-  run dir) — **NOT yet reboot-persistent**.
-- **anti-spoof × random-address** (`resolve_seen`, `62d8636`): the Samsung advertises a rotating RPA
-  ("RANDOM ADDRESS"), so identity-pinning rejected it after each rotation (the Day-22 oscillation cause).
-  `resolve_seen`: heard-on-service-UUID = present unless `pin_enabled`; `companion_random_address: true` in
-  the operator's `~/.config/chimera/tether/config.json` turns the identity pin OFF for his phone. tether 61→64.
+- **The bundle** (`modules/tether/tether.app`, gitignored build artifact): `make app` assembles
+  `Contents/{MacOS/tether,Info.plist}` (`src/tether.Info.plist`: CFBundleIdentifier `com.umbra.chimera.tether`,
+  LSUIElement, NSBluetoothAlwaysUsageDescription); `build.sh` assembles + `sign.sh` signs the bundle with the
+  Apple Development identity (team 3646TFH55D), so the grant survives rebuilds (stable designated requirement).
+- **Wiring**: `ModuleSpec.app_bundle` (tether=True); `module_app_binary()`; `external_agent_plist(…, app_bundle)`
+  launches the `.app` inner binary with **NO `TETHER_FEED_FILE`** (real `CoreBluetoothSource`, not the bridge);
+  `_install` passes `spec.app_bundle`. test updated; /check-relevant subset (ruff + mypy --strict + cli) GREEN.
+- **PROVEN live on the operator's real Samsung + Mac**: the bundle, launched in launchd context, reached
+  `CBManagerStatePoweredOn` and ranged the beacon (RSSI −78→−56 dBm climbing — real ranging, not the bridge).
+  Switched live: bridge orphans killed, native tether LaunchAgent (`~/Library/LaunchAgents/com.umbra.chimera.tether.plist`,
+  own TCC subject — first had to `launchctl enable` a stale-`disabled` label) registered with core; a `kickstart -k`
+  cleared a stale `[failed]` lifecycle → all **8/8 registered** with the native tether; reflexes fire `[ok]`
+  (tether.absent→vault.lock, recovered→stand-down). The core-restart reconnect validates the reboot/login path.
 
-⚠️ **OPEN TAIL #1 (narrowed): the clean Bluetooth grant for the tether DAEMON.** Even tether as its own
-LaunchAgent (own responsible process) — and even re-signed with ble-probe's identifier — is STILL TCC-denied
-for Bluetooth, while ble-probe (same `cb_scanner` code, interactive) works. macOS won't honour tether's grant
-as a daemon. A **deep-research workflow is running** for the exact recipe (likely a proper `.app` bundle, or a
-TCC reset+re-grant). Until then the **bridge is the working interim**. NEXT: apply the research's clean grant
-fix → drop the bridge → make it reboot-persistent (LaunchAgents). Teardown-crash (`malloc … 0x100000000`,
-= image base, a free in main's destructor chain on SIGTERM) — INVESTIGATED Day 23: does NOT reproduce in 4
-clean controlled runs (-O0, -O2+g, signed, 12s-lived); only surfaced during the chaotic duplicate-tether /
-rapid `kickstart -k` storm, which the `handle_failure` external-skip fix resolved. Zero runtime impact;
-NOT masked; low-priority — re-chase only if it recurs in clean single-tether operation (then there's a repro).
+PRIOR pieces (still in force): TETHER own LaunchAgent (`ModuleSpec.external`; supervisor skips external in `up()` +
+`handle_failure`; `7289996`/`3ce2ecc`/`ed18af1`); anti-spoof × random-address (`resolve_seen`, `62d8636` — the
+Samsung's rotating RPA turns the identity pin OFF via `companion_random_address: true`). The ble-probe bridge +
+`LiveFileSource` (`6069b25`) REMAIN in the codebase as a fallback but are **NO LONGER used at runtime**.
+Teardown-crash (`malloc … 0x100000000`) — INVESTIGATED Day 23: does NOT reproduce in clean runs; chaos-artifact,
+zero runtime impact, NOT masked, low-priority — re-chase only if it recurs in clean single-tether operation.
 
 **PRIOR (Day 22): TCC responsibility launcher — tcc-disclaim.** `tools/tcc-disclaim/` posix_spawns a module
 with `responsibility_spawnattrs_setdisclaim()` so a supervisor-spawned daemon is its own TCC subject (commits
