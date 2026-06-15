@@ -66,6 +66,17 @@ the architectural document is whole and authoritative. No spec work remains.
 
 ## Code status
 
+**LATEST (Day 22, 2026-06-15): TETHER companion pinning (anti-spoof) — logic + live wiring.**
+`CompanionPin` (trust-on-first-use) binds presence to ONE device identity: the first companion
+seen is pinned (normalised via `normalize_bt_addr`); any other device advertising the same service
+UUID is rejected; `unpair()` re-pins. Wired live — `cb_scanner.mm` captures `CBPeripheral.identifier`
+→ `CoreBluetoothSource` feeds `CompanionPin`, so a heard advertiser counts as present ONLY if it IS
+the pinned device. Verified on hardware (tether still senses the Samsung at ~-63 dBm; a 2nd
+UUID-advertiser is now rejected). Closes the BLE-spoofability gap the dead-man demo itself flags.
+tether **52 → 57** tests; RED→GREEN→live. Honest tail (§4): the pin is per-session (in-memory) —
+persisting it across restarts / explicit operator pairing is a later slice. Commits `9600c19`
+(logic) + `1faf267` (live wiring).
+
 Code phase: all 8 core modules implemented (ETAP 2 closed). ETAP 3 underway —
 Step 0 (CHAFF spec align), Step 1A (config request_timeout_s), Step 1B
 (Router 4A), Step 2 (CHAFF: 2A bootstrap, 2B RED, 2C GREEN, 2D daemon + integration),
