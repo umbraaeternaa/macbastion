@@ -66,7 +66,31 @@ the architectural document is whole and authoritative. No spec work remains.
 
 ## Code status
 
-**LATEST (Day 22, 2026-06-15): TETHER anti-spoof — source-sharing wiring (unpair now bites live).**
+**LATEST (Day 22, 2026-06-15): TCC responsibility launcher — tcc-disclaim (native daemons own their TCC subject). ⚠️ OPEN TAIL #1.**
+New `tools/tcc-disclaim/` launcher posix_spawns a module with `responsibility_spawnattrs_setdisclaim()`, so
+a supervisor-spawned native daemon becomes its OWN TCC subject. The supervisor now spawns every native module
+THROUGH it (`core/__main__._spawn_argv` + `_disclaim_launcher`; graceful fallback if unbuilt; python modules
+unwrapped). Why: macOS attributes a daemon's permission request to the RESPONSIBLE process, which for a
+supervisor (python) child resolves to the interpreter (no usage string) → TETHER's Bluetooth was silently
+DENIED with no prompt, so the dead-man went blind after the rebuild+resign. The launcher is a faithful proxy
+(forwards SIGTERM/SIGINT, propagates exit status); proxy contract 6/6 GREEN; CLI tests 710→712, /check ALL
+GREEN. Commits `d987770` (launcher) + `6e40703` (supervisor wiring). The disclaim PROVABLY works for
+prompting: running `tcc-disclaim ./tether` in a real Terminal raised the "tether" Bluetooth prompt and the
+grant now shows in System Settings → Bluetooth (ON).
+
+⚠️ **OPEN TAIL #1 (resume here next session): the SUPERVISED disclaimed tether is still NOT authorized.**
+Despite "tether" ON in the Bluetooth grants AND the Samsung beacon at -46 dBm (confirmed live by ble-probe,
+which has its own grant), the supervisor-launched tether stays absent. So disclaim severs the immediate
+parent but, in the launchd→python→launcher→tether chain, macOS still won't authorize the daemon the way it
+does from Terminal. **The live dead-man is BLIND right now** (false absent→L1→L2 cycles every ~90s; vault
+stays locked = safe; L3 not armed = nothing destructive). The CODE is all shipped — this is last-mile TCC
+plumbing. **Likely real fix: make TETHER its OWN LaunchAgent** (its own launchd job → naturally its own
+responsible process, no disclaim hack), or research the responsible-process chain / grant python the cap.
+Separate latent bug surfaced: tether crashes on teardown (Ctrl-C/SIGTERM) — `malloc: pointer being freed was
+not allocated (0x100000000)` — teardown only, no runtime impact; fix alongside. (Before this session the old
+binary's grant worked; the resign broke it — restoring it is exactly OPEN TAIL #1.)
+
+**PRIOR (Day 22): TETHER anti-spoof — source-sharing wiring (unpair now bites live).**
 The live `CoreBluetoothSource` now BORROWS the runtime's `CompanionPin` by reference (ONE shared
 object) instead of owning a private copy: `make_source(companion_id, CompanionPin&)`, `main` passes
 `rt.pin`, and a `pinned()` accessor exposes the live bond. So `tether.unpair` (which clears `rt.pin`)
