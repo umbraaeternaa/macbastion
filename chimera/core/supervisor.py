@@ -26,6 +26,8 @@ class ModuleSpec:
     name: str
     depends_on: tuple[str, ...] = ()
     python: bool = False  # True -> launched as `python -m <name>`, not a native binary
+    external: bool = False  # True -> launched by its OWN LaunchAgent (its own TCC subject,
+    #                         e.g. TETHER's Bluetooth grant); the supervisor does NOT spawn it
 
 
 # The full organism: one `chimera up` raises all eight organs. Native modules are their
@@ -37,7 +39,7 @@ CHIMERA_MODULES: tuple[ModuleSpec, ...] = (
     ModuleSpec("echo"),
     ModuleSpec("mirror"),
     ModuleSpec("vault"),
-    ModuleSpec("tether"),
+    ModuleSpec("tether", external=True),  # own LaunchAgent → own Bluetooth TCC grant (§7.10)
     ModuleSpec("purge"),
     ModuleSpec("oracle", python=True),
     ModuleSpec("pulse", python=True),
@@ -104,8 +106,12 @@ class Supervisor:
         forever (§7.3 fail-closed, not fail-stuck)."""
         for wave in topological_waves(self._specs):
             for spec in wave:
+                if spec.external:
+                    continue  # launched by its own LaunchAgent, not us
                 self._procs[spec.name] = self._spawn(spec)
             for spec in wave:
+                if spec.external:
+                    continue
                 if not await self._await_registered(spec.name):
                     self._failed.add(spec.name)
 

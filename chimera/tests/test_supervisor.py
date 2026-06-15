@@ -17,6 +17,14 @@ def test_chimera_modules_covers_all_eight_organs():
     topological_waves(list(CHIMERA_MODULES))  # still valid waves (no cycle / unknown dep)
 
 
+def test_tether_is_external_others_not():
+    # TETHER runs as its OWN LaunchAgent so it is its own TCC subject (Bluetooth grant binds);
+    # the supervisor must NOT spawn it. Every other organ stays supervisor-spawned.
+    tether = next(s for s in CHIMERA_MODULES if s.name == "tether")
+    assert tether.external is True
+    assert all(not s.external for s in CHIMERA_MODULES if s.name != "tether")
+
+
 def _names(waves):
     return [sorted(s.name for s in wave) for wave in waves]
 
@@ -89,6 +97,26 @@ async def test_up_spawns_in_wave_order():
     await sup.up()
     assert spawned == ["a", "b"]  # wave 0 (a) before wave 1 (b)
     assert sup.failed == set()
+
+
+async def test_up_skips_external_modules():
+    # external modules are launched by their own LaunchAgent, not the supervisor — up() must
+    # neither spawn them nor mark them failed (they register with core on their own).
+    spawned = []
+
+    def spawn(spec):
+        spawned.append(spec.name)
+        return _FakeProc()
+
+    sup = Supervisor(
+        [ModuleSpec("a"), ModuleSpec("t", external=True)],
+        spawn=spawn,
+        is_registered=lambda n: True,
+        wave_timeout=1.0,
+    )
+    await sup.up()
+    assert spawned == ["a"]  # "t" (external) was NOT spawned
+    assert sup.failed == set()  # nor marked failed
 
 
 async def test_up_timeout_does_not_hang():
