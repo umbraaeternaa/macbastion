@@ -1,6 +1,8 @@
 /* Contract for companion pinning (anti-spoof, TE-pin). RED: pin.cpp trusts any non-empty
  * device (no pinning), so the impostor-rejection + paired-state contracts FAIL; the
  * empty-id, first-sight and same-device cases pass coincidentally until GREEN. */
+#include <cstdio>
+
 #include "unity.h"
 
 #include "pin.hpp"
@@ -45,10 +47,43 @@ static void test_unpair_repins(void) {
     TEST_ASSERT_EQUAL_STRING("112233445566", p.pinned().c_str()); /* FAILS in RED */
 }
 
+static const char *kPinPath = "/tmp/chimera_test_pin.dat";
+
+/* persistence: a pinned companion SURVIVES a restart (new instance, same state file). */
+static void test_pin_persists_across_restart(void) {
+    std::remove(kPinPath);
+    {
+        CompanionPin p(kPinPath);
+        p.accept("A8:79:8D:90:1C:83"); /* pins + should persist to disk */
+    }
+    CompanionPin p2(kPinPath);                         /* "restart" — should load the saved pin */
+    TEST_ASSERT_TRUE(p2.paired());                     /* FAILS in RED (not persisted) */
+    TEST_ASSERT_FALSE(p2.accept("11:22:33:44:55:66")); /* impostor still rejected; FAILS in RED */
+    std::remove(kPinPath);
+}
+
+/* unpair() clears the persisted pin too (a new phone re-pairs cleanly). */
+static void test_unpair_clears_persisted_pin(void) {
+    std::remove(kPinPath);
+    {
+        CompanionPin p(kPinPath);
+        p.accept("A8:79:8D:90:1C:83");
+    }
+    {
+        CompanionPin p2(kPinPath);
+        p2.unpair();
+    }
+    CompanionPin p3(kPinPath); /* fresh load after unpair -> nothing pinned */
+    TEST_ASSERT_FALSE(p3.paired());
+    std::remove(kPinPath);
+}
+
 void run_pin_tests(void) {
     RUN_TEST(test_empty_never_matches);
     RUN_TEST(test_first_device_pins);
     RUN_TEST(test_same_device_matches);
     RUN_TEST(test_impostor_rejected);
     RUN_TEST(test_unpair_repins);
+    RUN_TEST(test_pin_persists_across_restart);
+    RUN_TEST(test_unpair_clears_persisted_pin);
 }
