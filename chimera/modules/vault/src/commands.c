@@ -1,8 +1,9 @@
-/* VAULT IPC command dispatch — vault.* over JSON-RPC.
- *   VD-1: vault.status (real); the unlock engine gated -31004 (no faked behaviour, MANIFESTO §4).
- *   VD-2: vault.create / vault.list — a small registry persisted to <state_dir>/vault/registry.json
- *         (the same state Tier-0 wipes). policy_dsl is validated through the real parser.
- * Still gated: unlock / lock / policy.update / add_file / delete (keychain KEK + mount slices). */
+/* VAULT IPC command dispatch — vault.* over JSON-RPC. The FULL engine is real and wired (VD-1..VD-9b):
+ *   vault.status / create / list / unlock / lock / add_file / delete / policy.update all run real
+ *   handlers — Keychain KEK (VD-3), Argon2id key derivation (VD-4b), XChaCha20-Poly1305 seal/open
+ *   (VD-5/6), RAM-backed mount (VD-9a/b). Registry persists to <state_dir>/vault/registry.json (the
+ *   same state Tier-0 wipes); policy_dsl is validated through the real parser. The -31004 returns
+ *   here are genuine RUNTIME errors ("vault not open" / "key unavailable"), NOT feature gates. */
 #include "commands.h"
 
 #include <stdio.h>

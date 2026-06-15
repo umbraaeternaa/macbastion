@@ -1,7 +1,7 @@
 /* VAULT daemon entry (§5.6 / §6, VD-1). Reads CHIMERA_SOCKET_DIR (default ~/.config/chimera/run),
  * connects OUT to core's command socket, registers the vault.* surface, then runs the IPC serve
- * loop. The keychain/derive/mount engine is gated, so the engine methods answer -31004 —
- * registering them is safe. */
+ * loop. The keychain/derive/mount engine is REAL and wired (VD-1..VD-9b) — libsodium crypto runs
+ * live; a -31004 from a method is a genuine runtime error, not a feature gate. */
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>

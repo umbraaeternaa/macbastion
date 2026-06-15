@@ -1,8 +1,9 @@
 /* daemon — single-threaded IPC serve loop (§5.6 / §6, VD-1).
  *
  * poll(500ms) -> read + classify + dispatch routed vault.* commands; heartbeat when due.
- * RESPONSE acks + events are ignored. Exits on EOF (core gone) or SIGTERM/SIGINT. The engine
- * is gated, so the engine methods answer -31004 — nothing dangerous runs in this loop. */
+ * RESPONSE acks + events are ignored. Exits on EOF (core gone) or SIGTERM/SIGINT. The engine is
+ * REAL and wired (VD-1..VD-9b) — libsodium crypto runs live in this loop; a -31004 is a genuine
+ * runtime error, not a feature gate. */
 #include "daemon.h"
 
 #include <signal.h>
