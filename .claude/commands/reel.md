@@ -51,10 +51,33 @@ languages · galaxies · deep space · depth · rich colour as your toolbox.
 `music.py` is a local multi-genre synth (numpy/scipy, royalty-free, no cloud). BEFORE
 composing, **WebSearch the current music trends** — what BPM / genres / sub-styles are
 charting now — and let that steer the pick. Choose from the full roster:
-pop · techno · drum-n-bass · jungle · deep house · deep progressive · electronic/electro ·
-new wave · indie · indie-pop · **jazz · blues · classical** (`music.py --genre NAME`; omit
-to randomise). Aim for a track that is genuinely DIFFERENT every run AND genuinely BEAUTIFUL /
-likeable / on-trend — real melody + warm timbres, not just a beat over a riff.
+**tech_house** · house · techno · drum-n-bass · jungle · deep house · deep progressive ·
+electronic/electro · new wave · indie · indie-pop · **jazz · blues · classical**
+(`music.py --genre NAME`; omit to randomise). Aim for a track that is genuinely DIFFERENT
+every run AND genuinely BEAUTIFUL / likeable / on-trend — real melody + warm timbres, not
+just a beat over a riff.
+
+#### Studio palette — ORIGINAL synthesis, mandatory (operator directive, Day 22, standing)
+
+Compose from a FULL studio-grade palette — but **every sound ORIGINALLY SYNTHESISED by us in
+`music.py`. NEVER a sample/loop file from Ableton or anyone else** (that would be plagiarism /
+copyright exposure on the reel — the operator forbade it). We recreate the *kinds* of sounds,
+not the files. The palette the engine must draw on (modelled on Ableton Live's library) and
+ACTUALLY USE each run — layered percussion, fuller instrumentation, FX transitions, not the
+bare 4-voice grid:
+
+- **Drum kit:** kick (house/techno/club/808/acoustic), snare, clap, rim/rimshot, toms
+  (lo/mid/hi), closed + open hats, ride, crash, cowbell, tambourine
+- **Percussion:** shaker, congas/bongos, latin perc
+- **Bass:** sub, reese, rolling, acid/303, FM bass, pluck bass
+- **Keys:** grand piano, electric piano, organ, clav
+- **Synths:** supersaw lead, FM/operator, wavetable-morph, pluck, bell, stab, synth-brass, pads
+- **Orchestral:** strings, brass, woodwinds, mallets/marimba, timpani, pizzicato
+- **Textures / FX:** drone, spectral/ambient wash, risers, impacts, downsweeps (as transitions)
+- **Grooves:** swing / shuffle templates
+
+Keep GROWING this palette every reel; it is original on-device synthesis (honesty §4), never
+sampled audio.
 
 ### Discipline
 

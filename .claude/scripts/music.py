@@ -33,8 +33,9 @@ SR = 44100
 
 # Band/electronic genres (grid engine) + acoustic engines (own structure).
 BAND_GENRES = [
-    "tech_house", "house", "deep_house", "techno", "dnb", "jungle", "liquid", "trance",
-    "psytrance", "deep_progressive", "electro", "new_wave", "pop", "indie", "indie_pop",
+    "tech_house", "afro_house", "acid", "house", "deep_house", "techno", "dnb", "jungle",
+    "liquid", "trance", "psytrance", "deep_progressive", "electro", "new_wave", "pop",
+    "indie", "indie_pop",
 ]
 ACOUSTIC_GENRES = ["jazz", "blues", "classical"]
 GENRES = BAND_GENRES + ACOUSTIC_GENRES
@@ -47,6 +48,12 @@ PROFILES = {
     #     sidechain pump, rolling offbeat bass, claps on 2&4, a hooky offbeat pluck riff. ---
     "tech_house":       dict(bpm=128, bars=1, kick="club", k=[0,4,8,12], clap=[4,12], snare=[], hat="offbeat",
                              bass="rolling", harmony="stab", lead="riff", major=None, swing=0.0, wet=0.16, sidechain=0.8),
+    # afro house (rising trend): congas/percussion groove, bright + uplifting, melodic lead.
+    "afro_house":       dict(bpm=123, bars=1, kick="house", k=[0,4,8,12], clap=[], snare=[], hat="offbeat",
+                             bass="rolling", harmony="pluck", lead="melody", major=True, swing=0.06, wet=0.26, sidechain=0.6, congas=True),
+    # acid: 303-style resonant bassline showcase.
+    "acid":             dict(bpm=128, bars=1, kick="techno", k=[0,4,8,12], clap=[4,12], snare=[], hat="16th",
+                             bass="acid", harmony="stab", lead=None, major=False, swing=0.0, wet=0.24, sidechain=0.5),
     "house":            dict(bpm=124, bars=1, kick="house", k=[0,4,8,12], clap=[4,12], snare=[], hat="offbeat",
                              bass="sub", harmony="stab", lead=None, major=None, swing=0.0, wet=0.18, sidechain=0.6),
     "deep_house":       dict(bpm=122, bars=1, kick="house", k=[0,4,8,12], clap=[4,12], snare=[], hat="shaker",
@@ -229,10 +236,81 @@ def _v_bass_note(freq, n, rng=None):
     return (y * _env_perc(n, int(0.004 * SR), 3.2)).astype(np.float32)
 
 
+# --- expanded studio palette (Day 22): original synthesis of Ableton-style timbres ---
+def _v_brass(freq, n, rng=None):
+    """Synth/orchestral brass: rich harmonic stack with a short swell + vibrato."""
+    t = np.arange(n) / SR
+    parts, amps = (1, 2, 3, 4, 5), (1.0, 0.7, 0.5, 0.3, 0.18)
+    y = sum(a * np.sin(2 * np.pi * freq * p * t) for p, a in zip(parts, amps)) / sum(amps)
+    y *= 1.0 + 0.02 * np.sin(2 * np.pi * 5.0 * t)
+    return (y * _env_pad(n, int(0.03 * SR), int(0.05 * SR))).astype(np.float32)
+
+
+def _v_marimba(freq, n, rng=None):
+    """Woody FM mallet (marimba/xylophone family): bright click into a short woody tone."""
+    t = np.arange(n) / SR
+    idx = 2.0 * np.exp(-t * 30)
+    y = np.sin(2 * np.pi * freq * t + idx * np.sin(2 * np.pi * 3.0 * freq * t))
+    return (y * _env_perc(n, int(0.002 * SR), 9.0)).astype(np.float32)
+
+
+def _v_pizz(freq, n, rng=None):
+    """Pizzicato string: very short plucked body + tiny finger scrape."""
+    t = np.arange(n) / SR
+    body = (np.sin(2 * np.pi * freq * t) + 0.5 * _saw(freq, n)) * _env_perc(n, int(0.001 * SR), 14.0)
+    scr = (rng.standard_normal(n) if rng is not None else np.zeros(n)) * np.exp(-t * 120) * 0.15
+    return (body + scr).astype(np.float32)
+
+
+def _v_woodwind(freq, n, rng=None):
+    """Woodwind (flute/clarinet family): near-sine + breath noise + gentle vibrato."""
+    t = np.arange(n) / SR
+    breath = (rng.standard_normal(n) if rng is not None else np.zeros(n)) * 0.04 * np.exp(-t * 8)
+    vib = 1.0 + 0.01 * np.sin(2 * np.pi * 5.5 * t)
+    y = (np.sin(2 * np.pi * freq * vib * t) + 0.15 * np.sin(2 * np.pi * 2 * freq * t)) / 1.15
+    return ((y + breath) * _env_pad(n, int(0.04 * SR), int(0.06 * SR))).astype(np.float32)
+
+
+def _v_clav(freq, n, rng=None):
+    """Clavinet-ish: bright saw+sine pluck, fast decay."""
+    t = np.arange(n) / SR
+    y = _saw(freq, n) * 0.6 + np.sin(2 * np.pi * freq * t) * 0.4
+    return (y * _env_perc(n, int(0.001 * SR), 11.0)).astype(np.float32)
+
+
+def _v_wt(freq, n, rng=None):
+    """Wavetable-morph: sine -> saw across the note (timbral movement)."""
+    t = np.arange(n) / SR
+    m = np.clip(t / (n / SR + 1e-9), 0, 1)
+    y = (1 - m) * np.sin(2 * np.pi * freq * t) + m * _saw(freq, n)
+    return (y * _env_perc(n, int(0.006 * SR), 4.0)).astype(np.float32)
+
+
+def _v_pad(freq, n, rng=None):
+    """Warm detuned-saw pad with a slow swell (lusher than the string ensemble)."""
+    t = np.arange(n) / SR
+    y = _supersaw(freq, n, 0.018) * 0.6 + np.sin(2 * np.pi * freq * t) * 0.4
+    return (y * _env_pad(n, int(0.20 * SR), int(0.30 * SR)) * 0.7).astype(np.float32)
+
+
+def _v_drone(freq, n, rng=None):
+    """Sustained evolving drone (texture): detuned partials + slow beating."""
+    t = np.arange(n) / SR
+    y = (np.sin(2 * np.pi * freq * t) + np.sin(2 * np.pi * freq * 1.003 * t)
+         + 0.5 * np.sin(2 * np.pi * freq * 2.0 * t)) / 2.5
+    return (y * _env_pad(n, int(0.5 * SR), int(0.5 * SR)) * 0.6).astype(np.float32)
+
+
 VOICES = {
     "epiano": _v_epiano, "piano": _v_piano, "pluck": _v_pluck, "bell": _v_bell,
     "strings": _v_strings, "organ": _v_organ, "lead": _v_lead,
+    # studio palette (original synthesis): keys/synths/orchestral/texture
+    "brass": _v_brass, "marimba": _v_marimba, "pizz": _v_pizz, "woodwind": _v_woodwind,
+    "clav": _v_clav, "wt": _v_wt, "pad": _v_pad, "drone": _v_drone,
 }
+
+# voices that read well as a melodic lead — the melody picks one per run for variety
+MELODY_VOICES = ["lead", "epiano", "marimba", "brass", "pluck", "wt", "clav", "bell"]
 
 
 # --- drums -----------------------------------------------------------------
@@ -275,6 +353,83 @@ def _brush(rng):
 def _hat(rng, dur=0.04, op=False):
     n = int(dur * SR); t = np.arange(n) / SR
     return (np.diff(rng.standard_normal(n + 1)) * np.exp(-t * (26 if op else 95)) * 0.4).astype(np.float32)
+
+
+# --- expanded kit + percussion + FX (Day 22 studio palette, all original synthesis) ---
+def _k808(rng):
+    """808-style kick: long pitched sub with a slow pitch glide — boom + tail."""
+    n = int(0.6 * SR); t = np.arange(n) / SR
+    f = 48 + (110 - 48) * np.exp(-t * 28)
+    body = np.sin(2 * np.pi * np.cumsum(f) / SR) * np.exp(-t * 6.5)
+    click = rng.standard_normal(n) * np.exp(-t * 700) * 0.25
+    return (np.tanh(body * 1.3) + click).astype(np.float32)
+
+
+def _rim(rng):
+    n = int(0.05 * SR); t = np.arange(n) / SR
+    tone = np.sin(2 * np.pi * 1700 * t) * np.exp(-t * 120)
+    return ((tone + rng.standard_normal(n) * np.exp(-t * 200) * 0.3) * 0.6).astype(np.float32)
+
+
+def _tom(rng, f0=180):
+    n = int(0.20 * SR); t = np.arange(n) / SR
+    f = f0 * (1 + 0.6 * np.exp(-t * 18))
+    return (np.sin(2 * np.pi * np.cumsum(f) / SR) * np.exp(-t * 9) * 0.8).astype(np.float32)
+
+
+def _ride(rng):
+    """Metallic ride cymbal: inharmonic partials + noise, medium decay."""
+    n = int(0.35 * SR); t = np.arange(n) / SR
+    parts = (1.0, 1.34, 1.79, 2.4, 3.05)
+    y = sum(np.sin(2 * np.pi * 3200 * p * t) for p in parts) / len(parts)
+    return ((y * 0.5 + rng.standard_normal(n) * 0.5) * np.exp(-t * 7) * 0.3).astype(np.float32)
+
+
+def _crash(rng):
+    """Crash cymbal: bright noise + metallic shimmer, long decay (phrase accents)."""
+    n = int(0.8 * SR); t = np.arange(n) / SR
+    parts = (1.0, 1.41, 1.83, 2.34, 3.1, 4.2)
+    metal = sum(np.sin(2 * np.pi * 900 * p * t) for p in parts) / len(parts)
+    return ((rng.standard_normal(n) * 0.7 + metal * 0.3) * np.exp(-t * 3.0) * 0.35).astype(np.float32)
+
+
+def _shaker(rng):
+    n = int(0.07 * SR); t = np.arange(n) / SR
+    return (rng.standard_normal(n) * np.exp(-t * 45) * 0.3).astype(np.float32)
+
+
+def _conga(rng, f0=260):
+    n = int(0.16 * SR); t = np.arange(n) / SR
+    f = f0 * (1 + 0.4 * np.exp(-t * 25))
+    membrane = np.sin(2 * np.pi * np.cumsum(f) / SR) * np.exp(-t * 13)
+    return ((membrane + rng.standard_normal(n) * np.exp(-t * 60) * 0.1) * 0.7).astype(np.float32)
+
+
+def _cowbell(rng):
+    n = int(0.12 * SR); t = np.arange(n) / SR
+    y = (np.sin(2 * np.pi * 540 * t) + np.sin(2 * np.pi * 800 * t)) / 2
+    return (y * np.exp(-t * 16) * 0.5).astype(np.float32)
+
+
+def _tamb(rng):
+    n = int(0.12 * SR); t = np.arange(n) / SR
+    jingle = sum(np.sin(2 * np.pi * f * t) for f in (6000, 7200, 8400)) / 3
+    return ((rng.standard_normal(n) * 0.6 + jingle * 0.4) * np.exp(-t * 30) * 0.3).astype(np.float32)
+
+
+def _riser(rng, dur):
+    """Transition FX: rising filtered noise + rising tone, swelling in — leads into a drop."""
+    n = max(1, int(dur * SR)); t = np.arange(n) / SR
+    tone = np.sin(2 * np.pi * np.cumsum(200 + 1800 * (t / dur)) / SR)
+    env = (t / dur) ** 2
+    return ((rng.standard_normal(n) * 0.5 + tone * 0.5) * env * 0.4).astype(np.float32)
+
+
+def _impact(rng):
+    """Downbeat impact/boom (phrase starts)."""
+    n = int(0.6 * SR); t = np.arange(n) / SR
+    boom = np.sin(2 * np.pi * np.cumsum(70 * np.exp(-t * 4)) / SR) * np.exp(-t * 4)
+    return ((boom + rng.standard_normal(n) * np.exp(-t * 10) * 0.3) * 0.8).astype(np.float32)
 
 
 def _place(buf, s, at, g=1.0):
@@ -385,6 +540,28 @@ def synth_band(genre, dur, seed):
             elif p["hat"] == "roll":
                 _place(drums, _hat(rng), t0 + s * step + sw, 0.42)
 
+    # richer kit + transitions (studio palette, original synthesis): offbeat shaker groove,
+    # a ride for four-on-floor genres, optional congas (afro/latin), plus a crash + riser at
+    # every 4-bar phrase boundary so the arrangement breathes instead of looping flat.
+    shaker, ride, crash = _shaker(rng), _ride(rng), _crash(rng)
+    for b in range(nb):
+        t0 = b * block
+        for s in range(16 * p["bars"]):
+            if s % 2 == 1:
+                _place(drums, shaker, t0 + s * step + step * p["swing"], 0.16)
+        if p["kick"] in ("house", "club"):
+            for q in range(4 * p["bars"]):
+                _place(drums, ride, t0 + q * beat + beat * 0.5, 0.10)
+        if p.get("congas"):
+            for s in (3, 6, 10, 14):
+                _place(drums, _conga(rng, 240 if s % 4 else 300), t0 + s * step, 0.4)
+    phrase = 4
+    for b in range(0, nb, phrase):
+        _place(drums, crash, b * block, 0.45)
+        if b > 0:
+            rdur = min(block, 1.0)
+            _place(drums, _riser(rng, rdur), b * block - rdur, 0.40)
+
     # bass
     bass = np.zeros(n, dtype=np.float32)
     for b in range(nb):
@@ -405,6 +582,16 @@ def synth_band(genre, dur, seed):
             tone = _saw(f, m) if p["bass"] == "psy" else np.sin(2 * np.pi * f * seg)
             cut = 400 if p["bass"] == "psy" else 250
             bass[i0:i1] += (_lpf(tone * gate, cut) * 0.8).astype(np.float32)
+        elif p["bass"] == "acid":
+            # 303-style: saw through a per-step resonant filter envelope, gated each step
+            env = ((np.arange(m) / (step * SR)) % 1.0)
+            gate = (env > 0.4).astype(float)
+            fenv = 200 + 2200 * np.exp(-env * 6)
+            bass[i0:i1] += (_lpf(_saw(f, m) * gate, fenv) * 0.8).astype(np.float32)
+        elif p["bass"] == "fm":
+            # punchy FM bass: carrier + fast-decaying modulator index
+            idx = 3.0 * np.exp(-seg * 12)
+            bass[i0:i1] += (np.sin(2 * np.pi * f * seg + idx * np.sin(2 * np.pi * f * seg)) * 0.8).astype(np.float32)
         else:  # sub
             bass[i0:i1] += (np.sin(2 * np.pi * f * seg) * 0.8).astype(np.float32)
 
@@ -444,8 +631,9 @@ def synth_band(genre, dur, seed):
     lead = np.zeros(n, dtype=np.float32)
     lkind = p["lead"]
     if lkind == "melody":
-        lead = _melody_line(rng, scale, bass_base, prog, dur, beat, block,
-                            VOICES["lead"] if is_major is None else VOICES["epiano"],
+        # pick a lead timbre from the expanded palette for genuine variety each run
+        mvoice = VOICES[MELODY_VOICES[int(rng.integers(len(MELODY_VOICES)))]]
+        lead = _melody_line(rng, scale, bass_base, prog, dur, beat, block, mvoice,
                             dens=0.62, gain=0.20, oct_off=24, swing=p["swing"])
     elif lkind == "riff":
         # hooky syncopated pluck riff on chord tones, hitting the "and" of each beat — the
