@@ -66,7 +66,25 @@ the architectural document is whole and authoritative. No spec work remains.
 
 ## Code status
 
-**LATEST (Day 23, 2026-06-15): ✅ OPEN TAIL #1 CLOSED — the dead-man is FULLY NATIVE.** TETHER's Bluetooth grant
+**LATEST (Day 23, 2026-06-15): ✅ VAULT PROVEN LIVE end-to-end on the organism + real `seconds_since_boot`.**
+The libsodium crypto + full unlock engine were ALREADY implemented & hermetically tested (VD-1..VD-9b; the old
+"gated -31004" comments were STALE — corrected this session, `4427c1a`). What was never exercised was the REAL
+Keychain path live. Now proven: the full cycle `create → unlock(mount) → add_file(seal) → lock → unlock(decrypt)
+→ verify → delete` ran on the RUNNING organism and the decrypted content byte-matched the plaintext — real
+Argon2id KEK + XChaCha20-Poly1305 + RAM mount at `/Volumes/CHIMERA-VAULT-*`. Also `5751e94`: `seconds_since_boot`
+is now real (`sysctl kern.boottime`, VD-4a; was hardcoded 0) via a pure clamped helper, 74→75 tests.
+
+- **Live blocker found + fixed (OPERATIONAL — no code change):** the running vault was **ad-hoc/linker-signed**,
+  so it could not read its OWN Keychain item headless (the Keychain ACL binds to code identity; ad-hoc = unstable
+  → silent read fail → `key_unavailable`). FIX: signed vault with the stable Apple Development identity
+  (`com.umbra.chimera.vault`, team 3646TFH55D) and restarted JUST the vault module (kill → core supervisor
+  respawn). The signed daemon reads its KEK cleanly (no prompt). Same pattern as TETHER's Bluetooth grant — a
+  daemon's Keychain/TCC grant needs a STABLE signature, never ad-hoc. See [[macos-daemon-tcc-grant]].
+- ⚠️ **Broader finding (OPEN):** the live organism was brought up from UNSIGNED/ad-hoc module binaries — chaff/
+  echo/mirror/purge are STILL ad-hoc; only vault + tether are signed live now. For every module's grant to be
+  stable + survive rebuilds, the organism should run SIGNED binaries (`./sign.sh` then restart). Tracked, not done.
+
+**Day 23, 2026-06-15: ✅ OPEN TAIL #1 CLOSED — the dead-man is FULLY NATIVE.** TETHER's Bluetooth grant
 binds to the daemon via a signed **`.app` bundle**; the ble-probe bridge is **DROPPED**; the native dead-man is
 **reboot-persistent**. Commit `bc79453`.
 Root cause: a bare signed Mach-O launched by a LaunchAgent is TCC-attributed by absolute path (client_type=1) and
