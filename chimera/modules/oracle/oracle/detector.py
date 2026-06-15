@@ -9,8 +9,8 @@ llm.generate (structured output, wrapped in asyncio.to_thread) -> json.loads ->
 clamp score. Ollama down -> LlmUnavailableError -> RpcError(-31004) (D6 per-call).
 Threshold persisted in baseline_meta('threshold'), default 0.7 (MD-B-8a).
 
-STUB — RED slice. __init__ wires deps; classify/get_threshold/set_threshold
-raise NotImplementedError.
+GREEN: __init__ wires deps; classify / get_threshold / set_threshold are fully implemented
+(see the flow above).
 """
 
 import asyncio
@@ -40,7 +40,7 @@ _REASONING_RE = re.compile(r'"reasoning"\s*:\s*"((?:[^"\\]|\\.)*)')
 
 
 class Detector:
-    """Mode B classifier (§5.3). STUB (RED slice)."""
+    """Mode B classifier (§5.3) — GREEN: classify is fully implemented."""
 
     def __init__(
         self,

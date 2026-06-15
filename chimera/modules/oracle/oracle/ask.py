@@ -12,8 +12,8 @@ raw_result is returned verbatim as the transparent safeguard. Unmappable /
 unsure / malformed → "unknown" (an honest "don't know" beats guessing, NL-4a).
 Ollama down → -31004 (NL-7).
 
-STUB — RED slice. __init__ wires deps; ask() raises NotImplementedError.
-INTENT_SCHEMA is real data (present in RED).
+GREEN: __init__ wires deps; ask() extracts intent (one LLM call), routes to the Layer-1
+query, and returns the code-templated answer (or an honest "unknown"). INTENT_SCHEMA is real data.
 """
 
 import asyncio
@@ -55,7 +55,7 @@ INTENT_SCHEMA: dict[str, Any] = {
 
 
 class Asker:
-    """NL question -> structured intent -> Layer 1 query -> answer. STUB (RED)."""
+    """NL question -> structured intent -> Layer 1 query -> answer. GREEN."""
 
     def __init__(self, llm: LlmClient, timemachine: TimeMachine) -> None:
         self._llm = llm

@@ -5,7 +5,7 @@ baseline.py (which owns the connection). Deterministic — NO LLM this slice
 (TM-5a). advisory-only (TM-10): returns data, never acts. The blocking store
 calls are off-loaded via asyncio.to_thread (consistent with the detector).
 
-STUB — RED slice. __init__ wires the store; queries raise NotImplementedError.
+GREEN: __init__ wires the store; first_seen / period_summary return real shaped data.
 """
 
 import asyncio

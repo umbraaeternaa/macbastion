@@ -5,9 +5,9 @@ wraps each call in asyncio.to_thread (MD-B-5b, consistent with the SQLite
 pattern). Structured output via `format=schema` (MD-B-4a). No httpx of our own —
 ollama pulls it transitively (§6: our only direct dep here is `ollama`).
 
-STUB — RED slice. __init__ stores config; available()/generate() raise
-NotImplementedError. `import ollama` at module top makes the dependency a
-collection-time requirement (validates `uv add ollama`).
+GREEN: __init__ stores config; available() probes the daemon; generate() runs a real
+ollama call (LlmUnavailableError on failure). `import ollama` at module top makes the
+dependency a collection-time requirement (validates `uv add ollama`).
 """
 
 from typing import Any
@@ -20,7 +20,7 @@ class LlmUnavailableError(Exception):
 
 
 class LlmClient:
-    """Thin sync Ollama adapter (§5.3). STUB (RED slice)."""
+    """Thin sync Ollama adapter (§5.3) — GREEN: available()/generate() are real."""
 
     DEFAULT_MODEL = "llama3.2:1b"  # Q8_0 (pulled); spec §8 left Q4/Q8 open
 

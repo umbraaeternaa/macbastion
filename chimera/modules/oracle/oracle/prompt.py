@@ -1,7 +1,7 @@
 """Prompt template + response schema for Mode B (§5.3, MD-B-3c / MD-B-4a).
 
-RESPONSE_SCHEMA is REAL data (passed to Ollama's structured-output `format=`),
-not a stub. build_prompt is a STUB — RED slice.
+RESPONSE_SCHEMA is REAL data (passed to Ollama's structured-output `format=`).
+build_prompt is GREEN — it fills the template from the event + baseline summary.
 """
 
 import json

@@ -15,8 +15,8 @@ Spec disambiguation made explicit here (not silently): mode boundaries are half-
 direction (PE-1/PE-3). These pin §3/§4 ambiguities; if the spec intended otherwise,
 raise it separately.
 
-slice 1 is RED — the logic is not implemented yet (raises NotImplementedError). The
-public surface (types + function signatures) is fixed so the failing tests are real.
+GREEN: score_and_mode + the mode mapping are fully implemented; the public surface (types +
+function signatures) is stable and the tests pass.
 """
 
 from __future__ import annotations

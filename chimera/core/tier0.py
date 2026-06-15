@@ -8,7 +8,8 @@ reports every error. State files are unlinked, NOT secure-overwritten: on wear-l
 overwrite cannot be guaranteed (§8), so Tier-0 removes the files and the real secrecy guarantee
 rides on the evicted Keychain / crypto-shredded keys (Tier-1).
 
-RED: run_tier0 raises NotImplementedError (MANIFESTO §4 — no faked destruction).
+GREEN: run_tier0 really evicts the Keychain (via the shim) then unlinks the state DBs,
+best-effort, reporting every error (no faked destruction, MANIFESTO §4).
 """
 
 from __future__ import annotations
