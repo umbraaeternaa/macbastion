@@ -36,9 +36,25 @@ static void test_companion_empty_config_never_matches(void) {
     TEST_ASSERT_FALSE(companion_matches("A8:79:8D:90:1C:83", ""));
 }
 
+/* Source-sharing wiring: the live BLE source must BORROW the runtime's CompanionPin
+ * (one shared object), not own a private copy — otherwise tether.unpair clears a
+ * different pin and never bites the running scanner. We prove the sharing on BOTH
+ * mutations: pinning via the shared handle is seen by the source, and an external
+ * unpair() resets what the source sees. A private copy would fail the unpair assert.
+ * Hermetic: an empty companion_id keeps the scanner unstarted (no Bluetooth/TCC). */
+static void test_source_borrows_shared_pin(void) {
+    tether::CompanionPin pin;
+    tether::CoreBluetoothSource src("", pin); /* shares the runtime's pin (no hardware) */
+    pin.accept("A8:79:8D:90:1C:83");          /* pin the companion via the SHARED handle */
+    TEST_ASSERT_TRUE(src.pinned());           /* the source sees it -> shared, not a copy */
+    pin.unpair();                             /* tether.unpair fires on the same object */
+    TEST_ASSERT_FALSE(src.pinned());          /* ...and the source's view resets -> bites live */
+}
+
 void run_source_tests(void) {
     RUN_TEST(test_normalize_lowercases_and_strips_separators);
     RUN_TEST(test_companion_matches_case_and_separator_insensitive);
     RUN_TEST(test_companion_no_match_different_device);
     RUN_TEST(test_companion_empty_config_never_matches);
+    RUN_TEST(test_source_borrows_shared_pin);
 }

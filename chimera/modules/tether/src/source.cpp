@@ -23,8 +23,9 @@ bool SyntheticSource::next(Sample &out) {
     return true;
 }
 
-CoreBluetoothSource::CoreBluetoothSource(std::string companion_id)
-    : scanner_(companion_id.empty() ? nullptr : cb_scanner_start(companion_id.c_str())) {}
+CoreBluetoothSource::CoreBluetoothSource(std::string companion_id, CompanionPin &pin)
+    : scanner_(companion_id.empty() ? nullptr : cb_scanner_start(companion_id.c_str())),
+      pin_(pin) {}
 
 CoreBluetoothSource::~CoreBluetoothSource() {
     if (scanner_) {
@@ -52,18 +53,19 @@ bool CoreBluetoothSource::next(Sample &out) {
     return true;
 }
 
-std::unique_ptr<RssiSource> make_source(const std::string &companion_id) {
-    /* Production (no env) → the real CoreBluetooth source ranging companion_id (an
+std::unique_ptr<RssiSource> make_source(const std::string &companion_id, CompanionPin &pin) {
+    /* Production (no env) → the real CoreBluetooth source ranging companion_id and
+     * SHARING `pin` (the runtime's CompanionPin — so tether.unpair resets it live; an
      * empty companion_id keeps it honestly empty — no companion, no presence, §4).
      * Only when a test/dev sets TETHER_SYNTHETIC_RSSI do we replay a scripted
      * sequence. Format: {"samples":[{"rssi":-50,"seen":true,"clean":false}, ...]}. */
     const char *path = std::getenv("TETHER_SYNTHETIC_RSSI");
     if (!path) {
-        return std::unique_ptr<RssiSource>(new CoreBluetoothSource(companion_id));
+        return std::unique_ptr<RssiSource>(new CoreBluetoothSource(companion_id, pin));
     }
     std::ifstream in(path);
     if (!in) {
-        return std::unique_ptr<RssiSource>(new CoreBluetoothSource(companion_id));
+        return std::unique_ptr<RssiSource>(new CoreBluetoothSource(companion_id, pin));
     }
     std::stringstream ss;
     ss << in.rdbuf();
@@ -71,7 +73,7 @@ std::unique_ptr<RssiSource> make_source(const std::string &companion_id) {
 
     cJSON *root = cJSON_Parse(json.c_str());
     if (!root) {
-        return std::unique_ptr<RssiSource>(new CoreBluetoothSource(companion_id));
+        return std::unique_ptr<RssiSource>(new CoreBluetoothSource(companion_id, pin));
     }
     std::vector<Sample> samples;
     cJSON *arr = cJSON_GetObjectItemCaseSensitive(root, "samples");
@@ -90,7 +92,7 @@ std::unique_ptr<RssiSource> make_source(const std::string &companion_id) {
     }
     cJSON_Delete(root);
     if (samples.empty()) {
-        return std::unique_ptr<RssiSource>(new CoreBluetoothSource(companion_id));
+        return std::unique_ptr<RssiSource>(new CoreBluetoothSource(companion_id, pin));
     }
     return std::unique_ptr<RssiSource>(new SyntheticSource(std::move(samples)));
 }

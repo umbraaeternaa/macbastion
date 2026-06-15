@@ -47,22 +47,28 @@ class SyntheticSource : public RssiSource {
  * presence, NEVER fabricating it (MANIFESTO §4, the honest empty state). */
 class CoreBluetoothSource : public RssiSource {
   public:
-    explicit CoreBluetoothSource(std::string companion_id = "");
+    /* Borrows the runtime's CompanionPin (ONE shared object) — so tether.unpair clears
+     * THAT pin and the change bites this running source. An empty companion_id keeps the
+     * scanner unstarted (no Bluetooth/TCC) → an honest empty source (§4). */
+    CoreBluetoothSource(std::string companion_id, CompanionPin &pin);
     ~CoreBluetoothSource() override;
     CoreBluetoothSource(const CoreBluetoothSource &) = delete;
     CoreBluetoothSource &operator=(const CoreBluetoothSource &) = delete;
     bool next(Sample &out) override;
+    /* Live pin state (diagnostics/tests): is a companion currently bound? */
+    bool pinned() const { return pin_.paired(); }
 
   private:
-    void *scanner_;    /* opaque cb_scanner_t* (cb_scanner.mm); nullptr when unconfigured */
-    CompanionPin pin_; /* anti-spoof: binds presence to one device identity (TOFU) */
+    void *scanner_;     /* opaque cb_scanner_t* (cb_scanner.mm); nullptr when unconfigured */
+    CompanionPin &pin_; /* anti-spoof: SHARED with the runtime (tether.unpair clears it) */
 };
 
 /* Choose the daemon's source. With TETHER_SYNTHETIC_RSSI set (tests/dev only) →
  * a SyntheticSource from that script; otherwise → a CoreBluetoothSource ranging
- * `companion_id`. Production never sets the env; an empty companion_id keeps the
- * source honestly empty (no companion configured → no presence). */
-std::unique_ptr<RssiSource> make_source(const std::string &companion_id = "");
+ * `companion_id` and SHARING `pin` (the runtime's CompanionPin — so tether.unpair
+ * resets the live source). Production never sets the env; an empty companion_id
+ * keeps the source honestly empty (no companion configured → no presence). */
+std::unique_ptr<RssiSource> make_source(const std::string &companion_id, CompanionPin &pin);
 
 /* Companion identity (TE-real). A BLE/Classic address as macOS reports it
  * ("A8:79:8D:90:1C:83"). normalize strips separators + lowercases so the same

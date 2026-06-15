@@ -100,7 +100,10 @@ int main(int argc, char **argv) {
 
     /* Monitor is built from the (config-applied) runtime config. */
     tether::Monitor mon(rt.presence, rt.escalation, 0.3);
-    std::unique_ptr<tether::RssiSource> src = tether::make_source(companion_id);
+    /* Share the runtime's CompanionPin with the live BLE source: the source pins the
+     * first companion seen (TOFU), and tether.unpair (which clears rt.pin) now resets
+     * the running source — the anti-spoof recovery lever bites live. */
+    std::unique_ptr<tether::RssiSource> src = tether::make_source(companion_id, rt.pin);
 
     char sock[1024];
     core_socket_path(sock, sizeof(sock));
