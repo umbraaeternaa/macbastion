@@ -22,8 +22,9 @@ import os
 import random
 
 W, H = 1080, 1920          # SVG authoring space (viewBox) — layout coords live here
-OUT_W, OUT_H = 810, 1440   # PHONE-ONLY render resolution (token/compute economy; the
-#                            viewBox 0 0 W H scales down cleanly — deliberately NOT big-screen)
+OUT_W, OUT_H = 1080, 1920  # Instagram-reel DEFAULT (1080x1920, 9:16) — max IG-acceptable
+#   quality. NOTE: render resolution costs MACHINE time, NOT model tokens — tokens are saved
+#   by the workflow (never read rendered frames as images), so quality and token-economy coexist.
 FPS = 24
 DUR = 45.0
 

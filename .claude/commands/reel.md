@@ -40,6 +40,27 @@ feel. Each run, push the look in that direction:
 - **Maximum movement:** more camera energy, parallax, smear frames, beat-synced motion — the
   frame should feel alive and animated, like a real cartoon, not a static diagram.
 
+#### Motion & depth — toward a REAL animated film, 3D / multi-plane (operator directive, Day 22)
+
+The flat 2D vector look must EVOLVE into something dynamic that moves across planes / in 3D —
+a real мультик (anime / cartoon / Dark Souls atmosphere), not a flat diagram. Use FREE,
+open-source, LOCAL tools only (no paid/cloud, no copyright risk):
+
+- **ffmpeg (already here) — 2.5D multi-plane parallax + 3D feel, zero new deps, the first step:**
+  composite the scene's layers (cosmos / ring / core / Umbra / HUD) at different DEPTHS and move,
+  scale and rotate them at different rates (`overlay`, `zoompan`, `rotate`, `perspective`, `v360`,
+  `displace`) so the camera appears to push/fly through 3D space.
+- **Blender (headless, Python-scripted) — the path to TRUE 3D:** the black-hole core, the 8-module
+  ring, the Umbra creature and a camera fly-through as real 3D objects; render frames via CLI →
+  ffmpeg. Study how anime / cartoons / Dark-Souls scenes are built (cel shading, rim light, fog,
+  depth, camera language) and recreate that look.
+- Reference/optional free tools: OpenToonz (Ghibli's 2D/anime tool), Synfig (2D cartoon), Manim.
+
+**Token economy holds:** render is MACHINE time, not model tokens — go rich, but verify via the
+build LOG, never by reading frames. **Stay on OUR theme + evolution + product** (Umbra · 8-organ
+arsenal · black-hole core · neural mind · HUD) — make IT cinematic in 3D, do not drift off-brand.
+Resolution = Instagram default **1080×1920** (`reel.OUT_W/OUT_H`) — max IG-acceptable quality.
+
 Keep the established canon as the WORLD inside that anime look: the Umbra creature, the
 8-module arsenal ring (per-module glyphs + readouts), the Interstellar black-hole core, the
 neural-net "mind" layer, the operator HUD console (telemetry/gauges/oscilloscope), data
