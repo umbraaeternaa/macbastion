@@ -80,9 +80,11 @@ is now real (`sysctl kern.boottime`, VD-4a; was hardcoded 0) via a pure clamped 
   (`com.umbra.chimera.vault`, team 3646TFH55D) and restarted JUST the vault module (kill → core supervisor
   respawn). The signed daemon reads its KEK cleanly (no prompt). Same pattern as TETHER's Bluetooth grant — a
   daemon's Keychain/TCC grant needs a STABLE signature, never ad-hoc. See [[macos-daemon-tcc-grant]].
-- ⚠️ **Broader finding (OPEN):** the live organism was brought up from UNSIGNED/ad-hoc module binaries — chaff/
-  echo/mirror/purge are STILL ad-hoc; only vault + tether are signed live now. For every module's grant to be
-  stable + survive rebuilds, the organism should run SIGNED binaries (`./sign.sh` then restart). Tracked, not done.
+- ✅ **Module signing (VERIFIED + corrected):** a real `codesign` check showed chaff/echo/mirror/vault/tether were
+  ALREADY signed with the stable Apple Development identity (team 3646TFH55D) — only **purge** was ad-hoc. (An
+  earlier line here claiming chaff/echo/mirror/purge were all ad-hoc was WRONG — unverified extrapolation from
+  vault alone; this corrects it.) purge is now signed too (`com.umbra.chimera.purge`) + supervisor-respawned, so
+  ALL 6 modules + tether.app run signed → every module's Keychain/TCC grant is keyed to a stable identity now.
 
 **Day 23, 2026-06-15: ✅ OPEN TAIL #1 CLOSED — the dead-man is FULLY NATIVE.** TETHER's Bluetooth grant
 binds to the daemon via a signed **`.app` bundle**; the ble-probe bridge is **DROPPED**; the native dead-man is
