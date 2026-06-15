@@ -142,6 +142,31 @@ def _galaxy(ts):
     return "".join(out)
 
 
+def _sakura(ts, op):
+    """Drifting cherry-blossom petals — an anime signal layer (day-21 anime pass)."""
+    out = []
+    for i in range(28):
+        sp = 24 + (i % 5) * 11
+        x = (i * 79 + 40 + 22 * math.sin(ts * 0.5 + i)) % W
+        y = (i * 131 + int(ts * sp)) % (H + 60) - 30
+        rot = ts * 45 + i * 33
+        pr = 7 + (i % 3) * 3
+        col = "#ffffff" if i % 3 == 0 else ("#ffd1e8" if i % 3 == 1 else "#ffb3d9")
+        out.append(f'<ellipse cx="{x:.0f}" cy="{y:.0f}" rx="{pr}" ry="{pr*0.45:.0f}" fill="{col}" '
+                   f'opacity="0.6" transform="rotate({rot:.0f} {x:.0f} {y:.0f})"/>')
+    return f'<g opacity="{op:.2f}">{"".join(out)}</g>'
+
+
+def _clouds(ts, op):
+    """Soft anime cloud banks drifting across the sky."""
+    out = []
+    for cx0, cy, r, sp in [(260, 470, 300, 9), (840, 820, 360, 6), (520, 1520, 340, 12), (160, 1180, 240, 8)]:
+        x = (cx0 + ts * sp) % (W + 760) - 380
+        out.append(f'<ellipse cx="{x:.0f}" cy="{cy}" rx="{r}" ry="{r*0.42:.0f}" fill="#ffe9f4" '
+                   f'opacity="0.07" filter="url(#big)"/>')
+    return f'<g opacity="{op:.2f}">{"".join(out)}</g>'
+
+
 def _cosmos(ts):
     return f'<g opacity="0.9">{_nebula(ts)}{_galaxy(ts)}{_starfield(ts)}</g>'
 
@@ -316,6 +341,7 @@ def _ring(cx, cy, r, ts, op):
         parts.append(f'<line x1="{cx}" y1="{cy}" x2="{nx:.0f}" y2="{ny:.0f}" stroke="{col}" stroke-width="2" opacity="{(0.45 if is_lit else 0.18):.2f}"/>')
         rad = 30 + (5 * pc if is_focus else 0)
         if is_lit:
+            parts.append(f'<circle cx="{nx:.0f}" cy="{ny:.0f}" r="{rad+2:.0f}" fill="{VOID}" stroke="#0a0618" stroke-width="5" opacity="0.9"/>')
             parts.append(f'<circle cx="{nx:.0f}" cy="{ny:.0f}" r="{rad:.0f}" fill="{VOID}" stroke="{col}" stroke-width="2.5" opacity="0.95" filter="url(#glow)"/>')
             parts.append(f'<circle cx="{nx:.0f}" cy="{ny:.0f}" r="{rad+6:.0f}" fill="none" stroke="{col}" stroke-width="1" opacity="{(pc if is_focus else 0.5):.2f}"/>')
         else:
@@ -357,14 +383,15 @@ def _umbra(cx, cy, sc, ts, op):
         rx, ry = cx + rad * sc * math.cos(a), cy - 30 * sc + rad * sc * math.sin(a)
         runes.append(f'<circle cx="{rx:.0f}" cy="{ry:.0f}" r="4" fill="{V["a1"] if i%2 else V["a2"]}" opacity="0.8" filter="url(#glow)"/>')
     return (f'<g opacity="{op:.2f}">'
-            f'<ellipse cx="{cx}" cy="{cy+90*sc:.0f}" rx="{110*sc:.0f}" ry="{130*sc:.0f}" fill="url(#body)" stroke="#3a3f8a" stroke-width="2"/>'
-            f'<ellipse cx="{cx}" cy="{cy-30*sc:.0f}" rx="{115*sc:.0f}" ry="{108*sc:.0f}" fill="url(#body)" stroke="#3a3f8a" stroke-width="2"/>'
+            f'<ellipse cx="{cx}" cy="{cy+90*sc:.0f}" rx="{110*sc:.0f}" ry="{130*sc:.0f}" fill="url(#body)" stroke="#160a2e" stroke-width="4"/>'
+            f'<ellipse cx="{cx}" cy="{cy-30*sc:.0f}" rx="{115*sc:.0f}" ry="{108*sc:.0f}" fill="url(#body)" stroke="#160a2e" stroke-width="4"/>'
             f'<path d="M{cx-70*sc:.0f},{cy-110*sc:.0f} L{cx-95*sc:.0f},{cy-175*sc:.0f} L{cx-40*sc:.0f},{cy-130*sc:.0f} Z" fill="url(#body)"/>'
             f'<path d="M{cx+70*sc:.0f},{cy-110*sc:.0f} L{cx+95*sc:.0f},{cy-175*sc:.0f} L{cx+40*sc:.0f},{cy-130*sc:.0f} Z" fill="url(#body)"/>'
             f'{"".join(runes)}'
             f'<circle cx="{cx}" cy="{cy-30*sc:.0f}" r="{eye_r*sc:.0f}" fill="{eye}" filter="url(#big)" opacity="0.9"/>'
-            f'<circle cx="{cx}" cy="{cy-30*sc:.0f}" r="{eye_r*sc*0.6:.0f}" fill="url(#eye)"/>'
-            f'<circle cx="{cx-14*sc:.0f}" cy="{cy-44*sc:.0f}" r="{10*sc:.0f}" fill="#eafffd" opacity="0.9"/>'
+            f'<circle cx="{cx}" cy="{cy-30*sc:.0f}" r="{eye_r*sc*0.62:.0f}" fill="url(#eye)" stroke="#10081f" stroke-width="{3.5*sc:.1f}"/>'
+            f'<circle cx="{cx-14*sc:.0f}" cy="{cy-44*sc:.0f}" r="{11*sc:.0f}" fill="#eafffd" opacity="0.95"/>'
+            f'<circle cx="{cx+9*sc:.0f}" cy="{cy-20*sc:.0f}" r="{5*sc:.0f}" fill="#ffffff" opacity="0.85"/>'
             f'</g>')
 
 
@@ -459,6 +486,7 @@ def _glitch(ts):
 def _defs():
     return ('<defs>'
             f'<radialGradient id="void" cx="50%" cy="42%" r="80%"><stop offset="0%" stop-color="#0a1018"/><stop offset="100%" stop-color="{VOID}"/></radialGradient>'
+            '<linearGradient id="sky" x1="0" y1="0" x2="0.2" y2="1"><stop offset="0%" stop-color="#160b38"/><stop offset="40%" stop-color="#3a1a63"/><stop offset="72%" stop-color="#5e2270"/><stop offset="100%" stop-color="#7d2a5a"/></linearGradient>'
             f'<radialGradient id="neb1" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="{V["a1"]}" stop-opacity="0.20"/><stop offset="65%" stop-color="{V["a1"]}" stop-opacity="0.05"/><stop offset="100%" stop-color="{V["a1"]}" stop-opacity="0"/></radialGradient>'
             f'<radialGradient id="neb2" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="{V["a2"]}" stop-opacity="0.18"/><stop offset="65%" stop-color="{V["a2"]}" stop-opacity="0.05"/><stop offset="100%" stop-color="{V["a2"]}" stop-opacity="0"/></radialGradient>'
             f'<linearGradient id="disk" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="{V["a2"]}"/><stop offset="50%" stop-color="{AMBER}"/><stop offset="100%" stop-color="{V["a1"]}"/></linearGradient>'
@@ -602,7 +630,7 @@ def frame(ts):
              + _ring(540, 760, 300, ts, fade(ts, 7.5, 9.5, 24, 32, 38))
              + _attest(540, 760, ts, fade(ts, 14.5, 16.0, 21.0, 23.0, 24.5))
              + _umbra(540, 1180, 0.6, ts, fade(ts, 8.0, 10.0, 24, 31, 36)))
-    deep = (f'<rect width="{W}" height="{H}" fill="url(#void)"/>' + _cosmos(ts)
+    deep = (f'<rect width="{W}" height="{H}" fill="url(#sky)"/>' + _clouds(ts, 0.95) + _cosmos(ts)
             + _quantum(ts, fade(ts, 1.5, 4.0, 30, 36, 40))
             + _datastream(ts, fade(ts, 2.0, 4.0, 30, 36, 40))
             + _neural(ts, fade(ts, 9.0, 12.0, 28, 33, 37)))
@@ -620,6 +648,6 @@ def frame(ts):
             f'<text x="540" y="1530" font-family="{FONT}" font-size="48" fill="{AMBER}">{b["modules_done"]} / 8</text>'
             f'<text x="540" y="1590" font-family="{FONT}" font-size="30" fill="{ACID}">{b["tests"]} TESTS GREEN</text></g>')
     hud += _qr_scene(ts, fade(ts, 38.5, 39.5, 44, 44.5, 45))
-    overlay = f'<rect width="{W}" height="{H}" fill="url(#vign)"/>' + _glitch(ts)
+    overlay = f'<rect width="{W}" height="{H}" fill="url(#vign)"/>' + _sakura(ts, 0.85) + _glitch(ts)
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}">'
             f'{_defs()}{screen}{hud}{overlay}</svg>')
