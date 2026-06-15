@@ -132,6 +132,15 @@ def module_binary(name: str) -> Path:
     return _chimera_root() / "modules" / name / name
 
 
+def _disclaim_launcher() -> Path:
+    """The tcc-disclaim launcher (tools/tcc-disclaim/tcc-disclaim). Native daemons are
+    spawned THROUGH it so each becomes its OWN TCC subject — macOS otherwise attributes a
+    daemon's permission request (e.g. TETHER's Bluetooth, MIRROR's Accessibility) to the
+    RESPONSIBLE process, which resolves to this Python supervisor and is silently denied
+    with no prompt. See tools/tcc-disclaim. Absent (not built) -> spawn the binary directly."""
+    return _chimera_root() / "tools" / "tcc-disclaim" / "tcc-disclaim"
+
+
 def _spawn_argv(
     spec: ModuleSpec, socket_dir: Path
 ) -> tuple[list[str], dict[str, str], str]:
@@ -151,7 +160,15 @@ def _spawn_argv(
     if spec.python:
         env["PYTHONPATH"] = str(module_dir)
         return [_module_python(), "-m", spec.name], env, str(module_dir)
-    return [str(module_binary(spec.name))], env, str(module_dir)
+    # Native daemon: spawn THROUGH tcc-disclaim so it owns its TCC subject (own Bluetooth/
+    # Accessibility grant) instead of being attributed to this Python supervisor. If the
+    # launcher is not built, fall back to the bare binary (graceful degradation — the
+    # module still runs, just without the disclaim TCC fix).
+    bin_path = module_binary(spec.name)
+    launcher = _disclaim_launcher()
+    if launcher.exists():
+        return [str(launcher), str(bin_path)], env, str(module_dir)
+    return [str(bin_path)], env, str(module_dir)
 
 
 def _default_spawn(socket_dir: Path) -> Callable[[ModuleSpec], subprocess.Popen[bytes]]:

@@ -10,6 +10,7 @@ from core.__main__ import (
     _bootout_argv,
     _bootstrap_argv,
     _chimera_root,
+    _disclaim_launcher,
     _launch_agent_path,
     _module_python,
     _spawn_argv,
@@ -27,14 +28,38 @@ def test_parse_args_none_is_bare_core():
 # -- DP-1: spawn argv for native (binary) vs Python (-m) modules -------------
 
 
-def test_spawn_argv_native_module(tmp_path):
+def test_spawn_argv_native_module(tmp_path, monkeypatch):
+    # No launcher built -> bare binary (graceful fallback = the pre-disclaim behavior).
+    monkeypatch.setattr("core.__main__._disclaim_launcher", lambda: tmp_path / "absent-launcher")
     argv, env, cwd = _spawn_argv(ModuleSpec("echo"), tmp_path)
     assert argv == [str(module_binary("echo"))]
     assert env["CHIMERA_SOCKET_DIR"] == str(tmp_path)
     assert cwd == str(module_binary("echo").parent)  # run from its own dir (relative data)
 
 
-def test_spawn_argv_python_module(tmp_path):
+def test_spawn_argv_native_wrapped_through_disclaim(tmp_path, monkeypatch):
+    # When tcc-disclaim is built, native daemons are spawned THROUGH it so each becomes
+    # its OWN TCC subject (its own Bluetooth/Accessibility grant), not attributed to the
+    # Python supervisor — the launcher prefixes the binary. See tools/tcc-disclaim.
+    launcher = tmp_path / "tcc-disclaim"
+    launcher.write_text("#!/bin/sh\n")  # exists -> wrap
+    monkeypatch.setattr("core.__main__._disclaim_launcher", lambda: launcher)
+    argv, env, cwd = _spawn_argv(ModuleSpec("echo"), tmp_path)
+    assert argv == [str(launcher), str(module_binary("echo"))]
+    assert cwd == str(module_binary("echo").parent)
+
+
+def test_disclaim_launcher_path():
+    # Resolves to tools/tcc-disclaim/tcc-disclaim under the chimera root.
+    assert _disclaim_launcher() == _chimera_root() / "tools" / "tcc-disclaim" / "tcc-disclaim"
+
+
+def test_spawn_argv_python_module(tmp_path, monkeypatch):
+    # Python modules run as `python -m NAME`; disclaim wrapping never applies (the
+    # interpreter, not a signed daemon, is the process) even when the launcher exists.
+    launcher = tmp_path / "tcc-disclaim"
+    launcher.write_text("#!/bin/sh\n")
+    monkeypatch.setattr("core.__main__._disclaim_launcher", lambda: launcher)
     argv, env, cwd = _spawn_argv(ModuleSpec("pulse", python=True), tmp_path)
     assert argv[0] == sys.executable
     assert argv[1:] == ["-m", "pulse"]
