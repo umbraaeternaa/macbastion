@@ -19,6 +19,7 @@ static const double kStaleSeconds = 4.0; /* heard within 4s == present */
 @property(strong) CBUUID *uuid;
 @property(assign) double lastRssi;
 @property(assign) double lastSeen; /* CFAbsoluteTime; 0 == never heard */
+@property(strong) NSString *lastDeviceId; /* identifier of the last advertiser heard */
 @property(assign) BOOL poweredOn;
 @end
 
@@ -55,11 +56,11 @@ static const double kStaleSeconds = 4.0; /* heard within 4s == present */
         advertisementData:(NSDictionary *)adv
                      RSSI:(NSNumber *)rssi {
     (void)c;
-    (void)p;
     (void)adv;
     @synchronized(self) {
         self.lastRssi = rssi.doubleValue;
         self.lastSeen = CFAbsoluteTimeGetCurrent();
+        self.lastDeviceId = p.identifier.UUIDString; /* stable per-Mac device identity */
     }
 }
 @end
@@ -84,7 +85,8 @@ extern "C" cb_scanner_t *cb_scanner_start(const char *service_uuid) {
     }
 }
 
-extern "C" int cb_scanner_poll(cb_scanner_t *s, double *rssi, int *seen) {
+extern "C" int cb_scanner_poll(cb_scanner_t *s, double *rssi, int *seen, char *device_id,
+                               size_t cap) {
     if (s == NULL) {
         return 0;
     }
@@ -100,6 +102,10 @@ extern "C" int cb_scanner_poll(cb_scanner_t *s, double *rssi, int *seen) {
         }
         if (seen) {
             *seen = heard ? 1 : 0;
+        }
+        if (device_id && cap > 0) {
+            const char *idc = (heard && scanner.lastDeviceId) ? scanner.lastDeviceId.UTF8String : "";
+            snprintf(device_id, cap, "%s", idc); /* the heard advertiser's identity (empty if none) */
         }
         return 1;
     }

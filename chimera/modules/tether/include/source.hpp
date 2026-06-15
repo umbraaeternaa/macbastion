@@ -11,6 +11,8 @@
 #include <string>
 #include <vector>
 
+#include "pin.hpp"
+
 namespace tether {
 
 struct Sample {
@@ -52,7 +54,8 @@ class CoreBluetoothSource : public RssiSource {
     bool next(Sample &out) override;
 
   private:
-    void *scanner_; /* opaque cb_scanner_t* (cb_scanner.mm); nullptr when unconfigured */
+    void *scanner_;    /* opaque cb_scanner_t* (cb_scanner.mm); nullptr when unconfigured */
+    CompanionPin pin_; /* anti-spoof: binds presence to one device identity (TOFU) */
 };
 
 /* Choose the daemon's source. With TETHER_SYNTHETIC_RSSI set (tests/dev only) →

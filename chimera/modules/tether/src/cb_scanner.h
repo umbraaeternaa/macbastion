@@ -5,6 +5,8 @@
 #ifndef TETHER_CB_SCANNER_H
 #define TETHER_CB_SCANNER_H
 
+#include <stddef.h> /* size_t */
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -17,11 +19,13 @@ typedef struct cb_scanner cb_scanner_t;
  * Bluetooth powers on). */
 cb_scanner_t *cb_scanner_start(const char *service_uuid);
 
-/* Snapshot the latest presence. On return *rssi is the last advertised RSSI (dBm)
- * and *seen is 1 iff the companion was heard within the staleness window. Returns 1
- * when the scanner is live (Bluetooth powered on and scanning), 0 when it is not yet
- * ready or was denied — the caller then emits NO presence (never fabricates, §4). */
-int cb_scanner_poll(cb_scanner_t *s, double *rssi, int *seen);
+/* Snapshot the latest presence. On return *rssi is the last advertised RSSI (dBm),
+ * *seen is 1 iff a companion was heard within the staleness window, and (when device_id
+ * is non-NULL and cap>0) device_id receives the heard advertiser's stable identity (empty
+ * when nothing was heard) — used by the caller to pin ONE companion and reject impostors.
+ * Returns 1 when the scanner is live (Bluetooth powered on and scanning), 0 when it is not
+ * yet ready or was denied — the caller then emits NO presence (never fabricates, §4). */
+int cb_scanner_poll(cb_scanner_t *s, double *rssi, int *seen, char *device_id, size_t cap);
 
 /* Stop scanning and release the handle (NULL-safe). */
 void cb_scanner_stop(cb_scanner_t *s);

@@ -31,7 +31,7 @@ int main(int argc, const char **argv) {
     for (int tick = 0;; ++tick) {
         double rssi = 0;
         int seen = 0;
-        int ready = cb_scanner_poll(sc, &rssi, &seen);
+        int ready = cb_scanner_poll(sc, &rssi, &seen, NULL, 0); /* probe shows raw presence — no pinning */
         if (!ready) {
             std::fprintf(stderr,
                          "[t+%4ds] Bluetooth NOT READY / unauthorized — turn BT on + grant the "

@@ -38,11 +38,16 @@ bool CoreBluetoothSource::next(Sample &out) {
     }
     double rssi = 0.0;
     int seen = 0;
-    if (cb_scanner_poll(static_cast<cb_scanner_t *>(scanner_), &rssi, &seen) == 0) {
+    char device_id[64] = {0};
+    if (cb_scanner_poll(static_cast<cb_scanner_t *>(scanner_), &rssi, &seen, device_id,
+                        sizeof(device_id)) == 0) {
         return false; /* Bluetooth not ready / denied — emit nothing (§4) */
     }
     out.rssi = rssi;
-    out.seen = seen != 0;
+    /* Anti-spoof: a heard advertiser counts as the companion only if it IS the pinned
+     * device (TOFU). A different device on the same service UUID is ignored — a fake
+     * beacon can no longer pose as the companion (presence never fabricated, §4). */
+    out.seen = (seen != 0) && pin_.accept(device_id);
     out.clean_disconnect = false; /* BLE adv ranging has no clean-disconnect signal */
     return true;
 }
