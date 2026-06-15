@@ -29,8 +29,8 @@ def main() -> None:
         cairosvg.svg2png(
             bytestring=reel.frame(ts).encode(),
             write_to=f"{outdir}/f{f:04d}.png",
-            output_width=reel.W,
-            output_height=reel.H,
+            output_width=reel.OUT_W,
+            output_height=reel.OUT_H,
         )
     print(f"rendered {start}..{end} -> {outdir}")
 

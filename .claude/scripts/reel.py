@@ -21,7 +21,9 @@ import math
 import os
 import random
 
-W, H = 1080, 1920
+W, H = 1080, 1920          # SVG authoring space (viewBox) — layout coords live here
+OUT_W, OUT_H = 810, 1440   # PHONE-ONLY render resolution (token/compute economy; the
+#                            viewBox 0 0 W H scales down cleanly — deliberately NOT big-screen)
 FPS = 24
 DUR = 45.0
 

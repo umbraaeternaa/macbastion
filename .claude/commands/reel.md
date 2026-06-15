@@ -83,10 +83,19 @@ sampled audio.
 
 Reuse the proven scaffold (camera, fades, QR, timeline, `variant_seed` daily palette/camera
 rotation) but bring something genuinely NEW each day — a new element, scene, motif, or one step
-further into the anime look. ALWAYS smoke-test a few `reel.frame(ts)` PNGs via Read BEFORE the
-full ~8-12 min render, and self-review the look. HONESTY (§4): this is trend-INFORMED
-*procedural* art + on-device synthesis — not sampled music or AI-generated anime frames. Push
-the craft; never fake the source.
+further into the anime look.
+
+**⭐ TOKEN ECONOMY (operator directive, standing — Day 22): the reel renders PHONE-ONLY at
+810×1440 (`reel.OUT_W/OUT_H`; the 1080×1920 viewBox scales down) — deliberately NOT big-screen
+"blow it up on a plasma" quality. And the WORKFLOW must spend few tokens: verify the render from
+the `build_all.sh` LOG only (it prints `QR OK -> …` + ffprobe dims) — do NOT read rendered frames
+as images for review. Read at most ONE frame as an image, and only when `reel.py` visuals actually
+changed; verify the QR via cv2 text output (render one frame, run the detector), never by eyeballing
+a full-res PNG. This token economy NEVER touches the SUPREME memory-first 24/7 directive — recall
+and persist the full context fully, always; saving tokens must never lose context or skip memory.**
+
+HONESTY (§4): this is trend-INFORMED *procedural* art + on-device synthesis — not sampled music or
+AI-generated anime frames. Push the craft; never fake the source.
 
 ## Preconditions
 

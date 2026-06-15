@@ -21,7 +21,7 @@ DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib $PY render.py 0 $NF "$WORK/frames" 
 
 echo "[3/4] assemble: PNG -> H.264 + film grain + AAC music"
 ffmpeg -y -loglevel error -framerate $FPS -i "$WORK/frames/f%04d.png" -i "$WORK/track.wav" \
-  -vf "noise=alls=4:allf=t,format=yuv420p" -c:v libx264 -crf 20 -preset medium \
+  -vf "noise=alls=3:allf=t,format=yuv420p" -c:v libx264 -crf 22 -preset medium \
   -movflags +faststart -c:a aac -b:a 192k -shortest "$FINAL"
 
 echo "[4/4] verify QR decodes (threshold method)"
@@ -31,7 +31,7 @@ cap = cv2.VideoCapture(sys.argv[1]); cap.set(cv2.CAP_PROP_POS_MSEC, 41500)
 ok, fr = cap.read()
 res = "NO FRAME"
 if ok:
-    g = cv2.cvtColor(fr[695:1180, 300:785], cv2.COLOR_BGR2GRAY)
+    g = cv2.cvtColor(fr[521:885, 225:589], cv2.COLOR_BGR2GRAY)  # QR card @810x1440 (1080-coords x0.75)
     g = cv2.resize(g, (620, 620), interpolation=cv2.INTER_CUBIC)
     _, th = cv2.threshold(g, 120, 255, cv2.THRESH_BINARY)
     d, _, _ = cv2.QRCodeDetector().detectAndDecode(th)
