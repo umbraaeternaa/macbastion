@@ -208,8 +208,17 @@ static void test_unknown_method_is_32601(void) {
     cJSON_Delete(root);
 }
 
+static void test_uptime_seconds(void) {
+    /* VD-4a: real elapsed-since-boot. now after boot -> positive diff; equal or a backwards
+     * clock (skew) -> clamped to 0 (fail-safe, never a spurious positive uptime). */
+    TEST_ASSERT_EQUAL_INT64(3600, vault_uptime_seconds((time_t)10000, (time_t)6400));
+    TEST_ASSERT_EQUAL_INT64(0, vault_uptime_seconds((time_t)5000, (time_t)5000));
+    TEST_ASSERT_EQUAL_INT64(0, vault_uptime_seconds((time_t)5000, (time_t)9000));
+}
+
 void run_commands_tests(void) {
     RUN_TEST(test_status_reports_no_open_vault);
+    RUN_TEST(test_uptime_seconds);
     RUN_TEST(test_policy_update_changes_policy);
     RUN_TEST(test_policy_update_unknown_denied);
     RUN_TEST(test_policy_update_rejects_bad_dsl);

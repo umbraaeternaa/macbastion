@@ -1,9 +1,11 @@
-/* VAULT IPC command dispatch — vault.* methods over JSON-RPC (§7 IPC API, VD-1).
- * VD-1 skeleton: vault.status is real; the engine methods (create / list / unlock / lock /
- * policy.update / add_file / delete) are gated -31004 — not built, no faked behaviour
- * (MANIFESTO §4). The keychain KEK + unlock engine land in later slices. */
+/* VAULT IPC command dispatch — vault.* methods over JSON-RPC (§7 IPC API). The full engine is
+ * real and wired (VD-1..VD-9b): vault.status / create / list / unlock / lock / policy.update /
+ * add_file / delete all run real handlers — Keychain KEK, Argon2id KDF, XChaCha20-Poly1305
+ * seal/open, RAM-backed mount. No stubs, no faked behaviour (MANIFESTO §4). */
 #ifndef VAULT_COMMANDS_H
 #define VAULT_COMMANDS_H
+
+#include <time.h> /* time_t for vault_uptime_seconds */
 
 #include "cJSON.h"
 
@@ -30,5 +32,10 @@ char *vault_commands_dispatch(vault_runtime_t *rt, const char *method, const cJS
  * Returns the previous provider. */
 typedef void (*vault_context_fn)(VaultContext *out);
 vault_context_fn vault_set_context_provider(vault_context_fn fn);
+
+/* Pure helper (VD-4a): seconds elapsed since boot from `now` and the kernel boot time (both
+ * epoch seconds), clamped to >= 0. Exposed for hermetic testing; default_context feeds it the
+ * real sysctl kern.boottime. */
+long vault_uptime_seconds(time_t now, time_t boottime_sec);
 
 #endif /* VAULT_COMMANDS_H */

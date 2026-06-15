@@ -10,6 +10,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/sysctl.h>
+#include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -26,6 +28,13 @@
 
 static cJSON *load_array_file(const char *path); /* fwd: used by unlock (open) + add_file */
 
+/* Pure (VD-4a): seconds elapsed since boot from the current time and the kernel boot time (both
+ * epoch seconds), clamped to >= 0 — a backwards clock / skew never yields a negative "uptime"
+ * (fail-safe: a `seconds_since_boot > N` policy stays closed, never spuriously open). */
+long vault_uptime_seconds(time_t now, time_t boottime_sec) {
+    return (now > boottime_sec) ? (long)(now - boottime_sec) : 0;
+}
+
 /* Unlock context provider (VD-4a). Default reads the clock; module signals are unknown (a
  * not-running module fails closed unless the policy opts in). Tests inject a fixed context. */
 static void default_context(VaultContext *out) {
@@ -35,7 +44,16 @@ static void default_context(VaultContext *out) {
     out->hour = tmv.tm_hour;
     out->weekday = (VaultWeekday)((tmv.tm_wday + 6) % 7); /* tm_wday 0=Sun -> VWD_MON=0 */
     out->day_of_month = tmv.tm_mday;
-    out->seconds_since_boot = 0; /* VD-4a: real sysctl kern.boottime gathering deferred */
+    /* VD-4a: real uptime from the kernel boot time (sysctl kern.boottime). A sysctl failure or a
+     * zero boot time -> 0 (fail-safe unknown — most restrictive for a `seconds_since_boot > N`). */
+    struct timeval boottime;
+    size_t btlen = sizeof(boottime);
+    int mib[2] = {CTL_KERN, KERN_BOOTTIME};
+    if (sysctl(mib, 2, &boottime, &btlen, NULL, 0) == 0 && boottime.tv_sec != 0) {
+        out->seconds_since_boot = vault_uptime_seconds(now, boottime.tv_sec);
+    } else {
+        out->seconds_since_boot = 0;
+    }
     out->pulse_mode = VPULSE_UNKNOWN;
     out->tether = VTETHER_UNKNOWN;
     out->network_ssid = NULL;
