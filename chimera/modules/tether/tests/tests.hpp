@@ -12,5 +12,6 @@ void run_emit_tests(void);
 void run_commands_tests(void);
 void run_monitor_tests(void);
 void run_source_tests(void);
+void run_pin_tests(void);
 
 #endif /* TETHER_TESTS_HPP */

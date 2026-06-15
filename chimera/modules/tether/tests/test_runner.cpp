@@ -18,5 +18,6 @@ int main(void) {
     run_commands_tests();
     run_monitor_tests();
     run_source_tests();
+    run_pin_tests();
     return UNITY_END();
 }
