@@ -15,7 +15,7 @@
 | MIRROR | C     | `a951c92` | §5.4 — behavioral noise inject  |
 | PULSE  | C+Py  | `5f5b64a` | §5.5 — cognitive load monitor   |
 | VAULT  | C     | `1fdc517` | §5.6 — time-locked storage      |
-| TETHER | C++   | `3c1791d` | §5.7 — proximity dead-man       |
+| TETHER | C++   | `62d8636` | §5.7 — proximity dead-man       |
 | PURGE  | C+Asm | `4a3c9df` | §5.8 — secure erasure (panic)   |
 
 All 8 of 8 module specifications complete. Part 2 (§5) closed.
@@ -66,29 +66,36 @@ the architectural document is whole and authoritative. No spec work remains.
 
 ## Code status
 
-**LATEST (Day 22, 2026-06-15): TCC responsibility launcher — tcc-disclaim (native daemons own their TCC subject). ⚠️ OPEN TAIL #1.**
-New `tools/tcc-disclaim/` launcher posix_spawns a module with `responsibility_spawnattrs_setdisclaim()`, so
-a supervisor-spawned native daemon becomes its OWN TCC subject. The supervisor now spawns every native module
-THROUGH it (`core/__main__._spawn_argv` + `_disclaim_launcher`; graceful fallback if unbuilt; python modules
-unwrapped). Why: macOS attributes a daemon's permission request to the RESPONSIBLE process, which for a
-supervisor (python) child resolves to the interpreter (no usage string) → TETHER's Bluetooth was silently
-DENIED with no prompt, so the dead-man went blind after the rebuild+resign. The launcher is a faithful proxy
-(forwards SIGTERM/SIGINT, propagates exit status); proxy contract 6/6 GREEN; CLI tests 710→712, /check ALL
-GREEN. Commits `d987770` (launcher) + `6e40703` (supervisor wiring). The disclaim PROVABLY works for
-prompting: running `tcc-disclaim ./tether` in a real Terminal raised the "tether" Bluetooth prompt and the
-grant now shows in System Settings → Bluetooth (ON).
+**LATEST (Day 23, 2026-06-15): live dead-man WORKING via ble-probe bridge + TETHER own LaunchAgent + anti-spoof × random-address. ⚠️ OPEN TAIL #1 narrowed to the clean grant.**
+The dead-man is **PROVEN end-to-end on the operator's real Samsung + Mac**: beacon OFF → `tether.absent →
+vault.lock` + `escalation → shim.lock` (his screen actually locked — real teeth); beacon ON → `tether.recovered
+→ stand-down`. Three pieces landed:
 
-⚠️ **OPEN TAIL #1 (resume here next session): the SUPERVISED disclaimed tether is still NOT authorized.**
-Despite "tether" ON in the Bluetooth grants AND the Samsung beacon at -46 dBm (confirmed live by ble-probe,
-which has its own grant), the supervisor-launched tether stays absent. So disclaim severs the immediate
-parent but, in the launchd→python→launcher→tether chain, macOS still won't authorize the daemon the way it
-does from Terminal. **The live dead-man is BLIND right now** (false absent→L1→L2 cycles every ~90s; vault
-stays locked = safe; L3 not armed = nothing destructive). The CODE is all shipped — this is last-mile TCC
-plumbing. **Likely real fix: make TETHER its OWN LaunchAgent** (its own launchd job → naturally its own
-responsible process, no disclaim hack), or research the responsible-process chain / grant python the cap.
-Separate latent bug surfaced: tether crashes on teardown (Ctrl-C/SIGTERM) — `malloc: pointer being freed was
-not allocated (0x100000000)` — teardown only, no runtime impact; fix alongside. (Before this session the old
-binary's grant worked; the resign broke it — restoring it is exactly OPEN TAIL #1.)
+- **TETHER as its OWN LaunchAgent** — `ModuleSpec.external`; supervisor skips external in BOTH `up()` and
+  `handle_failure` (else core respawns a duplicate); `external_agent_plist` (runs the binary directly =
+  own TCC subject, no tcc-disclaim) + install/uninstall wiring. Commits `7289996`, `3ce2ecc`, `ed18af1`.
+- **ble-probe bridge** (`LiveFileSource`, `6069b25`): the `ble-probe` tool IS Bluetooth-authorized (run
+  interactively) and sees the companion; tether reads its feed (`TETHER_FEED_FILE`) and runs its FULL
+  Monitor/ladder/events on it. THIS makes the live dead-man work TODAY (rides ble-probe's grant). Runs now
+  as orphan processes: `ble-probe > /tmp/chimera_feed` + a feed-tether (`CHIMERA_SOCKET_DIR` at the live
+  run dir) — **NOT yet reboot-persistent**.
+- **anti-spoof × random-address** (`resolve_seen`, `62d8636`): the Samsung advertises a rotating RPA
+  ("RANDOM ADDRESS"), so identity-pinning rejected it after each rotation (the Day-22 oscillation cause).
+  `resolve_seen`: heard-on-service-UUID = present unless `pin_enabled`; `companion_random_address: true` in
+  the operator's `~/.config/chimera/tether/config.json` turns the identity pin OFF for his phone. tether 61→64.
+
+⚠️ **OPEN TAIL #1 (narrowed): the clean Bluetooth grant for the tether DAEMON.** Even tether as its own
+LaunchAgent (own responsible process) — and even re-signed with ble-probe's identifier — is STILL TCC-denied
+for Bluetooth, while ble-probe (same `cb_scanner` code, interactive) works. macOS won't honour tether's grant
+as a daemon. A **deep-research workflow is running** for the exact recipe (likely a proper `.app` bundle, or a
+TCC reset+re-grant). Until then the **bridge is the working interim**. NEXT: apply the research's clean grant
+fix → drop the bridge → make it reboot-persistent (LaunchAgents). Separate latent bug still open: tether
+crashes on teardown (SIGTERM) — `malloc … 0x100000000` — teardown only, no runtime impact.
+
+**PRIOR (Day 22): TCC responsibility launcher — tcc-disclaim.** `tools/tcc-disclaim/` posix_spawns a module
+with `responsibility_spawnattrs_setdisclaim()` so a supervisor-spawned daemon is its own TCC subject (commits
+`d987770` + `6e40703`). Superseded for TETHER by the own-LaunchAgent approach above (disclaim under the
+supervisor still didn't authorize the daemon); the launcher + wiring remain for any module that needs it.
 
 **PRIOR (Day 22): TETHER anti-spoof — source-sharing wiring (unpair now bites live).**
 The live `CoreBluetoothSource` now BORROWS the runtime's `CompanionPin` by reference (ONE shared
