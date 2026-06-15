@@ -38,6 +38,19 @@ $(BIN): src/main.o $(CPP_OBJS) $(MM_OBJS) $(C_OBJS) $(VEND_OBJS) src/tether.plis
 	$(CXX) $(filter-out src/tether.plist,$^) $(FRAMEWORKS) \
 	  -Wl,-sectcreate,__TEXT,__info_plist,src/tether.plist -o $@
 
+# app — wrap the daemon binary in a proper .app bundle (OPEN TAIL #1 root fix). A bare signed
+# Mach-O launched by a LaunchAgent is TCC-attributed by absolute path (client_type=1) and the
+# Bluetooth grant never binds to the daemon; a real bundle (CFBundleIdentifier + Info.plist,
+# signed AS the bundle) gives macOS a stable bundle-id + designated requirement, so TCC binds
+# the grant to the daemon and it persists across rebuilds + reboot. Signing is a separate step
+# (../../sign.sh / codesign, which needs the operator's identity) — this target only assembles.
+TETHER_APP := tether.app
+app: $(BIN) src/tether.Info.plist
+	rm -rf $(TETHER_APP)
+	mkdir -p $(TETHER_APP)/Contents/MacOS
+	cp $(BIN) $(TETHER_APP)/Contents/MacOS/tether
+	cp src/tether.Info.plist $(TETHER_APP)/Contents/Info.plist
+
 # companion-beacon — a standalone CoreBluetooth advertiser: the turnkey/demo dead-man companion
 # (the mirror of cb_scanner.mm). Manual-tier like the scanner. The embedded __info_plist carries
 # NSBluetoothAlwaysUsageDescription so macOS prompts for the Bluetooth grant with a reason.
@@ -85,5 +98,6 @@ format:
 
 clean:
 	rm -f $(BIN) companion-beacon ble-probe run_tests src/main.o $(CPP_OBJS) $(MM_OBJS) $(C_OBJS) $(VEND_OBJS) $(UNITY_OBJ) $(TEST_OBJS)
+	rm -rf $(TETHER_APP)
 
-.PHONY: test format clean companion probe
+.PHONY: test format clean companion probe app

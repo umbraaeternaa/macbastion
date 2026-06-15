@@ -16,6 +16,7 @@ from core.__main__ import (
     _spawn_argv,
     external_agent_plist,
     launch_agent_plist,
+    module_app_binary,
     module_binary,
     parse_args,
 )
@@ -56,12 +57,15 @@ def test_disclaim_launcher_path():
 
 
 def test_tether_external_agent_plist(tmp_path):
-    # TETHER's own LaunchAgent: launchd runs the binary DIRECTLY (own TCC subject → Bluetooth
-    # grant binds), NOT via tcc-disclaim; reads ~/.config via HOME; finds core via SOCKET_DIR.
-    xml = external_agent_plist("tether", tmp_path)
+    # TETHER's own LaunchAgent: launchd runs the .app bundle's binary DIRECTLY (own TCC subject +
+    # CFBundleIdentifier → Bluetooth grant binds), NOT via tcc-disclaim; reads ~/.config via HOME;
+    # finds core via SOCKET_DIR. app_bundle=True mirrors its real ModuleSpec.
+    xml = external_agent_plist("tether", tmp_path, app_bundle=True)
     assert "<string>com.umbra.chimera.tether</string>" in xml
-    assert f"<string>{module_binary('tether')}</string>" in xml
+    assert f"<string>{module_app_binary('tether')}</string>" in xml  # inside the .app bundle
+    assert "tether.app/Contents/MacOS/tether" in xml  # not the bare binary
     assert "tcc-disclaim" not in xml  # launchd gives it a clean TCC identity — no wrapper
+    assert "TETHER_FEED_FILE" not in xml  # real CoreBluetoothSource, not the ble-probe bridge
     assert "<key>HOME</key>" in xml  # so it resolves ~/.config/chimera/tether/config.json
     assert str(tmp_path) in xml  # CHIMERA_SOCKET_DIR -> finds core.sock
     assert "<key>KeepAlive</key>" in xml and "<key>RunAtLoad</key>" in xml

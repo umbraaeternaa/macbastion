@@ -40,6 +40,17 @@ if [ -x "shim/chimera-shim" ]; then
   printf '    %-8s signed + verified\n' "shim"
 fi
 
+# TETHER's .app bundle — launchd runs THIS (not the bare binary) so its CFBundleIdentifier makes
+# TCC bind the Bluetooth grant to the daemon (OPEN TAIL #1). Re-assemble from the just-signed
+# binary, then sign the BUNDLE (the identifier comes from Info.plist's CFBundleIdentifier); the
+# grant persists across rebuilds as long as the bundle is re-signed with this same identity.
+if [ -x "modules/tether/tether" ]; then
+  make -C modules/tether app >/dev/null
+  codesign -s "$ID" --force --identifier "com.umbra.chimera.tether" "modules/tether/tether.app"
+  codesign --verify --strict "modules/tether/tether.app"
+  printf '    %-8s signed + verified\n' "tether.app"
+fi
+
 echo ""
 echo "==> done. NOTE: a TCC grant given to an UNSIGNED binary does not match the signed"
 echo "    one — re-grant it ONCE after signing (e.g. MIRROR Accessibility); it persists"

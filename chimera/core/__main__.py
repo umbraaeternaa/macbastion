@@ -132,6 +132,14 @@ def module_binary(name: str) -> Path:
     return _chimera_root() / "modules" / name / name
 
 
+def module_app_binary(name: str) -> Path:
+    """Resolve an app-bundled module's executable: modules/<name>/<name>.app/Contents/MacOS/<name>.
+    Launching THIS (a binary inside a real .app with a CFBundleIdentifier, signed as the bundle)
+    makes macOS attribute the daemon's TCC request to the bundle id — so the Bluetooth grant binds
+    to the daemon instead of failing on a bare path (OPEN TAIL #1, TETHER §7.10)."""
+    return module_binary(name).parent / f"{name}.app" / "Contents" / "MacOS" / name
+
+
 def _disclaim_launcher() -> Path:
     """The tcc-disclaim launcher (tools/tcc-disclaim/tcc-disclaim). Native daemons are
     spawned THROUGH it so each becomes its OWN TCC subject — macOS otherwise attributes a
@@ -263,13 +271,16 @@ def launch_agent_plist(socket_dir: Path) -> str:
     )
 
 
-def external_agent_plist(name: str, socket_dir: Path) -> str:
+def external_agent_plist(name: str, socket_dir: Path, app_bundle: bool = False) -> str:
     """LaunchAgent plist for an EXTERNAL native module (e.g. TETHER): launchd runs the module
     binary DIRECTLY so the daemon is its OWN TCC subject — its Bluetooth / Accessibility grant
     binds, unlike a supervisor-spawned child (which TCC attributes to the Python interpreter and
-    silently denies). It connects to the SAME core socket; KeepAlive retries until core's socket
-    exists and restarts it on crash. HOME is set so it resolves ~/.config/chimera/<name>/."""
-    binary = module_binary(name)
+    silently denies). With app_bundle the executable inside the module's .app is launched (a real
+    CFBundleIdentifier → TCC binds the grant to the daemon, OPEN TAIL #1). No TETHER_FEED_FILE is
+    set, so the daemon uses its REAL CoreBluetoothSource (not the ble-probe bridge). It connects to
+    the SAME core socket; KeepAlive retries until core's socket exists and restarts it on crash.
+    HOME is set so it resolves ~/.config/chimera/<name>/."""
+    binary = module_app_binary(name) if app_bundle else module_binary(name)
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
@@ -339,7 +350,7 @@ def _install(config: CoreConfig) -> int:
         if not spec.external:
             continue
         ap = _external_agent_path(spec.name)
-        ap.write_text(external_agent_plist(spec.name, config.socket_dir))
+        ap.write_text(external_agent_plist(spec.name, config.socket_dir, spec.app_bundle))
         subprocess.run(_bootout_argv(ap), capture_output=True, check=False)  # noqa: S603
         subprocess.run(_bootstrap_argv(ap), capture_output=True, check=False)  # noqa: S603
         print(f"  external agent: {spec.name} -> {ap}")

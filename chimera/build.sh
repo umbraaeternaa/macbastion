@@ -42,6 +42,12 @@ for m in chaff echo mirror vault tether purge; do
   make -C "modules/$m" >/dev/null && echo "ok"
 done
 
+# TETHER is launched as a real .app bundle (its CFBundleIdentifier makes macOS bind the
+# Bluetooth TCC grant to the daemon — OPEN TAIL #1). Assemble the bundle from the binary
+# just built; ./sign.sh signs it as a bundle so the grant persists across rebuilds.
+printf '    %-8s ' "tether.app"
+make -C modules/tether app >/dev/null && echo "ok"
+
 echo ""
 echo "==> CHIMERA built. Bring the organism up with:"
 echo "      .venv/bin/python -m core up      # core + all 8 organs"

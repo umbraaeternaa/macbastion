@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- The .app BUNDLE Info.plist (distinct from src/tether.plist, the bare-binary __info_plist
+     section). A proper bundle gives macOS a stable CFBundleIdentifier + designated requirement,
+     so TCC binds the Bluetooth grant to the DAEMON (client_type=0, bundle-id) instead of failing
+     to attribute a bare path binary — the OPEN TAIL #1 root fix. LSUIElement: a background agent
+     (no Dock icon) that may still present the one-time TCC prompt. -->
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.umbra.chimera.tether</string>
+    <key>CFBundleExecutable</key>
+    <string>tether</string>
+    <key>CFBundleName</key>
+    <string>CHIMERA TETHER</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>LSMinimumSystemVersion</key>
+    <string>13.0</string>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>CHIMERA TETHER senses the proximity of your paired companion device over Bluetooth (the dead-man switch).</string>
+</dict>
+</plist>

@@ -28,6 +28,9 @@ class ModuleSpec:
     python: bool = False  # True -> launched as `python -m <name>`, not a native binary
     external: bool = False  # True -> launched by its OWN LaunchAgent (its own TCC subject,
     #                         e.g. TETHER's Bluetooth grant); the supervisor does NOT spawn it
+    app_bundle: bool = False  # True -> the external agent launches the .app bundle's inner
+    #                           binary (.app/Contents/MacOS/<name>); a real CFBundleIdentifier
+    #                           makes TCC bind the grant to the daemon — the OPEN TAIL #1 fix
 
 
 # The full organism: one `chimera up` raises all eight organs. Native modules are their
@@ -39,7 +42,7 @@ CHIMERA_MODULES: tuple[ModuleSpec, ...] = (
     ModuleSpec("echo"),
     ModuleSpec("mirror"),
     ModuleSpec("vault"),
-    ModuleSpec("tether", external=True),  # own LaunchAgent → own Bluetooth TCC grant (§7.10)
+    ModuleSpec("tether", external=True, app_bundle=True),  # own LaunchAgent + .app → BT grant binds
     ModuleSpec("purge"),
     ModuleSpec("oracle", python=True),
     ModuleSpec("pulse", python=True),

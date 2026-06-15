@@ -1,6 +1,7 @@
 # build artifacts
 *.o
 /tether
+/tether.app/
 /companion-beacon
 /ble-probe
 /run_tests
