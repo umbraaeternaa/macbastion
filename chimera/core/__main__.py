@@ -166,7 +166,11 @@ def _spawn_argv(
         "HOME": os.environ.get("HOME", os.path.expanduser("~")),
     }
     if spec.python:
-        env["PYTHONPATH"] = str(module_dir)
+        # PYTHONPATH = the module's own package dir + the chimera root, so the module imports
+        # BOTH its package (`oracle`/`pulse`) AND `core.*` on a FRESH clone whose venv has no
+        # editable install of chimera (the .pth a `pip install -e .` would add). Without the root
+        # here, oracle/pulse crash on `from core.config import ...` and never register (M4a fix).
+        env["PYTHONPATH"] = f"{module_dir}{os.pathsep}{_chimera_root()}"
         return [_module_python(), "-m", spec.name], env, str(module_dir)
     # Native daemon: spawn THROUGH tcc-disclaim so it owns its TCC subject (own Bluetooth/
     # Accessibility grant) instead of being attributed to this Python supervisor. If the

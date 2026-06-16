@@ -81,7 +81,8 @@ def test_spawn_argv_python_module(tmp_path, monkeypatch):
     assert argv[0] == sys.executable
     assert argv[1:] == ["-m", "pulse"]
     assert env["CHIMERA_SOCKET_DIR"] == str(tmp_path)
-    assert env["PYTHONPATH"] == str(module_binary("pulse").parent)
+    assert str(module_binary("pulse").parent) in env["PYTHONPATH"]  # module's own package dir
+    assert str(_chimera_root()) in env["PYTHONPATH"]  # + chimera root so `import core` works (M4a)
     assert cwd == str(module_binary("pulse").parent)
 
 
