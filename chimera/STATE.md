@@ -81,7 +81,10 @@ via core.purge→shim.evict; `-31004` is the operator arm-gate, NOT "unbuilt").
   the dead-man presence + anti-spoof work without it. Persistent pin also deferred.
 - CHAFF **privileged** profiling (pf/dtrace packet microstructure) — deferred; the userspace
   category+temporal profiler is the live substitute.
-- PURGE **tier1** (VAULT KEK crypto-shred) — native no-op, covered operator-level by core.purge → shim.evict.
+- PURGE **tier1** (VAULT KEK crypto-shred) — native no-op BY DESIGN (privilege boundary); the real
+  crypto-shred is privileged: `core.purge → shim.evict` (deletes the `com.umbra.chimera` Keychain
+  service-wide) + `vault.delete` (per-vault). **VALIDATED LIVE Day 24** on a throwaway vault — KEK
+  evicted → ciphertext orphaned → `vault.unlock` = `no_such_vault`. (Not "unbuilt" — read code §4.)
 - ECHO **EP-6 floor-fill** — deferred (the rate ceiling ships; the floor is research-grade).
 
 **Day 24, 2026-06-16: ✅ PURGE panic proven LIVE (M4b) + PULSE chronotype auto-detect (§9).**

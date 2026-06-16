@@ -1,8 +1,12 @@
 /* exec — the PURGE tier executor. Runs a plan's enabled tiers key-first (§3):
  * tier0 -> tier1 -> tier2 -> tier3.
- *   tier0: LIVE for CHIMERA's state FILES (purge_statefile_remove_all, statefiles.c);
- *          its Keychain-eviction half is still a no-op.
- *   tier1: honest NO-OP stub (VAULT KEK crypto-shred lands in a later gated slice, §4).
+ *   tier0: LIVE for CHIMERA's state FILES (purge_statefile_remove_all, statefiles.c); the
+ *          Keychain-eviction half is intentionally NOT here — it is privileged (see tier1).
+ *   tier1: no-op in THIS unprivileged native daemon BY DESIGN — it must never touch the
+ *          operator login Keychain. The VAULT KEK crypto-shred is REAL at the privileged
+ *          layer: core.purge -> shim.evict (deletes the `com.umbra.chimera` Keychain items,
+ *          service-wide) and vault.delete (per-vault). Validated live Day 24: evicting a
+ *          throwaway vault's KEK orphaned its ciphertext (unlock -> no_such_vault).
  *   tier2: operator targets — §8 honest-wipe: remove ENCRYPTED ones (their ciphertext is
  *          noise once keys are shredded), REFUSE unencrypted ones (no SSD overwrite theatre).
  *   tier3: LIVE — zeroes registered sensitive buffers in RAM (secrets.c, §5.8). */
@@ -15,8 +19,12 @@
 #include "secrets.h"
 #include "statefiles.h"
 
+/* tier1 is a deliberate no-op HERE: crypto-shredding VAULT's Keychain-resident KEK is a
+ * PRIVILEGED op (core.purge -> shim.evict, or vault.delete), never the unprivileged native
+ * daemon's to perform. Kept as a tier hook so the plan/exec shape stays uniform. */
 static int noop_tier1(void) {
-    fprintf(stderr, "purge: NO-OP tier1 (crypto-shred VAULT KEKs) — skeleton\n");
+    fprintf(stderr, "purge: tier1 KEK crypto-shred is privileged "
+                    "(core.purge/vault.delete) — no-op in the native daemon by design\n");
     return 0;
 }
 
