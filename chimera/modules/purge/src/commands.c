@@ -149,9 +149,10 @@ char *purge_commands_dispatch(purge_runtime_t *rt, const char *method, const cJS
             return jsonrpc_serialize_error(id, -31004, "purge not armed (call purge.arm first)",
                                            NULL);
         }
-        /* Run the executor over the live plan. THIS slice's tier actions are honest no-op
-         * stubs (§4) — they destroy nothing yet; real effects land behind later slices. The
-         * trigger is single-shot: firing disarms, so a re-trigger needs a fresh arm. */
+        /* Run the REAL executor (exec.c) over the live plan: tier0 unlinks registered state
+         * files, tier2 unlinks ENCRYPTED operator targets (unencrypted are refused, §8), tier3
+         * zeroes registered RAM secrets; tier1 (VAULT KEK-shred) is the one deferred no-op (§4).
+         * The trigger is single-shot: firing disarms, so a re-trigger needs a fresh arm. */
         purge_plan_t plan = purge_plan_targets(&rt->targets, 1, 1);
         purge_exec_result_t res = purge_execute(&plan, &rt->targets);
         rt->armed = 0;
