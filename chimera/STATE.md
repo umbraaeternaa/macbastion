@@ -83,7 +83,20 @@ via core.purge→shim.evict; `-31004` is the operator arm-gate, NOT "unbuilt").
   category+temporal profiler is the live substitute.
 - PURGE **tier1** (VAULT KEK crypto-shred) — native no-op, covered operator-level by core.purge → shim.evict.
 - ECHO **EP-6 floor-fill** — deferred (the rate ceiling ships; the floor is research-grade).
-- PULSE **chronotype** auto-detect (chronotype is an input); `pulse.mode.changed/error` registered, not yet emitted.
+
+**Day 24, 2026-06-16: ✅ PURGE panic proven LIVE (M4b) + PULSE chronotype auto-detect (§9).**
+M4b — end-to-end on a throwaway /tmp target via the live organism (core→purge): an unarmed trigger
+was refused (`-31004`); after `purge.arm`, `purge.trigger` ran the REAL executor — the encrypted
+target was `unlink`ed (tier2_shred), the unencrypted one REFUSED (tier2_skip, §8 no-theatre), and
+the trigger self-disarmed (single-shot). Fixed a stale lying comment in `commands.c` (commit
+`0e1425e`). **PULSE chronotype** — the one genuine PULSE deferral is CLOSED: `chronotype.py` (pure
+classifier) learns typical vs night_owl from a 24-slot hour-of-activity histogram (≥30% night share
+over ≥600 active minutes); the client counts one active minute per tick (HID-idle <300s), persists
+it in `baseline_meta`, and feeds the learned verdict into `temporal_signal` (the configured default
+is honored until learning is confident; fail-open → "typical"). Also corrected the stale `client.py`
+docstring — `pulse.mode.changed`/`pulse.error` ARE emitted from the tick loop + consumed + relayed
+by core live (my earlier "registered, not yet emitted" note was WRONG, read-code-not-comments).
+Commit `21fb720`; +17 tests (12 pure + 5 client); /check ALL GREEN.
 
 **Day 24, 2026-06-16: ✅ CHAFF Phase-A profiling — userspace path LIVE.** The spec's
 privileged pf/dtrace observation stays deferred (no ES entitlement / SIP-on dtrace / pf-risk), so
