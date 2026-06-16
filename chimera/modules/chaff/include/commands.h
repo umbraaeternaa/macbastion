@@ -1,5 +1,6 @@
-/* chaff.* JSON-RPC method dispatch (§5.1 IPC API). Phase B methods work;
- * profile.* return -31004 (deferred to the privileged shim, Sub-D6). */
+/* chaff.* JSON-RPC method dispatch (§5.1 IPC API). Phase B methods work; profile.* (the privileged
+ * pf/dtrace trigger) return -31004, still deferred to the shim (Sub-D6) — but a userspace profiler
+ * (tools/chaff_profile.py) produces profile.json the daemon weights decoys by. */
 #ifndef CHAFF_COMMANDS_H
 #define CHAFF_COMMANDS_H
 

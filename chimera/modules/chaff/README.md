@@ -8,11 +8,13 @@ observers. Full specification: [`../../docs/modules/CHAFF.md`](../../docs/module
 
 - **Phase B — Generation: IMPLEMENTED here** (userspace decoy traffic via
   libcurl; no root).
-- **Phase A — Profiling: DEFERRED.** It observes real outbound connections via
-  `pf`/`dtrace`, which require root — that belongs to the privileged shim
-  (§7.10 / §8.8), not yet built. Honest scope, per MANIFESTO §4. Until then
-  CHAFF generates against a synthetic flat profile (equal category weights);
-  `chaff.profile.*` commands return a `requires_privileged_shim` error.
+- **Phase A — Profiling: userspace path LIVE; privileged path deferred.** The spec's passive
+  *packet* observation (real outbound connections via `pf`/`dtrace`) needs root and stays DEFERRED
+  to the privileged shim (§7.10 / §8.8) — `chaff.profile.*` still report that. But a userspace
+  profiler now exists: `tools/chaff_profile.py` builds `~/.config/chimera/chaff/profile.json` from
+  the operator's own Chromium history, and the daemon weights its decoy categories by it (flat if
+  absent). Honest scope (§4): covers the **category + temporal** axes, NOT packet sizes /
+  inter-request microtiming (those still need the privileged path).
 
 ## Build
 

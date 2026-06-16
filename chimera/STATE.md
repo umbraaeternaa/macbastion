@@ -66,7 +66,19 @@ the architectural document is whole and authoritative. No spec work remains.
 
 ## Code status
 
-**LATEST (Day 23, 2026-06-15): ✅ VAULT PROVEN LIVE end-to-end on the organism + real `seconds_since_boot`.**
+**LATEST (Day 24, 2026-06-16): ✅ CHAFF Phase-A profiling — userspace path LIVE.** The spec's
+privileged pf/dtrace observation stays deferred (no ES entitlement / SIP-on dtrace / pf-risk), so
+instead a **userspace profiler** (`modules/chaff/tools/chaff_profile.py`) builds
+`~/.config/chimera/chaff/profile.json` from the operator's own Chromium history (Chrome+Brave),
+aggregate-only (no raw URLs): 5 category weights + a 24h shape + a `coverage` field. The daemon
+loads it at startup and `gen_thread` now picks the decoy category **weighted** via
+`chaff_weighted_category` (was uniform `% 5`); missing/invalid profile → flat (§4). Honest scope:
+covers category + temporal axes, NOT packet sizes/microtiming (still privileged). Live profile read
+9886 visits, coverage ~42% (the rest — AI-chat/media/marketplace — is outside CHAFF's 5 categories,
+the operator's Variant-A choice). Commits `088c25a` (profiler) · `13fb85f` (weighted pick) ·
+`af8ff9a` (loader) · `9fa3dc4` (wire). chaff 46→52 tests; stale "DEFERRED" docs corrected.
+
+**Day 23, 2026-06-15: ✅ VAULT PROVEN LIVE end-to-end on the organism + real `seconds_since_boot`.**
 The libsodium crypto + full unlock engine were ALREADY implemented & hermetically tested (VD-1..VD-9b; the old
 "gated -31004" comments were STALE — corrected this session, `4427c1a`). What was never exercised was the REAL
 Keychain path live. Now proven: the full cycle `create → unlock(mount) → add_file(seal) → lock → unlock(decrypt)

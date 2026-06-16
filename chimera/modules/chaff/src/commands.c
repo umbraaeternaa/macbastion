@@ -96,8 +96,10 @@ char *commands_dispatch(chaff_runtime_t *rt, const endpoint_list_t *eps, const c
         cJSON *data = cJSON_CreateObject();
         cJSON_AddStringToObject(data, "required_capability", "privileged_shim");
         cJSON_AddStringToObject(data, "spec", "\xc2\xa7""7.10/\xc2\xa7""8.8");
+        cJSON_AddStringToObject(data, "userspace_profiler", "tools/chaff_profile.py");
         return jsonrpc_serialize_error(id, CHAFF_RPC_PRECONDITION_FAILED,
-                                       "profile commands require privileged shim (not yet built)",
+                                       "privileged pf/dtrace profiling deferred to the shim; "
+                                       "run tools/chaff_profile.py for a userspace profile",
                                        data);
     }
 
