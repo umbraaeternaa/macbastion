@@ -1,7 +1,9 @@
 /* PURGE IPC command dispatch — purge.* methods over JSON-RPC (§7 IPC API, PD-2/PD-3).
- * Builds responses from the plan + targets + config cores. purge.trigger runs the tier
- * EXECUTOR (exec.c) once armed; this slice's tier actions are honest no-op stubs that
- * destroy nothing yet (MANIFESTO §4) — an unarmed trigger is still refused (-31004). */
+ * Builds responses from the plan + targets + config cores. purge.trigger runs the REAL tier
+ * EXECUTOR (exec.c) once armed — tier0 (state files) + tier2 (encrypted operator targets) +
+ * tier3 (RAM-wipe) destroy for real; tier1 (VAULT KEK shred) is the one deferred no-op, covered
+ * at the operator level by core.purge -> shim.evict. An UNARMED trigger is refused -31004
+ * (operator opt-in; no accidental destruction), NOT because the engine is unbuilt. */
 #include <stddef.h>
 #include <string.h>
 

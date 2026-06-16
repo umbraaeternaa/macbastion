@@ -1,9 +1,9 @@
 /* daemon — single-threaded IPC serve loop (§5.8 / §6).
  *
  * poll(500ms) -> read + classify + dispatch routed purge.* commands; heartbeat when due.
- * RESPONSE acks + events are ignored. Exits on EOF (core gone) or SIGTERM/SIGINT. The
- * real destruction engine is gated, so purge.trigger answers -31004 — there is nothing
- * dangerous in this loop. */
+ * RESPONSE acks + events are ignored. Exits on EOF (core gone) or SIGTERM/SIGINT. The tier
+ * executor is REAL (exec.c: tier0/2/3 destroy); purge.trigger runs it only when ARMED, and an
+ * unarmed trigger answers -31004 — so nothing destroys without an explicit operator arm. */
 #include "daemon.h"
 
 #include <signal.h>

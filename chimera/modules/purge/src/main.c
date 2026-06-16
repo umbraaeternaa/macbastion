@@ -1,6 +1,7 @@
 /* PURGE daemon entry (§5.8 / §6). Reads CHIMERA_SOCKET_DIR (default ~/.config/chimera/run),
- * connects OUT to core's command socket, registers, then runs the IPC serve loop. The
- * destruction engine is gated, so purge.trigger answers -31004 — registering it is safe. */
+ * connects OUT to core's command socket, registers, then runs the IPC serve loop. The tier
+ * executor is REAL; purge.trigger destroys only when ARMED (unarmed -> -31004), so registering
+ * the daemon is safe — destruction needs an explicit operator arm first. */
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>

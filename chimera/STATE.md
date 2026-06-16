@@ -66,7 +66,26 @@ the architectural document is whole and authoritative. No spec work remains.
 
 ## Code status
 
-**LATEST (Day 24, 2026-06-16): ✅ CHAFF Phase-A profiling — userspace path LIVE.** The spec's
+**LATEST (Day 24, 2026-06-16): product push — organism LIVE on current signed code (M1) + SwiftBar
+menu-bar UX (M2) + honesty cleanup (M3).** `chimera install` re-deployed every module rebuilt &
+re-signed (stable Apple Development id) → **8/8 registered on today's code**, reboot-persistent
+(TETHER `.app`, VAULT crypto, CHAFF weighted profile). **M2:** `swiftbar/chimera.10s.py` (commit
+`86404ed`) polls `core.status` → 🜲 N/8 + per-organ state + armed reflexes in the menu bar (read-only,
+UX.md). **M3:** corrected stale PURGE headers — the tier executor is REAL (tier0 state-files / tier2
+encrypted-target unlink / tier3 RAM-wipe destroy; tier1 KEK-shred is the one deferred no-op, covered
+via core.purge→shim.evict; `-31004` is the operator arm-gate, NOT "unbuilt").
+
+**Known deferred (honest §4 — NOT bugs; the explicit "not-yet" list):**
+
+- TETHER companion **pairing** (`tether.pair.*`, IRK) — gated -31004 (needs Keychain/Secure-Enclave);
+  the dead-man presence + anti-spoof work without it. Persistent pin also deferred.
+- CHAFF **privileged** profiling (pf/dtrace packet microstructure) — deferred; the userspace
+  category+temporal profiler is the live substitute.
+- PURGE **tier1** (VAULT KEK crypto-shred) — native no-op, covered operator-level by core.purge → shim.evict.
+- ECHO **EP-6 floor-fill** — deferred (the rate ceiling ships; the floor is research-grade).
+- PULSE **chronotype** auto-detect (chronotype is an input); `pulse.mode.changed/error` registered, not yet emitted.
+
+**Day 24, 2026-06-16: ✅ CHAFF Phase-A profiling — userspace path LIVE.** The spec's
 privileged pf/dtrace observation stays deferred (no ES entitlement / SIP-on dtrace / pf-risk), so
 instead a **userspace profiler** (`modules/chaff/tools/chaff_profile.py`) builds
 `~/.config/chimera/chaff/profile.json` from the operator's own Chromium history (Chrome+Brave),

@@ -1,7 +1,7 @@
 /* PURGE IPC command dispatch — purge.* methods over JSON-RPC (§7 IPC API, PD-2).
  * The hermetic heart of the daemon: method + params -> a response built from the plan +
- * targets + config cores. purge.trigger is GATED — the real destruction engine is not
- * built, so it returns -31004 (no faked destruction; MANIFESTO §4 / §6). */
+ * targets + config cores. purge.trigger runs the REAL tier executor (exec.c) once ARMED;
+ * an unarmed trigger returns -31004 (operator opt-in safety, not "unbuilt"). */
 #ifndef PURGE_COMMANDS_H
 #define PURGE_COMMANDS_H
 
