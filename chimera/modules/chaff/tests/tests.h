@@ -8,6 +8,7 @@ void run_crypto_tests(void);
 void run_db_tests(void);
 void run_jsonrpc_tests(void);
 void run_generation_tests(void);
+void run_profile_tests(void);
 void run_commands_tests(void);
 
 #endif /* CHAFF_TESTS_H */

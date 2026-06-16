@@ -15,6 +15,7 @@ int main(void) {
     run_db_tests();
     run_jsonrpc_tests();
     run_generation_tests();
+    run_profile_tests();
     run_commands_tests();
     return UNITY_END();
 }

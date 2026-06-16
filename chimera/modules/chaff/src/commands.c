@@ -13,6 +13,9 @@ void chaff_runtime_init(chaff_runtime_t *rt) {
     rt->state = CHAFF_IDLE;
     rt->multiplier = CHAFF_DEFAULT_MULTIPLIER;
     rt->base_gap_ms = 2000.0; /* §5.1 Phase B default (no profile) */
+    for (int i = 0; i < 5; i++) {
+        rt->category_weights[i] = 1.0 / 5; /* flat until a profile is loaded (§4) */
+    }
     rt->requests_today = 0;
     rt->bytes_today = 0;
     rt->rng_state = (uint64_t)time(NULL) ^ 0x9e3779b97f4a7c15ULL; /* nonzero seed */

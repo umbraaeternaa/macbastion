@@ -34,6 +34,7 @@ typedef struct {
     chaff_state_t state;
     double multiplier;
     double base_gap_ms; /* default generation gap (no profile in Phase B) */
+    double category_weights[5]; /* CHAFF_NUM_CATEGORIES; Phase-A profile weights (flat = no profile) */
     uint64_t requests_today;
     uint64_t bytes_today;
     uint64_t rng_state;
