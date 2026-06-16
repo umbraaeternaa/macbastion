@@ -10,6 +10,7 @@
  */
 #include "daemon.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -22,6 +23,7 @@
 #include "http.h"
 #include "ipc.h"
 #include "jsonrpc.h"
+#include "profile.h"
 
 #define HEARTBEAT_INTERVAL_S 10
 #define IPC_POLL_MS 500
@@ -198,7 +200,8 @@ static void *gen_thread(void *arg) {
             sleep_ms(IPC_POLL_MS);
             continue;
         }
-        const char *cat = CATEGORIES[chaff_rng_next(&rng) % 5];
+        int ci = chaff_weighted_category(ctx->rt->category_weights, CHAFF_NUM_CATEGORIES, &rng);
+        const char *cat = CATEGORIES[ci];
         gen_plan_t plan;
         if (generation_plan_next(ctx->eps, cat, gap, &rng, &plan) != CHAFF_OK) {
             sleep_ms(IPC_POLL_MS);
@@ -231,6 +234,15 @@ int daemon_run(int server_fd, chaff_runtime_t *rt, const endpoint_list_t *eps) {
     sa.sa_handler = on_signal;
     sigaction(SIGTERM, &sa, NULL);
     sigaction(SIGINT, &sa, NULL);
+
+    /* Phase-A: load the browser-history profile (if present) so the generator weights decoys by the
+     * operator's real category mix; a missing/invalid profile leaves the flat init untouched (§4). */
+    const char *home = getenv("HOME");
+    if (home) {
+        char ppath[512];
+        snprintf(ppath, sizeof(ppath), "%s/.config/chimera/chaff/profile.json", home);
+        chaff_profile_load(ppath, rt->category_weights);
+    }
 
     daemon_ctx_t ctx = {.fd = server_fd, .rt = rt, .eps = eps};
     pthread_t ipc_tid, gen_tid;
