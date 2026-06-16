@@ -44,10 +44,51 @@ static void test_plan_jitter_floored(void) {
     TEST_ASSERT_TRUE(plan.jitter_ms >= 50);
 }
 
+static void test_weighted_pick_degenerate(void) {
+    uint64_t rng = 12345;
+    double w_first[5] = {1.0, 0, 0, 0, 0};
+    double w_last[5] = {0, 0, 0, 0, 1.0};
+    for (int i = 0; i < 8; i++) { /* a single non-zero weight -> always that index */
+        TEST_ASSERT_EQUAL_INT(0, chaff_weighted_category(w_first, 5, &rng));
+        TEST_ASSERT_EQUAL_INT(4, chaff_weighted_category(w_last, 5, &rng));
+    }
+}
+
+static void test_weighted_pick_fallback_uniform(void) {
+    uint64_t rng = 999;
+    double zero[5] = {0, 0, 0, 0, 0};
+    for (int i = 0; i < 8; i++) { /* all-zero (no profile) -> a valid uniform index */
+        int idx = chaff_weighted_category(zero, 5, &rng);
+        TEST_ASSERT_TRUE(idx >= 0 && idx < 5);
+    }
+    TEST_ASSERT_EQUAL_INT(0, chaff_weighted_category(NULL, 5, &rng)); /* NULL -> 0, no crash */
+}
+
+static void test_weighted_pick_favours_heavy(void) {
+    uint64_t rng = 4242;
+    double w[5] = {0.9, 0.1, 0, 0, 0};
+    int c0 = 0, c1 = 0, other = 0;
+    for (int i = 0; i < 2000; i++) {
+        int idx = chaff_weighted_category(w, 5, &rng);
+        if (idx == 0) {
+            c0++;
+        } else if (idx == 1) {
+            c1++;
+        } else {
+            other++;
+        }
+    }
+    TEST_ASSERT_EQUAL_INT(0, other); /* never picks a zero-weight category */
+    TEST_ASSERT_TRUE(c0 > c1);       /* heavier weight dominates */
+}
+
 void run_generation_tests(void) {
     RUN_TEST(test_target_volume);
     RUN_TEST(test_should_send_logic);
     RUN_TEST(test_plan_returns_ok);
     RUN_TEST(test_plan_endpoint_in_category);
     RUN_TEST(test_plan_jitter_floored);
+    RUN_TEST(test_weighted_pick_degenerate);
+    RUN_TEST(test_weighted_pick_fallback_uniform);
+    RUN_TEST(test_weighted_pick_favours_heavy);
 }
