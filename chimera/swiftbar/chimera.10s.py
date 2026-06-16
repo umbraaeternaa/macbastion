@@ -2,7 +2,7 @@
 # <bitbar.title>CHIMERA organism monitor</bitbar.title>
 # <bitbar.version>v0.1</bitbar.version>
 # <bitbar.author>umbraaeternaa</bitbar.author>
-# <bitbar.desc>Live status of the CHIMERA privacy organism — polls core.status (UX.md).</bitbar.desc>
+# <bitbar.desc>Live status of the CHIMERA privacy organism (polls core.status).</bitbar.desc>
 # <swiftbar.refreshOnOpen>true</swiftbar.refreshOnOpen>
 """CHIMERA SwiftBar plugin (UX.md: swiftbar = passive state monitoring, polling every N s).
 Connects to the core UNIX socket, calls core.status, renders the organism in the menu bar.
@@ -17,7 +17,7 @@ PY = f"{REPO}/.venv/bin/python"
 N_ORGANS = 8
 
 
-def query():
+def query() -> dict:
     s = socket.socket(socket.AF_UNIX)
     s.settimeout(2)
     s.connect(SOCK)
@@ -32,13 +32,13 @@ def query():
     return json.loads(buf.split(b"\n")[0])["result"]
 
 
-def uptime(sec):
+def uptime(sec: float) -> str:
     sec = int(sec)
     h, m = sec // 3600, (sec % 3600) // 60
     return f"{h}h{m:02d}m" if h else f"{m}m"
 
 
-def term(label, *cli):
+def term(label: str, *cli: str) -> None:
     """A dropdown row that opens a CLI command in Terminal (cd repo first)."""
     cmd = f"cd {REPO} && {PY} -m core " + " ".join(cli)
     print(f"{label} | bash=/bin/zsh param1=-c param2={cmd!r} terminal=true")
@@ -51,7 +51,7 @@ except Exception:
     print("---")
     print("CHIMERA core offline (socket unreachable) | color=red")
     term("Bring the organism up", "up")
-    raise SystemExit(0)
+    raise SystemExit(0) from None
 
 core = r.get("core", {})
 mods = r.get("modules", {})
@@ -62,7 +62,9 @@ color = "#34c759" if (reg == total == N_ORGANS) else ("#ff9500" if reg else "#ff
 
 print(f"🜲 {reg}/{total} | color={color}")
 print("---")
-print(f"CHIMERA — core v{core.get('version', '?')}  (uptime {uptime(core.get('uptime_seconds', 0))}) | color=#888888")
+ver = core.get("version", "?")
+up = uptime(core.get("uptime_seconds", 0))
+print(f"CHIMERA — core v{ver}  (uptime {up}) | color=#888888")
 mode = reactive.get("pulse_mode", "?")
 print(f"Mind (PULSE): {mode} | color={'#34c759' if mode == 'normal' else '#ff9500'}")
 print("---")
