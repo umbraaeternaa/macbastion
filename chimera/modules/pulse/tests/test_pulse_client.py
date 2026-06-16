@@ -197,3 +197,46 @@ async def test_compute_folds_in_drift(tmp_path):
     client._drift.observe(NOW_NORMAL, 0.9)  # a fresh ORACLE anomaly
     drift_score, _, _ = await client._compute(NOW_NORMAL)
     assert drift_score > base_score  # group-C drift raised the fatigue score
+
+
+# -- §9: chronotype is LEARNED from observed activity, not configured ---------
+
+
+async def test_active_minute_records_and_persists_activity(tmp_path):
+    # idle below the active threshold -> the tick counts as one active minute at that hour.
+    client = _idle_client(tmp_path, [10.0])
+    await client._compute("2026-06-12T03:30:00")  # hour 3, idle 10s < 300 -> active
+    assert client._activity_hist[3] == 1
+    assert json.loads(client._store.get_meta("activity_hist"))[3] == 1  # persisted
+
+
+async def test_idle_minute_records_no_activity(tmp_path):
+    # idle past the active threshold -> not present -> no activity counted.
+    client = _idle_client(tmp_path, [400.0])
+    await client._compute("2026-06-12T03:30:00")
+    assert sum(client._activity_hist) == 0
+
+
+async def test_activity_histogram_persists_across_restart(tmp_path):
+    store = BaselineStore(tmp_path / "baseline.db", tmp_path / "baseline.key")
+    c1 = PulseClient(tmp_path, store, idle_reader=lambda: None)
+    c1._activity_hist[2] = 5
+    await c1._observe_activity("2026-06-12T02:10:00")  # hour 2 -> 6, persisted
+    c2 = PulseClient(tmp_path, store, idle_reader=lambda: None)  # reload over same store
+    assert c2._activity_hist[2] == 6
+
+
+async def test_effective_chronotype_honors_config_until_saturated(tmp_path):
+    store = BaselineStore(tmp_path / "baseline.db", tmp_path / "baseline.key")
+    client = PulseClient(tmp_path, store, chronotype="night_owl", idle_reader=lambda: None)
+    assert client._effective_chronotype() == "night_owl"  # cold-start: honor explicit config
+    client._activity_hist[14] = 700  # saturated, day-heavy -> learned typical overrides config
+    assert client._effective_chronotype() == "typical"
+
+
+async def test_learned_night_owl_dampens_night_fatigue(tmp_path):
+    client = _seeded_client(tmp_path)
+    typical_score, _, _ = await client._compute(NOW_CAUTION)  # 03:00, empty hist -> typical
+    client._activity_hist[3] = 700  # saturated night activity -> learned night_owl
+    owl_score, _, _ = await client._compute(NOW_CAUTION)
+    assert owl_score < typical_score  # night_owl x0.4 on the 3am hour weight

@@ -2,20 +2,22 @@
 
 Module-only client (PD-1): ONE core.sock connection that registers with core, serves
 pulse.* via the 4A router, and heartbeats — mirroring ORACLE's command connection.
-PULSE's group-A (MIRROR aggregates) and group-C (ORACLE drift) consumers are gated, so
-there is no events.sock consumer this slice.
+PULSE's group-A (MIRROR aggregates, mirror.input.minute) and group-C (ORACLE drift,
+oracle.anomaly.detected) are consumed live via an events.sock connection (SUBSCRIBE_TOPICS).
 
-pulse.status composes the live edge (PD-3): temporal_signal(now) feeds the empty
-`temporal` slot of assess(store, …) -> (score, mode). advisory only, fail-OPEN — an
-uncalibrated store yields baseline_ready=False -> mode 'normal' (§8). Reuses
-core.envelope + core.errors only (D1=c; extract a shared pyclient at the 2nd Python
-module — same TODO as ORACLE). pulse.mode.changed/error are registered but not yet
-emitted (PD-4, status is pull-based).
+pulse.status composes the live edge (PD-3): temporal_signal(now) feeds the `temporal`
+slot of assess(store, …) -> (score, mode). advisory only, fail-OPEN — an uncalibrated
+store yields baseline_ready=False -> mode 'normal' (§8). Reuses core.envelope +
+core.errors only (D1=c; extract a shared pyclient at the 2nd Python module — same TODO as
+ORACLE). pulse.mode.changed (on a mode transition) and pulse.error (on a tick failure) are
+emitted live from the tick loop; core subscribes to pulse.mode.changed to drive the gate.
+The temporal chronotype is LEARNED, not configured (§9): see chronotype.py.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import math
 import re
 import subprocess
@@ -35,6 +37,7 @@ from core.errors import (
 
 from pulse.assess import assess
 from pulse.baseline import BaselineStore
+from pulse.chronotype import MIN_SAMPLES, bump, classify_chronotype, empty_histogram
 from pulse.drift import DriftTracker
 from pulse.idle import IdleTracker
 from pulse.input import input_signals
@@ -86,6 +89,8 @@ class PulseClient:
     # live producers we consume: MIRROR's per-minute input aggregates (group-A, PD-A-3)
     # and ORACLE's anomaly score (group-C drift, PD-C-2).
     SUBSCRIBE_TOPICS: tuple[str, ...] = ("mirror.input.minute", "oracle.anomaly.detected")
+    # Below this HID-idle (seconds) a tick counts as one ACTIVE minute for chronotype learning.
+    ACTIVE_IDLE_THRESHOLD_S: float = 300.0
 
     def __init__(
         self,
@@ -103,7 +108,8 @@ class PulseClient:
         self._socket_dir = Path(socket_dir)
         self._store = store
         self._session_start = session_start
-        self._chronotype = chronotype
+        self._chronotype = chronotype  # configured default / fallback until learned (§9)
+        self._activity_hist = self._load_activity_hist()
         self._weights = weights if weights is not None else Weights()
         self._danger_registry = danger_registry
         # group-B live idle producer: read system idle each tick, track gap-ends (PD-idle-2)
@@ -274,23 +280,56 @@ class PulseClient:
     async def _compute(self, now: str) -> tuple[float, str, str]:
         """Advisory composition (EM-1): temporal_signal -> assess over the store.
 
-        Returns (score, mode, primary_signal). primary is 'temporal' — the only present
-        group this slice (group A/C gated). The idle sub-signal is live (PD-idle-2): read
-        system idle, feed the tracker, pass its last_idle_end into temporal.
+        Returns (score, mode, primary_signal). primary is 'temporal'. The idle sub-signal
+        is live (PD-idle-2): read system idle, feed the tracker, pass last_idle_end into
+        temporal. An ACTIVE tick also feeds chronotype learning (§9); the learned verdict
+        picks the chronotype temporal uses (the configured default until enough samples).
         """
         idle_seconds = await asyncio.to_thread(self._idle_reader)
         if idle_seconds is not None:
             self._idle.observe(now, idle_seconds)
+            if idle_seconds < self.ACTIVE_IDLE_THRESHOLD_S:
+                await self._observe_activity(now)
         temporal = temporal_signal(
             now, session_start=self._session_start,
             last_idle_end=self._idle.last_idle_end,
-            chronotype=self._chronotype,
+            chronotype=self._effective_chronotype(),
         )
         score, mode = await asyncio.to_thread(
             assess, self._store, now, group_a=self._group_a, temporal=temporal,
             drift=self._drift.drift(now), weights=self._weights,
         )
         return score, mode, "temporal"
+
+    # -- chronotype learning (§9) -----------------------------------------
+
+    def _load_activity_hist(self) -> list[int]:
+        """Load the persisted hour-of-activity histogram from the store, or a fresh one.
+        Malformed/missing meta -> empty (fail-safe; learning restarts, never crashes)."""
+        raw = self._store.get_meta("activity_hist")
+        if raw:
+            try:
+                data = json.loads(raw)
+            except ValueError:
+                data = None
+            if isinstance(data, list) and len(data) == 24:
+                return [int(x) for x in data]
+        return empty_histogram()
+
+    async def _observe_activity(self, now: str) -> None:
+        """Record one active minute in the hour histogram and persist it (chronotype §9)."""
+        bump(self._activity_hist, datetime.fromisoformat(now).hour)
+        await asyncio.to_thread(
+            self._store.set_meta, "activity_hist", json.dumps(self._activity_hist)
+        )
+
+    def _effective_chronotype(self) -> str:
+        """Chronotype temporal should use: the configured default until enough activity is
+        observed, then the LEARNED verdict (§9). We keep the operator's explicit config
+        during cold-start rather than force 'typical' before learning is confident."""
+        if sum(self._activity_hist) >= MIN_SAMPLES:
+            return classify_chronotype(self._activity_hist)
+        return self._chronotype
 
     def _on_input_aggregates(
         self, chars: int, deletes: int, mouse_path_ratio: float | None
