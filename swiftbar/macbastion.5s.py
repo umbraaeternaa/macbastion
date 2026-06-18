@@ -19,6 +19,7 @@ from pathlib import Path
 PROJECT  = Path.home() / "Projects" / "macbastion"
 VENV_PY  = PROJECT / ".venv" / "bin" / "python"
 TRIGGERS = Path.home() / ".config" / "macbastion" / "triggers"
+MIMICRY  = PROJECT / "stealth" / "mimicry.sh"
 
 
 def get_status() -> dict:
@@ -36,21 +37,38 @@ def get_status() -> dict:
         return {"mode": "error", "error": str(e)}
 
 
+def get_mimicry() -> dict:
+    """Stealth-mimicry toggle state (mode / hostname / Tor SOCKS) from mimicry.sh."""
+    try:
+        r = subprocess.run([str(MIMICRY), "status"], capture_output=True, text=True, timeout=10)
+        d = {}
+        for line in r.stdout.splitlines():
+            if ":" in line:
+                k, v = line.split(":", 1)
+                d[k.strip()] = v.strip()
+        return d or {"mode": "?"}
+    except Exception as e:
+        return {"mode": "?", "error": str(e)}
+
+
 def render():
     s = get_status()
     mode = s.get("mode", "unknown")
+    mim = get_mimicry()
+    mim_mode = mim.get("mode", "?")
+    ninja = "🥷" if mim_mode == "on" else ""
 
-    # Top icon
+    # Top icon (+🥷 when stealth-mimicry is ON)
     if mode == "soft":
-        print("🛡 | color=orange size=14")
+        print(f"🛡{ninja} | color=orange size=14")
     elif mode == "hard":
-        print("🛡 | color=green size=14")
+        print(f"🛡{ninja} | color=green size=14")
     elif mode == "off":
-        print("📡 | color=cyan size=14")
+        print(f"📡{ninja} | color=cyan size=14")
     elif mode == "error":
-        print("⚠️ | color=red size=14")
+        print(f"⚠️{ninja} | color=red size=14")
     else:
-        print("? | color=gray size=14")
+        print(f"?{ninja} | color=gray size=14")
 
     print("---")
 
@@ -62,6 +80,19 @@ def render():
         "error": "⚠️  Error",
     }
     print(f"{headers.get(mode, 'Unknown')} | size=13")
+
+    # --- STEALTH-MIMICRY (Tor IP + hostname) — independent toggle ---
+    print("---")
+    print("🥷 Stealth-mimicry (Tor IP + hostname) | size=13")
+    if "error" in mim:
+        print(f"  {mim['error'][:70]} | color=red size=11 trim=false")
+    else:
+        print(f"mode: {mim_mode}    hostname: {mim.get('hostname', '?')} | font='Menlo' size=11 trim=false")
+        print(f"Tor SOCKS: {mim.get('Tor SOCKS', '?')} | font='Menlo' size=11")
+    if mim_mode == "on":
+        print(f"🌐 Turn OFF — normal mode | shell={TRIGGERS / 'mimicry-off.sh'} refresh=true terminal=false")
+    else:
+        print(f"🥷 Turn ON — stealth | shell={TRIGGERS / 'mimicry-on.sh'} refresh=true terminal=false")
 
     if mode == "error":
         print(f"{s.get('error', '?')[:80]} | color=red size=11 trim=false")

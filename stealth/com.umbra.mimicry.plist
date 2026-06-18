@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.umbra.mimicry</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/macbook/Projects/macbastion/stealth/newnym.sh</string>
+    </array>
+    <!-- periodic IP rotation (also fires once on wake — launchd coalesces missed intervals) -->
+    <key>StartInterval</key>
+    <integer>1200</integer>
+    <!-- rotate the exit IP the moment stealth is enabled -->
+    <key>RunAtLoad</key>
+    <true/>
+    <!-- best-effort: rotate IP when the Wi-Fi network config changes (new network joined) -->
+    <key>WatchPaths</key>
+    <array>
+        <string>/Library/Preferences/SystemConfiguration/com.apple.airport.preferences.plist</string>
+    </array>
+    <key>StandardOutPath</key>
+    <string>/Users/macbook/.config/macbastion/mimicry-agent.out</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/macbook/.config/macbastion/mimicry-agent.err</string>
+</dict>
+</plist>
