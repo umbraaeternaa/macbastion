@@ -23,7 +23,7 @@ screen locked) on its own authority. **Come back — it stands down, but never a
 BLE is spoofable, so making "return" an unlock would be a backdoor for anyone holding your phone.
 **Proximity is a key that only locks — coming back is always your password.**
 
-<!-- TODO(launch): drop docs/dead-man-demo.gif here once the 60-second screen-recording is cut -->
+![CHIMERA dead-man switch — walk away with your phone and the Mac locks itself](docs/dead-man-demo.gif)
 > 📹 **Live, no edits:** phone leaves → `tether.absent → vault.lock` → `tether.escalation →
 > shim.lock` (the screen locks) → you return → `tether.recovered → stand-down` (still locked; you
 > type your own password). Every reflex lands in an audit trail you can question. Proven on real
