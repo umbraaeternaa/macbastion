@@ -38,9 +38,10 @@ import os
 import stat
 from typing import Any
 
+import pytest
 from core.broker import Event, EventBroker
 from core.config import CoreConfig
-from core.envelope import Request, Response, parse, serialize_frame
+from core.envelope import Notification, Request, Response, parse, serialize_frame
 from core.errors import ChimeraError
 from core.lifecycle import Lifecycle
 from core.registry import Registry
@@ -205,6 +206,90 @@ async def _routed_call(
         )
     await server._handle_line(serialize_frame(reply), module_conn)
     return await asyncio.wait_for(task, timeout=wait)
+
+
+# ---------------------------------------------------------------------------
+# Wire publish-authority (D7+) — a module may publish events ONLY in its own
+# namespace. Closes the anomaly-tripwire forge hole (LOOM auditor, 2026-06-26):
+# without it ANY connected module could publish oracle.anomaly.detected and drive
+# the privileged RELAY_RULES cascade (vault.lock/tether.heighten/chaff/echo),
+# bypassing the D7 'modules cannot invoke modules' guard via the event broker.
+# ---------------------------------------------------------------------------
+
+
+class TestWirePublishAuthority:
+    """_handle_line republishes a wire Notification to the broker ONLY when its
+    topic lies in the publisher's own module namespace (conn.subject, set by
+    core.register — D3). A forged / cross-namespace / surface-origin event is
+    dropped, never relayed — so an advisory AI signal (or a forged one) can no
+    longer be laundered into a privileged actuation."""
+
+    async def test_in_namespace_event_is_published(self, tmp_path: Any) -> None:
+        server = _make_server(tmp_path)
+        oracle = await _module_caller(server, "oracle")
+        sub = server._broker.subscribe(["oracle.anomaly.detected"])
+        await server._handle_line(
+            serialize_frame(
+                Notification(
+                    jsonrpc="2.0",
+                    method="oracle.anomaly.detected",
+                    params={"score": 0.9},
+                )
+            ),
+            oracle,
+        )
+        event = sub.get_nowait()  # raises QueueEmpty had it been dropped
+        assert event.topic == "oracle.anomaly.detected"
+        assert event.payload == {"score": 0.9}
+
+    async def test_cross_namespace_forge_is_dropped(self, tmp_path: Any) -> None:
+        # PULSE (not ORACLE) tries to forge the anomaly tripwire.
+        server = _make_server(tmp_path)
+        pulse = await _module_caller(server, "pulse")
+        sub = server._broker.subscribe(["oracle.anomaly.detected"])
+        await server._handle_line(
+            serialize_frame(
+                Notification(
+                    jsonrpc="2.0",
+                    method="oracle.anomaly.detected",
+                    params={"score": 0.9},
+                )
+            ),
+            pulse,
+        )
+        with pytest.raises(asyncio.QueueEmpty):
+            sub.get_nowait()
+
+    async def test_surface_connection_cannot_publish(self, tmp_path: Any) -> None:
+        # An unregistered (surface) connection may not publish events at all.
+        server = _make_server(tmp_path)
+        surface = server.new_connection()
+        sub = server._broker.subscribe(["oracle.anomaly.detected"])
+        await server._handle_line(
+            serialize_frame(
+                Notification(jsonrpc="2.0", method="oracle.anomaly.detected", params={})
+            ),
+            surface,
+        )
+        with pytest.raises(asyncio.QueueEmpty):
+            sub.get_nowait()
+
+    async def test_other_modules_own_namespace_still_works(self, tmp_path: Any) -> None:
+        # The guard is not oracle-specific: PULSE's own reflex topic still flows.
+        server = _make_server(tmp_path)
+        pulse = await _module_caller(server, "pulse")
+        sub = server._broker.subscribe(["pulse.mode.changed"])
+        await server._handle_line(
+            serialize_frame(
+                Notification(
+                    jsonrpc="2.0",
+                    method="pulse.mode.changed",
+                    params={"mode": "danger"},
+                )
+            ),
+            pulse,
+        )
+        assert sub.get_nowait().topic == "pulse.mode.changed"
 
 
 # ---------------------------------------------------------------------------

@@ -891,8 +891,24 @@ class Server:
             self._resolve_pending(message)
             return None
         if isinstance(message, Notification):
-            payload = message.params if isinstance(message.params, dict) else {}
-            self._broker.publish(Event(topic=message.method, payload=payload))
+            # D7+ (publish authority): a wire-published event may only carry a topic in the
+            # publisher's OWN module namespace (conn.subject, set module-scoped by core.register
+            # — D3). WITHOUT this guard ANY connected module could publish e.g.
+            # `oracle.anomaly.detected` and drive the privileged RELAY_RULES cascade
+            # (vault.lock / tether.heighten / chaff / echo), bypassing the D7 'modules cannot
+            # invoke modules' rule — an advisory AI signal (or a forged one) laundered into hard
+            # actuation. So a module speaks ONLY in its own namespace; a surface/unregistered
+            # connection may not publish events at all. Dropped events are logged, never actuated.
+            topic = message.method
+            if conn.is_module and topic.startswith(f"{conn.subject}."):
+                payload = message.params if isinstance(message.params, dict) else {}
+                self._broker.publish(Event(topic=topic, payload=payload))
+            else:
+                logger.warning(
+                    "dropped unauthorized wire event %r from subject %r (outside its namespace)",
+                    message.method,
+                    conn.subject,
+                )
         return None
 
     # -- serialization ----------------------------------------------------
