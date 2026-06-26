@@ -155,7 +155,10 @@ def _spawn_argv(
     """The (argv, env, cwd) to launch one module pointed at socket_dir. A native module is
     its own binary (modules/NAME/NAME); a Python module runs as `python -m NAME` with its
     package dir on PYTHONPATH. cwd is the module's own directory so it finds files it reads
-    relative to the working dir (e.g. CHAFF's data/endpoints.json). Pure + unit-testable."""
+    relative to the working dir (e.g. CHAFF's data/endpoints.json). NOT pure: reads process
+    env (PATH/HOME) and stats the filesystem for the tcc-disclaim launcher, so the chosen
+    argv depends on env + disk state (deterministic given a fixed env+filesystem; unit-testable
+    by stubbing the launcher path / env)."""
     module_dir = module_binary(spec.name).parent
     env = {
         "CHIMERA_SOCKET_DIR": str(socket_dir),
