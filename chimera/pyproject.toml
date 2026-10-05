@@ -58,6 +58,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["ANN", "S101", "S105", "S603", "S607"]  # tests: skip strict typing; subprocess + fake secrets are trusted
+"conftest.py" = ["S108"]  # test sessions pin a short /tmp on purpose (macOS AF_UNIX 104-byte cap)
 "modules/oracle/tests/*" = ["ANN", "S101", "S105", "S603", "S607"]  # oracle unit tests, same policy as tests/*
 "modules/pulse/tests/*" = ["ANN", "S101", "S105", "S603", "S607"]  # pulse unit tests, same policy as tests/*
 

@@ -7,7 +7,7 @@
 ![status](https://img.shields.io/badge/status-alpha-orange)
 ![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon-purple)
 ![python](https://img.shields.io/badge/python-3.11%2B-yellow)
-![tests](https://img.shields.io/badge/tests-1133%20green-brightgreen)
+![tests](https://img.shields.io/badge/tests-801%20-green-brightgreen)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
 CHIMERA senses you and your environment and reacts autonomously to protect you — then writes
