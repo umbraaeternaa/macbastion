@@ -86,6 +86,12 @@ int main(int argc, char **argv) {
     std::signal(SIGPIPE, SIG_IGN);
 
     tether::TetherRuntime rt;
+    /* Довга пам'ять пари: домовлений шлях поруч з налаштунком, щоб прив'язка
+     * переживала перезапуск (порожній шлях = лише в голові). Для рухливої
+     * адреси прив'язка спить, тож поведінка не змінюється. */
+    if (const char *home = std::getenv("HOME"); home && home[0]) {
+        rt.pin = tether::CompanionPin(std::string(home) + "/.config/chimera/tether/companion.pin");
+    }
     tether::DaemonConfig dcfg;
     std::string companion_id;
     bool companion_random_address = false; /* config: a phone using a rotating RPA -> no identity pin */
