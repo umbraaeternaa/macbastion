@@ -66,7 +66,24 @@ the architectural document is whole and authoritative. No spec work remains.
 
 ## Code status
 
-**LATEST (2026-10-06): test suite healed — 801/801 GREEN + first CI.** All 71 red tests
+**LATEST (2026-10-06, part 2): both lifecycle bugs fixed — the organism now survives ANY
+restart.** Two systemic defects diagnosed from the dead-man-tether incident and fixed
+(commit `1ae2a8e`, pushed; CI run `37399244719` all 3 jobs green; 801/801 locally):
+(1) `supervisor.handle_failure` returned False for `external` modules BEFORE
+`lifecycle.restart`, so the LaunchAgent revived the *process* while the registry stayed
+`FAILED` forever — and `_drive_register` refuses to resurrect a failed module, stranding
+tether offline after its first restart. Now FAILED -> STARTING runs for external too
+(spawn stays ours-only; the process belongs to its own LaunchAgent). LIVE-verified:
+`launchctl kickstart` on tether -> `[registered]` automatically, no manual deregister.
+(2) `server.stop()` awaited `wait_closed()` unbounded; live module connections parked in
+`reader.readline()` never finish, so SIGTERM hung until SIGKILL. Now bounded by the
+pre-existing but unused `shutdown_timeout_s` (5s). LIVE-verified: SIGTERM -> self-exit,
+KeepAlive relaunches. Also today: TETHER re-armed end-to-end (Bluetooth TCC record
+restored via `tccutil reset BluetoothAlways com.umbra.chimera.tether` + restart; phone
+beacon `6368696d-6572-6100-0000-000000000001` confirmed heard — bluetoothd
+`Matched UUID`; `tether.test` dry-run: L1=30s, L2=90s, L3 disarmed).
+
+**Prior (2026-10-06, part 1): test suite healed — 801/801 GREEN + first CI.** All 71 red tests
 (18 default + 53 integration) were ONE environmental bug: macOS caps AF_UNIX socket paths at
 104 bytes and this machine's `/var/folders/.../T` (48 chars) pushed pytest's `tmp_path` +
 `core.sock` to 108 — every real-socket test died before touching product code. Fix is
