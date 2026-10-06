@@ -783,7 +783,17 @@ class Server:
         for server in (self._core_server, self._events_server):
             if server is not None:
                 server.close()
-                await server.wait_closed()
+                # wait_closed() waits for every in-flight client handler to complete;
+                # live module connections (tether & co park in reader.readline) never
+                # finish on their own, which hung the whole shutdown until SIGKILL
+                # (diagnosed 2026-10-06). Bound it with the configured shutdown budget —
+                # the sockets are unlinked below either way.
+                try:
+                    await asyncio.wait_for(
+                        server.wait_closed(), timeout=self._config.shutdown_timeout_s
+                    )
+                except TimeoutError:
+                    pass
         self._core_server = None
         self._events_server = None
         for path in (self._core_path, self._events_path):

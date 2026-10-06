@@ -158,22 +158,28 @@ class Supervisor:
     def handle_failure(self, name: str, lifecycle: Lifecycle) -> bool:
         """A supervised module reached FAILED: delegate the restart decision to lifecycle
         (§7.5 budget/backoff/FSM — the single source of truth); if it transitions to
-        STARTING, re-spawn the OS process. Returns True iff the process was respawned."""
+        STARTING, re-spawn the OS process. Returns True iff the process was respawned.
+
+        EXTERNAL modules (their own LaunchAgent) are never spawned here, but their
+        lifecycle state MUST still walk FAILED -> STARTING: the LaunchAgent revives the
+        *process*, not the registry record, and _drive_register refuses to resurrect a
+        FAILED module ("the registry never resurrects a stopped or failed module") —
+        without this transition the fresh process's core.register would be rejected
+        forever, stranding the module offline after its first restart (the dead-man
+        tether bug, diagnosed 2026-10-06)."""
         spec = next((s for s in self._specs if s.name == name), None)
         if spec is None:
             return False
-        if spec.external:
-            return False  # external modules restart via their own LaunchAgent (KeepAlive), not us
         try:
             if lifecycle.state_of(name) != ModuleState.FAILED:
                 return False
         except KeyError:
             return False
         lifecycle.restart(name)  # FAILED -> STARTING (within budget) or PERMANENTLY_FAILED
-        if lifecycle.state_of(name) == ModuleState.STARTING:
+        if lifecycle.state_of(name) == ModuleState.STARTING and not spec.external:
             self._procs[name] = self._spawn(spec)
             return True
-        return False
+        return False  # external: its OWN LaunchAgent spawns the process, not us
 
     def on_state_changed(self, payload: Mapping[str, object], lifecycle: Lifecycle) -> bool:
         """Broker hook for module.state_changed: restart on a transition TO FAILED,
