@@ -116,6 +116,13 @@ static void test_clear_is_failopen(void) {
     rec_reset(NULL);
 }
 
+static void test_parse_bytes_reads_counter(void) {
+    TEST_ASSERT_EQUAL_INT64(1234567, shaper_rate_parse_bytes("00001: 1234567 42 0 0 0 0\n"));
+    TEST_ASSERT_EQUAL_INT64(-1, shaper_rate_parse_bytes("no counters here"));
+    TEST_ASSERT_EQUAL_INT64(-1, shaper_rate_parse_bytes(NULL));
+    TEST_ASSERT_EQUAL_INT64(-1, shaper_rate_parse_bytes(""));
+}
+
 void run_anchor_tests(void) {
     RUN_TEST(test_build_rules_routes_through_pipe);
     RUN_TEST(test_build_rules_rejects_tiny_buffer);
@@ -123,4 +130,5 @@ void run_anchor_tests(void) {
     RUN_TEST(test_apply_rejects_bad_rate);
     RUN_TEST(test_apply_propagates_failure);
     RUN_TEST(test_clear_is_failopen);
+    RUN_TEST(test_parse_bytes_reads_counter);
 }

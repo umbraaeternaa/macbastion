@@ -31,6 +31,15 @@ void shaper_anchor_set_ops(const shaper_anchor_ops_t *ops);
  * any failed step. Needs root in production (the real backend). */
 int shaper_anchor_apply(int rate_kbps);
 
+/* Parse the total-bytes counter out of `dnctl pipe N show` output (pure, testable).
+ * Returns the largest non-negative integer found, or -1 when nothing parses. */
+long long shaper_rate_parse_bytes(const char *output);
+
+/* Read the dummynet pipe byte counter (EP-6 floor meter): run
+ * `dnctl pipe 1337 show` and parse the total-bytes counter. Returns the byte
+ * count, or -1 on any failure. READ-ONLY — touches nothing, fail-OPEN. */
+long long shaper_rate_read_bytes(void);
+
 /* Remove ECHO's pf anchor — FAIL-OPEN (EP-3): flush the anchor, delete the pipe, remove the
  * file, each best-effort so the network is ALWAYS restored even if a step fails. Returns 0. */
 int shaper_anchor_clear(void);

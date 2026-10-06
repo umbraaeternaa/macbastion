@@ -14,7 +14,8 @@ typedef enum {
     SHAPER_OP_UNKNOWN = 0,
     SHAPER_OP_ANCHOR_LOAD,    /* load/refresh ECHO's pf anchor with the current rate */
     SHAPER_OP_PACE,           /* run the constant-rate pacer over that anchor */
-    SHAPER_OP_ANCHOR_REMOVE   /* remove the anchor + stop pacing (restore normal flow) */
+    SHAPER_OP_ANCHOR_REMOVE,  /* remove the anchor + stop pacing (restore normal flow) */
+    SHAPER_OP_RATE_GET        /* read the dummynet pipe byte counter (EP-6 floor meter) */
 } shaper_op_t;
 
 /* Op result. */

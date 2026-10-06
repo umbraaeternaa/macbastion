@@ -9,6 +9,7 @@
 #include <spawn.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -100,4 +101,48 @@ int shaper_anchor_clear(void) {
     g_ops->run(delpipe);
     g_ops->remove_file(SHAPER_ANCHOR_PATH);
     return 0;
+}
+
+/* Parse the total-bytes counter out of `dnctl pipe N show` output. The output lists
+ * per-pipe lines with byte/packet counters; we take the first large integer that looks
+ * like a byte total. Returns -1 when nothing parses (fail-OPEN: caller reports no data). */
+long long shaper_rate_parse_bytes(const char *output) {
+    if (output == NULL) {
+        return -1;
+    }
+    long long best = -1;
+    const char *p = output;
+    while (*p) {
+        if ((*p >= '0' && *p <= '9')) {
+            char *end = NULL;
+            long long v = strtoll(p, &end, 10);
+            if (end != p && v >= 0 && v > best) {
+                best = v;
+            }
+            p = (end != p) ? end : p + 1;
+        } else {
+            p++;
+        }
+    }
+    return best;
+}
+
+long long shaper_rate_read_bytes(void) {
+    /* dnctl needs root (same as the anchor ops); without it popen fails -> -1, fail-OPEN. */
+    FILE *fp = popen("/usr/sbin/dnctl pipe " SHAPER_PIPE " show", "r");
+    if (fp == NULL) {
+        return -1;
+    }
+    char buf[4096];
+    size_t total = 0;
+    size_t n = fread(buf, 1, sizeof(buf) - 1, fp);
+    if (n > 0) {
+        total = n;
+    }
+    buf[total] = '\0';
+    pclose(fp);
+    if (total == 0) {
+        return -1;
+    }
+    return shaper_rate_parse_bytes(buf);
 }

@@ -15,13 +15,14 @@ static const char *const OP_NAMES[] = {
     [SHAPER_OP_ANCHOR_LOAD] = "shaper.anchor.load",
     [SHAPER_OP_PACE] = "shaper.pace",
     [SHAPER_OP_ANCHOR_REMOVE] = "shaper.anchor.remove",
+    [SHAPER_OP_RATE_GET] = "shaper.rate.get",
 };
 
 shaper_op_t shaper_op_from_method(const char *method) {
     if (method == NULL) {
         return SHAPER_OP_UNKNOWN;
     }
-    for (shaper_op_t op = SHAPER_OP_ANCHOR_LOAD; op <= SHAPER_OP_ANCHOR_REMOVE; op++) {
+    for (shaper_op_t op = SHAPER_OP_ANCHOR_LOAD; op <= SHAPER_OP_RATE_GET; op++) {
         if (strcmp(method, OP_NAMES[op]) == 0) {
             return op;
         }
@@ -30,7 +31,7 @@ shaper_op_t shaper_op_from_method(const char *method) {
 }
 
 const char *shaper_op_method_name(shaper_op_t op) {
-    if (op < SHAPER_OP_ANCHOR_LOAD || op > SHAPER_OP_ANCHOR_REMOVE) {
+    if (op < SHAPER_OP_ANCHOR_LOAD || op > SHAPER_OP_RATE_GET) {
         return NULL;
     }
     return OP_NAMES[op];

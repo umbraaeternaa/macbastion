@@ -65,6 +65,17 @@ char *shaper_protocol_dispatch(const char *method, const cJSON *params, const cJ
         rc = shaper_anchor_apply(rate); /* -1 on a bad rate / failed step */
     } else if (op == SHAPER_OP_ANCHOR_REMOVE) {
         rc = shaper_anchor_clear(); /* fail-OPEN, always 0 */
+    } else if (op == SHAPER_OP_RATE_GET) {
+        /* EP-6 floor meter: READ-ONLY counter read. No secret needed beyond peercred
+         * (already authorized above) — it reveals only a volume number, never payloads. */
+        long long bytes = shaper_rate_read_bytes();
+        if (bytes < 0) {
+            return jsonrpc_serialize_error(id, SHAPER_RPC_CAPABILITY_MISSING,
+                                           "pipe counter unavailable", NULL);
+        }
+        cJSON *result = cJSON_CreateObject();
+        cJSON_AddNumberToObject(result, "bytes_total", (double)bytes);
+        return jsonrpc_serialize_response(id, result);
     } else { /* SHAPER_OP_PACE — honest no-op for now (dummynet shapes in kernel). */
         int did_noop = 0;
         rc = (shaper_execute(op, &did_noop) == SHAPER_OK) ? 0 : -1;
